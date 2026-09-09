@@ -401,10 +401,10 @@ class DeclaracionesClient:
             logger.error("[DECL] la respuesta de op. %s no es un PDF (%d bytes)", numop, len(body or b""))
             return None
 
+        # Idempotente: volver a correr el mismo periodo sobreescribe el PDF (misma
+        # declaración → mismo contenido) en vez de acumular copias renombradas.
         nombre = nombre_archivo(sugerido, tipo, numop, rfc, ejercicio, varias)
         dest = dest_dir / nombre
-        if dest.exists() and numop and numop not in nombre:
-            dest = dest_dir / nombre_archivo(sugerido, tipo, numop, rfc, ejercicio, True)
         dest.write_bytes(body)
         logger.info("[DECL] ✓ %s (%d bytes)", dest, len(body))
         return str(dest)
