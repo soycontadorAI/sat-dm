@@ -109,6 +109,50 @@ def nombre_archivo(sugerido: Optional[str], tipo: str, numero_operacion: str,
     return base + ".pdf"
 
 
+INDICE_NOMBRE = "declaraciones.json"
+
+
+def actualizar_indice(path: Path, registros: list[dict]) -> list[dict]:
+    """Funde `registros` en el índice JSON `path` (lista de dicts).
+
+    Clave: (periodo, tipo, numero_operacion). Un registro nuevo reemplaza al viejo con
+    la misma clave; el resto se conserva. Se guarda ordenado por periodo, tipo y fecha
+    de presentación. Devuelve la lista resultante. Pura salvo por el archivo."""
+    import json
+
+    actual: list[dict] = []
+    if path.exists():
+        try:
+            actual = json.loads(path.read_text(encoding="utf-8")) or []
+        except (OSError, ValueError):
+            logger.warning("[DECL] índice ilegible, se reescribe: %s", path)
+            actual = []
+    por_clave = {(r.get("periodo"), r.get("tipo"), r.get("numero_operacion")): r for r in actual}
+    for r in registros:
+        por_clave[(r.get("periodo"), r.get("tipo"), r.get("numero_operacion"))] = r
+    salida = sorted(por_clave.values(),
+                    key=lambda r: (r.get("periodo") or "", r.get("tipo") or "",
+                                   _fecha_iso(r.get("fecha_presentacion")), r.get("numero_operacion") or ""))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(salida, ensure_ascii=False, indent=2), encoding="utf-8")
+    return salida
+
+
+def _fecha_iso(ddmmaaaa: Optional[str]) -> str:
+    """'17/03/2026' → '2026-03-17' (para ordenar); cualquier otra cosa se devuelve tal cual."""
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})", (ddmmaaaa or "").strip())
+    return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else (ddmmaaaa or "")
+
+
+def declaracion_vigente(registros: list[dict], periodo: str) -> Optional[dict]:
+    """La declaración (tipo 'declaracion') más reciente del `periodo`: normalmente la
+    última complementaria, si la hay; si no, la normal."""
+    cands = [r for r in registros if r.get("periodo") == periodo and r.get("tipo") == "declaracion"]
+    if not cands:
+        return None
+    return max(cands, key=lambda r: (_fecha_iso(r.get("fecha_presentacion")), r.get("numero_operacion") or ""))
+
+
 def _normalizar_tipos(tipos) -> list[str]:
     if not tipos:
         return list(TIPOS_DEFAULT)
@@ -217,17 +261,26 @@ class DeclaracionesClient:
                                 page, fila, tipo, dest_dir, rfc, anio, len(filas) > 1,
                             )
                             resultados.append({
+                                "rfc": rfc,
                                 "periodo": f"{anio}-{mes:02d}",
+                                "ejercicio": anio,
+                                "mes": mes,
                                 "tipo": tipo,
                                 "numero_operacion": fila.get("numero_operacion", ""),
                                 "tipo_declaracion": fila.get("tipo_declaracion", ""),
                                 "tipo_complementaria": fila.get("tipo_complementaria", ""),
+                                "linea_captura": fila.get("linea_captura", ""),
                                 "fecha_presentacion": fila.get("fecha_presentacion", ""),
                                 "estado": fila.get("estado", ""),
                                 "archivo": archivo,
+                                "descargado_en": datetime.datetime.now().isoformat(timespec="seconds"),
                             })
             finally:
                 browser.close()
+        # Índice persistente: tipo de declaración, número de operación y fecha de
+        # presentación por periodo, para trámites posteriores (p. ej. la solicitud de
+        # devolución pide el número de operación y la fecha de la declaración).
+        actualizar_indice(out_dir / INDICE_NOMBRE, resultados)
         return resultados
 
     # ---------------------------------------------------------------- consulta

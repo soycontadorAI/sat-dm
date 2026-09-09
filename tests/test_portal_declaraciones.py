@@ -69,6 +69,27 @@ def test_normalizar_tipos():
         D._normalizar_tipos("pagadas")
 
 
+def test_indice_funde_por_clave_y_elige_vigente(tmp_path):
+    import json
+    idx = tmp_path / "declaraciones.json"
+    normal = {"periodo": "2026-01", "tipo": "declaracion", "numero_operacion": "265270003579",
+              "tipo_declaracion": "Normal", "fecha_presentacion": "17/02/2026", "archivo": "a.pdf"}
+    compl = {"periodo": "2026-01", "tipo": "declaracion", "numero_operacion": "261870059439",
+             "tipo_declaracion": "Complementaria", "fecha_presentacion": "17/03/2026", "archivo": "b.pdf"}
+    acuse = {"periodo": "2026-01", "tipo": "acuse", "numero_operacion": "265270003579",
+             "fecha_presentacion": "17/02/2026", "archivo": "c.pdf"}
+    D.actualizar_indice(idx, [compl, normal, acuse])
+    # Reejecutar con un registro actualizado no duplica: misma clave → reemplaza.
+    normal2 = dict(normal, archivo="a2.pdf")
+    salida = D.actualizar_indice(idx, [normal2])
+    assert len(salida) == 3
+    assert [r["archivo"] for r in salida if r["tipo"] == "declaracion"] == ["a2.pdf", "b.pdf"]  # por fecha
+    assert json.loads(idx.read_text(encoding="utf-8")) == salida
+    # La vigente del periodo es la complementaria (más reciente), no la normal.
+    assert D.declaracion_vigente(salida, "2026-01")["numero_operacion"] == "261870059439"
+    assert D.declaracion_vigente(salida, "2026-02") is None
+
+
 def test_api_publica_declaraciones():
     import sat_descarga
     assert callable(D.descargar_declaraciones_ciec)
