@@ -211,3 +211,24 @@ Consulta y descarga de declaraciones presentadas y sus acuses (sep 2026, recorri
   fecha de presentación, periodicidad, periodo, fecha de causación y un `td.d-none` Estado.
   El link descarga el PDF directo (Content-Disposition); nombres tipo `RFC.38.AAAA.pdf` y
   `Acuse.RFC.38.AAAA.pdf`. Si no hay registros, el portal avisa con un bootbox.
+
+### Consulta de DIOT presentadas (pstcdi) — `sat_descarga/portal/diot_consulta.py`
+
+Recorrido real (sep 2026), gemelo del portal de pagos provisionales:
+
+- **Entrada** `https://pstcdi.clouda.sat.gob.mx/` → mismo widget NIDP (loginda); aterriza en
+  `pstcdi` (host parseado, sin `/nidp`). Menú: «Presentar declaración» (`/Declaracion/Temporales`),
+  «Consultar declaración» (`/Consulta/Consulta/1`) e «Impresión de acuse» (`/Consulta/Consulta/3`).
+- **Form** (`#bodyDiv`): `#IdDeclaracion` (001 Declaraciones Informativas), `#TipoDeclaracion`
+  (opcional), `#Ejercicio`, `#Periodicidad` (M/T/Q/S/L/Y/B; M habilita `#Periodo` 001..012),
+  `#NumeroOperacion`, `#TipoConcepto` (9002 DIEMSE, 9003 Forma 81, 9004 Forma 63, 9005 Forma 76,
+  **9006 DIOT**), `#btnBuscar`.
+- **Resultado** `#tableResult tbody#tableBody`: [link PDF, link Excel (`td.descargaExcel`, oculto
+  en acuses), No. de Operación, Estatus (Vigente), Tipo de Declaración, Tipo de Complementaria,
+  Fecha de Presentación, Periodicidad, Período]. El PDF va en
+  `onclick="abrirArchivoPDF('/Consulta/RecuperarArchivo?enLinea=0&tipoDocumento=1&numeroOperacion=X&ejercicio=AAAA&tipoArchivo=0&periodo=001&tipoConcepto=9006')"`
+  (descarga directa); el Excel en `onclick="buscarArchivoExcel(crear, recuperar, estado)"`
+  (`CrearArchivoExcelDiot` → modal «Generando archivo» 3-4 s → `RecuperarArchivo?...tipoArchivo=1`).
+- **Nombres que entrega el SAT**: `Decla_<op>_0MMAAAA.pdf` (declaración), `Detalle_<op>_0MMAAAA.xlsx`
+  (Excel con las operaciones) y `Acuse_<op>_0MMAAAA.pdf` (acuse). Las descargas se indexan en
+  `descargas/diot/consultas/{RFC}/diot.json`.

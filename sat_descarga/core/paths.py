@@ -124,3 +124,13 @@ def dir_declaraciones(
     """``descargas/declaracion/{RFC}/`` — el scraper anida ``{YYYY-MM}/`` por periodo
     con la declaración y su acuse (normal y complementarias)."""
     return dir_documento(TIPO_DECLARACION, rfc, salida_base=salida_base)
+
+
+def dir_diot_consultas(
+    rfc: str,
+    *,
+    salida_base: Optional[Union[str, Path]] = None,
+) -> Path:
+    """``descargas/diot/consultas/{RFC}/`` — DIOT presentadas (PDF, Excel) y acuses,
+    anidadas por ``{YYYY-MM}/``. Hermana de ``diot/presentaciones/{RFC}/``."""
+    return _raiz(salida_base) / "diot" / "consultas" / (rfc.strip().upper() if rfc and rfc.strip() else "sin_rfc")

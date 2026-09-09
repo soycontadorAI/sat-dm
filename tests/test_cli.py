@@ -17,7 +17,7 @@ def test_comandos_top_level():
 
 def test_descargar_es_grupo_con_subcomandos():
     out = CliRunner().invoke(cli, ["descargar", "--help"]).output
-    for sub in ("cfdi", "ciec", "constancia", "opinion", "declaraciones"):
+    for sub in ("cfdi", "ciec", "constancia", "opinion", "declaraciones", "diot"):
         assert sub in out
 
 
@@ -25,7 +25,7 @@ def test_help_de_cada_subcomando_carga():
     r = CliRunner()
     for args in (["descargar", "cfdi"], ["descargar", "ciec"],
                  ["descargar", "constancia"], ["descargar", "opinion"],
-                 ["descargar", "declaraciones"]):
+                 ["descargar", "declaraciones"], ["descargar", "diot"]):
         res = r.invoke(cli, args + ["--help"])
         assert res.exit_code == 0, f"{args} --help falló: {res.output}"
 
@@ -37,6 +37,7 @@ def test_reexports_raiz_disponibles():
         "descargar_cfdi_ciec", "descargar_constancia_ciec", "descargar_constancia_fiel",
         "descargar_opinion_ciec", "descargar_opinion_fiel",
         "descargar_declaraciones_ciec", "descargar_declaraciones_fiel",
+        "descargar_diot_ciec", "descargar_diot_fiel",
     ):
         assert hasattr(sat_descarga, nombre), f"falta re-export: {nombre}"
 

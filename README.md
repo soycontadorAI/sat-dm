@@ -134,6 +134,23 @@ sat-dm descargar declaraciones --metodo ciec --rfc RFC --desde 2026-01
 Como librería: `from sat_descarga import descargar_declaraciones_fiel,
 descargar_declaraciones_ciec` (devuelven una lista con periodo, tipo, número de
 operación, tipo de declaración/complementaria, fecha de presentación y ruta del PDF).
+Cada corrida funde sus filas en `descargas/declaracion/<RFC>/declaraciones.json`.
+
+## Descargar DIOT presentadas (PDF, Excel y acuse)
+
+Mismo esquema para las DIOT ya presentadas en el portal `pstcdi`: la declaración en PDF,
+su Excel con el detalle de operaciones y el acuse de recibo, por periodo mensual.
+
+```bash
+sat-dm descargar diot --rfc RFC --desde 2026-01 --hasta 2026-06        # e.firma del catálogo
+sat-dm descargar diot --rfc RFC --desde 2026-03 --tipo acuse           # sólo acuses
+sat-dm descargar diot --rfc RFC --desde 2026-03 --sin-excel            # PDF sin Excel
+# Archivos en descargas/diot/consultas/<RFC>/<YYYY-MM>/ (Decla_*.pdf, Detalle_*.xlsx, Acuse_*.pdf)
+# + índice descargas/diot/consultas/<RFC>/diot.json
+```
+
+Como librería: `descargar_diot_fiel` / `descargar_diot_ciec`. (`sat-dm diot acuse` sigue
+disponible para reimprimir un solo acuse.)
 
 ## Uso como librería Python
 
