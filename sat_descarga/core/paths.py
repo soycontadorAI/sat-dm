@@ -30,6 +30,7 @@ TIPO_OPINION = "opinion"        # → "opiniones"
 TIPO_RENOVACION = "renovacion"  # e.firma: .ren/.key/acuse/cer del trámite de renovación
 TIPO_CSD = "csd"                # CSD: .sdg/.key/acuse/cer por solicitud de sello
 TIPO_CE = "ce"                  # contabilidad electrónica: acuses AR_/AP_ por envío
+TIPO_DECLARACION = "declaracion"  # declaraciones presentadas + acuses, por periodo YYYY-MM
 
 SUB_EMITIDOS = "emitidos"       # colecciones en plural
 SUB_RECIBIDOS = "recibidos"
@@ -113,3 +114,13 @@ def dir_ce(
     mezclar años (hasta 13 periodos x 2 acuses AR_/AP_ por año).
     """
     return dir_documento(TIPO_CE, rfc, salida_base=salida_base) / str(ejercicio)
+
+
+def dir_declaraciones(
+    rfc: str,
+    *,
+    salida_base: Optional[Union[str, Path]] = None,
+) -> Path:
+    """``descargas/declaracion/{RFC}/`` — el scraper anida ``{YYYY-MM}/`` por periodo
+    con la declaración y su acuse (normal y complementarias)."""
+    return dir_documento(TIPO_DECLARACION, rfc, salida_base=salida_base)

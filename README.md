@@ -117,6 +117,24 @@ Con **e.firma** el flujo es totalmente desatendido (no hay captcha), ideal para
 automatización. Como librería: `from sat_descarga import descargar_constancia_ciec,
 descargar_constancia_fiel`. También por API: `POST /constancia/descargar`.
 
+## Descargar declaraciones presentadas y sus acuses
+
+Baja los PDF de las declaraciones «Provisionales y Definitivas de Impuestos Federales»
+ya presentadas (normal y complementarias) y sus acuses de recibo, por periodo mensual.
+
+```bash
+# Con e.firma (default, sin captcha); toma cer/key/contraseña del catálogo:
+sat-dm descargar declaraciones --rfc RFC --desde 2026-01 --hasta 2026-06
+sat-dm descargar declaraciones --rfc RFC --desde 2026-03 --tipo acuse      # solo acuses
+# Con CIEC (captcha en la mini-ventana):
+sat-dm descargar declaraciones --metodo ciec --rfc RFC --desde 2026-01
+# PDFs en descargas/declaracion/<RFC>/<YYYY-MM>/ con el nombre que entrega el SAT
+```
+
+Como librería: `from sat_descarga import descargar_declaraciones_fiel,
+descargar_declaraciones_ciec` (devuelven una lista con periodo, tipo, número de
+operación, tipo de declaración/complementaria, fecha de presentación y ruta del PDF).
+
 ## Uso como librería Python
 
 ```python

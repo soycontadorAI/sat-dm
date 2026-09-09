@@ -29,6 +29,7 @@ from .webservice.descarga import descargar_paquete, descargar_todos
 from .portal.cfdi import descargar_cfdi_ciec, descargar_cfdi_fiel
 from .portal.constancia import descargar_constancia_ciec, descargar_constancia_fiel
 from .portal.opinion import descargar_opinion_ciec, descargar_opinion_fiel
+from .portal.declaraciones import descargar_declaraciones_ciec, descargar_declaraciones_fiel
 from .portal.csd import enviar_solicitud_csd_fiel, recuperar_ultimo_csd_fiel
 from .portal.renovacion import enviar_renovacion_fiel, recuperar_renovacion_fiel
 
@@ -97,6 +98,8 @@ __all__ = [
     "descargar_constancia_fiel",
     "descargar_opinion_ciec",
     "descargar_opinion_fiel",
+    "descargar_declaraciones_ciec",
+    "descargar_declaraciones_fiel",
     "DatosCsf",
     "parsear_csf",
     "DatosOpinion",
