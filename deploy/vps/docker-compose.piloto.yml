@@ -18,7 +18,7 @@
 # Cloudflare, en modo DNS-only (nube GRIS — el proxy naranja corta el SSE de
 # jobs largos). El certificado lo emite Traefik (resolver letsencrypt).
 #
-# Reglas del VPS (docs/infra/despliegue-web.md): cambios solo aditivos; verificar
+# Reglas del VPS (docs/infra/despliegue-vps.md): cambios solo aditivos; verificar
 # OpenClaw tras cualquier operación (`pgrep -f openclaw`).
 
 services:

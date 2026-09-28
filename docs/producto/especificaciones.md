@@ -86,7 +86,7 @@ El mismo código se distribuye en dos modos:
 | REST v1 | `GET /v1/health`, `GET /v1/empresas`, `POST /v1/csf`, `POST /v1/opinion`, `POST /v1/cfdi/solicitudes`, `GET /v1/cfdi/solicitudes/{rfc}/{id}` (y `/zip`), `POST /v1/cfdi/procesar`, `GET /v1/cfdi/{resumen,excel}`, `GET /v1/cfdi/reporte/{nombre}`, `POST /v1/calculadoras/{tipo}`, `POST /v1/listas-negras` |
 | Tools MCP | `listar_empresas`, `descargar_csf`, `descargar_opinion`, `solicitar_cfdis`, `estado_solicitud`, `descargar_zip_cfdis`, `procesar_cfdis`, `resumen_cfdis`, `reporte_cfdis`, `excel_cfdis`, `consultar_listas_negras`, `calcular_sbc`, `calcular_isr_salarios`, `calcular_aguinaldo`, `calcular_finiquito`, `calcular_carga_patronal`, `indicadores_fiscales` |
 
-Detalle operativo: [despliegue-web.md](../infra/despliegue-web.md) y [api-publica.md](../infra/api-publica.md).
+Cómo se despliega y se opera: [despliegue-vps.md](../infra/despliegue-vps.md).
 
 ### Stack
 

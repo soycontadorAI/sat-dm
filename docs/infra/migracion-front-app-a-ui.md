@@ -1,7 +1,7 @@
 # Migración del front de la app a `ui/` (app.todoconta.com)
 
-> Plan redactado 2026-07-21, en ejecución. Mapa de dominios:
-> [docs/infra/despliegue-web.md](despliegue-web.md).
+> Plan redactado 2026-07-21, en ejecución. Arquitectura y dominios:
+> [docs/producto/especificaciones.md](../producto/especificaciones.md) (Parte I).
 
 ## Estado (2026-09-28)
 

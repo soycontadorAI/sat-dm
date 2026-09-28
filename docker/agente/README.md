@@ -1,9 +1,10 @@
 # Agente en Docker (modo hosted)
 
 Imagen del agente Python para la **versión online**: en el VPS corre un
-contenedor de esta imagen POR USUARIO, detrás de Traefik. El contexto completo
-(arquitectura, provisioner, Traefik, riesgos) vive en
-[docs/infra/despliegue-web.md](../../docs/infra/despliegue-web.md).
+contenedor de esta imagen POR USUARIO, detrás de Traefik. La arquitectura (provisioner,
+Traefik, modo hosted) está en
+[docs/producto/especificaciones.md](../../docs/producto/especificaciones.md) y cómo se
+despliega en [docs/infra/despliegue-vps.md](../../docs/infra/despliegue-vps.md).
 
 ## Build
 
