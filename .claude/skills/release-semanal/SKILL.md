@@ -94,22 +94,30 @@ El tag dispara el build del instalador (workflow `release.yml` cuando exista) qu
 **draft release**; el humano lo publica. El link público de descarga
 (`todoconta.com/descargar`) resuelve solo al nuevo `latest` — no hay que tocar nada más.
 
-## 7. Mismo día: los agentes web a la misma versión
+## 7. Mismo día: una versión en todos lados
 
-Web y desktop corren la misma versión (regla 4 de
+Todo lo que lleva versión va en `X.Y.Z` el mismo día (regla 4 de
 [docs/infra/despliegue-vps.md](../../../docs/infra/despliegue-vps.md)). Con el tag
-ya empujado:
+ya empujado y el build del CI terminado (deja el release en **borrador**):
 
-1. `deploy/desplegar.sh agente vX.Y.Z`: construye la imagen del agente desde el
-   tag, recrea los contenedores de los usuarios web y verifica que queden
-   healthy en `X.Y.Z`. Recrear corta unos segundos a cada usuario web: en horas
-   valle si se puede.
-2. Si el release trae cambios en `deploy/` (gateway, provisioner, ops), despliega
+1. **QA del borrador** si el release trae cambios de riesgo (migraciones que
+   reescriben datos del usuario, algo que firme o envíe al SAT). Pregúntale al
+   usuario y no publiques sin su visto bueno: publicar manda la versión por
+   auto-update a todos.
+2. **Publicar:** `gh release edit vX.Y.Z --draft=false --latest`. Si quedó un
+   borrador viejo que esta versión reemplaza, díselo al usuario.
+3. `deploy/desplegar.sh ui vX.Y.Z`: la UI web desde el tag.
+4. `deploy/desplegar.sh agente vX.Y.Z`: la imagen del agente desde el tag, los
+   contenedores de los usuarios web y el piloto. Recrear corta unos segundos a
+   cada usuario web, así que mejor en horas valle.
+5. Si el release trae cambios en `deploy/` (gateway, provisioner, ops), despliega
    cada servicio tocado con `deploy/desplegar.sh <servicio>`.
-3. `deploy/desfase.sh` debe salir en verde. Reporta su salida al usuario.
+6. `deploy/desfase.sh` debe salir en verde: release publicado, UI web, agentes
+   y piloto en `X.Y.Z`. Reporta su salida al usuario.
 
-Estos comandos escriben en el VPS: si la sesión no tiene permiso para `ssh`
-al VPS, dáselos al usuario para que los corra con `!`.
+Publicar, desplegar la UI y escribir en el VPS son acciones de producción: si
+la sesión no tiene permiso, dale los comandos al usuario para que los corra
+con `!`.
 
 ## Recordatorios
 

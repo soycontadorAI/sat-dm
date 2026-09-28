@@ -4,10 +4,10 @@
 # Uso (desde tu máquina, en cualquier rama del repo):
 #   deploy/desplegar.sh <servicio> [ref]
 #
-#   servicio  gateway | provisioner | ops | sendy | agente
-#   ref       lo que se despliega. Default: origin/main. Para `agente`, el tag
-#             del release de desktop (vX.Y.Z), para que web y desktop corran la
-#             misma versión.
+#   servicio  gateway | provisioner | ops | sendy | agente | ui
+#   ref       lo que se despliega. Default: origin/main. Para `agente` y `ui`,
+#             el tag del release de desktop (vX.Y.Z): una sola versión en
+#             todos lados (desktop, UI web, agentes web y piloto).
 #
 # Lo que hace, en orden:
 #   1. Se niega si `ref` no está en origin/main (nada sin mergear llega al VPS).
@@ -31,8 +31,8 @@ SOLO_PROBAR=0
 [ "$REF" = --probar ] && { SOLO_PROBAR=1; REF=origin/main; }
 
 case "$SERVICIO" in
-  gateway|provisioner|ops|sendy|agente) ;;
-  *) echo "uso: deploy/desplegar.sh <gateway|provisioner|ops|sendy|agente> [ref|--probar]" >&2; exit 2 ;;
+  gateway|provisioner|ops|sendy|agente|ui) ;;
+  *) echo "uso: deploy/desplegar.sh <gateway|provisioner|ops|sendy|agente|ui> [ref|--probar]" >&2; exit 2 ;;
 esac
 
 cd "$(git rev-parse --show-toplevel)"
@@ -45,15 +45,20 @@ if ! git merge-base --is-ancestor "$SHA" origin/main; then
 fi
 TS=$(date -u +%Y%m%d-%H%M%S)
 POR=$(git config user.email 2>/dev/null || whoami)
-MARCA="sha=$SHA ref=$REF fecha=$TS por=$POR"
+VERSION=$(git show "$SHA:pyproject.toml" | sed -n 's/^version = "\(.*\)"/\1/p' | head -1)
+MARCA="version=$VERSION sha=$SHA ref=$REF fecha=$TS por=$POR"
 echo "→ $SERVICIO desde $REF ($CORTO: $(git log -1 --format=%s "$SHA"))"
 
 falla() {
   echo "✗ $1" >&2
   [ "$SOLO_PROBAR" = 1 ] && exit 1   # nada que regresar: no se desplegó nada
-  if [ "$SERVICIO" = agente ]; then
-    echo "  Para regresar: en el VPS, docker tag todoconta/agente:pre-$TS todoconta/agente:dev" >&2
-    echo "  y corre de nuevo deploy/vps/actualizar-agentes.sh." >&2
+  if [ "$SERVICIO" = ui ]; then
+    echo "  Si ya se publicó: en Vercel (todoconta-app-web), promueve el despliegue" >&2
+    echo "  anterior a producción, o corre: vercel rollback" >&2
+  elif [ "$SERVICIO" = agente ]; then
+    echo "  Para regresar: en el VPS, docker tag todoconta/agente:pre-$TS todoconta/agente:dev," >&2
+    echo "  corre de nuevo deploy/vps/actualizar-agentes.sh y, en /docker/agentes," >&2
+    echo "  docker compose -f docker-compose.piloto.yml up -d." >&2
   else
     echo "  Para regresar: en el VPS, /docker/backups/$SERVICIO-$TS.tgz tiene los archivos" >&2
     echo "  anteriores (tar -xzf en /docker/$SERVICIO) y las imágenes previas quedaron" >&2
@@ -161,13 +166,22 @@ probar() {
 }
 
 # ── Agente por usuario (versión web) ─────────────────────────────────────────
-desplegar_agente() {
-  local version
-  version=$(git show "$SHA:pyproject.toml" | sed -n 's/^version = "\(.*\)"/\1/p' | head -1)
+avisar_si_no_es_tag() {
   if ! git describe --exact-match --tags "$SHA" >/dev/null 2>&1; then
-    echo "  ⚠ $REF no es un tag de release. La regla es desplegar el agente con el"
+    echo "  ⚠ $REF no es un tag de release. La regla es desplegar $SERVICIO con el"
     echo "    mismo tag que desktop (vX.Y.Z). Sigo porque lo pediste explícito."
   fi
+}
+
+version_del_ultimo_tag() {
+  local tag
+  tag=$(git tag --merged origin/main | sort -V | tail -1)
+  git show "$tag:pyproject.toml" | sed -n 's/^version = "\(.*\)"/\1/p' | head -1
+}
+
+desplegar_agente() {
+  local version="$VERSION"
+  avisar_si_no_es_tag
   echo "  imagen: todoconta/agente:$version (+ :dev)"
   ssh "$VPS" "docker image inspect todoconta/agente:dev >/dev/null 2>&1 && docker tag todoconta/agente:dev todoconta/agente:pre-$TS || true"
   # El build no toca a nadie: los agentes siguen con la imagen vieja hasta el
@@ -179,7 +193,16 @@ desplegar_agente() {
   # Cada usuario web pierde unos segundos de servicio: mejor en horas valle.
   git show "$SHA:deploy/vps/actualizar-agentes.sh" | ssh "$VPS" 'bash -s' \
     || falla "actualizar-agentes.sh terminó con error; revisa los contenedores"
-  ssh "$VPS" "mkdir -p /docker/agentes && echo '$MARCA version=$version' > /docker/agentes/.deployed"
+  # El piloto (fase 1 de la versión web, /u/piloto) tiene compose propio y
+  # también va a la misma versión: la imagen :dev ya es la nueva, así que
+  # `up -d` lo recrea.
+  git show "$SHA:deploy/vps/docker-compose.piloto.yml" | ssh "$VPS" "set -e
+    cd /docker/agentes
+    [ -f docker-compose.piloto.yml ] && cp docker-compose.piloto.yml /docker/backups/piloto-$TS.yml
+    cat > docker-compose.piloto.yml
+    docker compose -f docker-compose.piloto.yml up -d 2>&1 | tail -2" \
+    || falla "no se pudo actualizar agente-piloto"
+  ssh "$VPS" "mkdir -p /docker/agentes && echo '$MARCA' > /docker/agentes/.deployed"
 
   echo "  esperando a que los agentes queden sanos (60s)…"
   sleep 60
@@ -195,21 +218,59 @@ probar_agente() {
   corre=$(ssh "$VPS" "docker exec $uno python -c \"from importlib.metadata import version; print(version('sat-descarga-masiva'))\"")
   [ "$corre" = "$esperada" ] || falla "$uno corre v$corre, se esperaba v$esperada"
   echo "  ✓ $sanos/$total agentes healthy en v$esperada"
+  if ssh "$VPS" 'docker inspect agente-piloto >/dev/null 2>&1'; then
+    corre=$(ssh "$VPS" "docker exec agente-piloto python -c \"from importlib.metadata import version; print(version('sat-descarga-masiva'))\"")
+    [ "$corre" = "$esperada" ] || falla "agente-piloto corre v$corre, se esperaba v$esperada"
+    echo "  ✓ agente-piloto en v$esperada"
+  fi
+}
+
+# ── UI web (app.todoconta.com en Vercel) ─────────────────────────────────────
+# La UI de la versión web se construye desde el mismo tag que desktop. El
+# proyecto de Vercel se toma del link local ui/.vercel/project.json (gitignored).
+desplegar_ui() {
+  avisar_si_no_es_tag
+  local proyecto="ui/.vercel/project.json" tmp
+  [ -f "$proyecto" ] || falla "falta $proyecto. Una vez: cd ui && vercel link --project todoconta-app-web"
+  tmp=$(mktemp -d)
+  git archive "$SHA" ui | tar -x -C "$tmp"
+  mkdir -p "$tmp/ui/.vercel" && cp "$proyecto" "$tmp/ui/.vercel/"
+  if ! (cd "$tmp/ui" && vercel deploy --prod --yes); then
+    rm -rf "$tmp"
+    falla "vercel deploy falló; producción sigue en el despliegue anterior"
+  fi
+  rm -rf "$tmp"
+  probar_ui "$VERSION"
+}
+
+# La versión viaja dentro del bundle (NEXT_PUBLIC_APP_VERSION, ui/next.config.ts).
+probar_ui() {
+  local esperada="$1" c
+  for c in $(curl -s "https://app.todoconta.com/ajustes" | grep -o '/_next/static/chunks/[^"]*\.js' | sort -u); do
+    if curl -s "https://app.todoconta.com$c" | grep -q "\"$esperada\""; then
+      echo "  ✓ app.todoconta.com sirve v$esperada"
+      return 0
+    fi
+  done
+  falla "app.todoconta.com no sirve v$esperada"
 }
 
 if [ "$SOLO_PROBAR" = 1 ]; then
-  if [ "$SERVICIO" = agente ]; then
-    tag=$(git tag --merged origin/main | sort -V | tail -1)
-    probar_agente "$(git show "$tag:pyproject.toml" | sed -n 's/^version = "\(.*\)"/\1/p' | head -1)"
-  else
-    probar
-  fi
-  openclaw_vivo
+  case "$SERVICIO" in
+    agente) probar_agente "$(version_del_ultimo_tag)" ;;
+    ui) probar_ui "$(version_del_ultimo_tag)" ;;
+    *) probar ;;
+  esac
+  [ "$SERVICIO" = ui ] || openclaw_vivo
   echo "✓ pruebas de $SERVICIO en verde (no se desplegó nada)"
   exit 0
 fi
 
-if [ "$SERVICIO" = agente ]; then
+if [ "$SERVICIO" = ui ]; then
+  desplegar_ui
+  echo "✓ ui desplegada (v$VERSION, $CORTO). Revisa el desfase con deploy/desfase.sh"
+  exit 0
+elif [ "$SERVICIO" = agente ]; then
   desplegar_agente
 else
   desplegar_compose

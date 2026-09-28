@@ -23,9 +23,22 @@ existen para que eso no vuelva a pasar.
 3. **Cada despliegue deja huella.** El script escribe `/docker/<servicio>/.deployed`
    con el commit, la fecha y quién lo subió. Si falta ese archivo, ese
    servicio se desplegó a mano.
-4. **Web y desktop corren la misma versión.** El agente web se despliega con el
-   **mismo tag** del release de desktop y el **mismo día**: `deploy/desplegar.sh
-   agente vX.Y.Z` es el último paso del release (skill `release-semanal`).
+4. **Una versión en todos lados.** Todo lo que lleva número de versión va en
+   la del último tag de release, el mismo día:
+
+   | Dónde vive la versión | Cómo llega | Cómo se revisa |
+   |---|---|---|
+   | `pyproject.toml`, `ui/package.json`, `desktop/package.json`, `uv.lock` | PR de release (skill `release-semanal`) | el PR |
+   | Tag `vX.Y.Z` | `git tag` tras mergear el release | `git tag` |
+   | Release publicado en GitHub (lo que baja desktop y su auto-update) | CI crea el borrador; se publica tras el QA | `desfase.sh` |
+   | UI web (app.todoconta.com) | `deploy/desplegar.sh ui vX.Y.Z` | `desfase.sh` (versión dentro del bundle) |
+   | Agentes web (`agente-<slug>`) y `agente-piloto` | `deploy/desplegar.sh agente vX.Y.Z` | `desfase.sh` |
+
+   Un tag sin publicar también es desfase: v2.1.0 se quedó en borrador un mes
+   y los usuarios de desktop siguieron en v2.0.0 sin que nada lo marcara.
+   Gateway, provisioner, ops y sendy no llevan número de versión propio: se
+   despliegan desde `main` cuando cambian, y su `.deployed` guarda la versión
+   del repo en ese commit como control interno.
    Hoy ni desktop ni la imagen del agente instalan desde `uv.lock` (los dos
    hacen `pip install ".[server,ciec]"`), así que construirlos el mismo día
    es lo que hace que resuelvan las mismas dependencias.
@@ -47,7 +60,8 @@ existen para que eso no vuelva a pasar.
 # Un servicio desde main:
 deploy/desplegar.sh gateway        # o provisioner | ops | sendy
 
-# Los agentes web, con el tag del release de desktop:
+# El día del release, con el tag (UI web y agentes web + piloto):
+deploy/desplegar.sh ui v2.2.0
 deploy/desplegar.sh agente v2.2.0
 
 # Solo probar lo que corre hoy (no despliega nada):
@@ -91,8 +105,10 @@ bash deploy/vps/actualizar-agentes.sh   # desde el repo, por ssh
 
 ## Fuera del script (por ahora)
 
-- **`agente-piloto`** (`deploy/vps/docker-compose.piloto.yml`) tiene su propio
-  compose y corre una versión vieja. Decidir si se retira o se actualiza.
+- **`agente-piloto`** (`/u/piloto`) es el agente de prueba de la fase 1 de la
+  versión web, de antes del provisioner. No tiene tráfico real, pero mientras
+  exista sigue la regla 4: `desplegar.sh agente` lo actualiza junto con los
+  demás.
 - **Sendy** se actualiza de versión con su propio procedimiento (rsync del zip
   oficial). `desplegar.sh sendy` solo sube el Dockerfile y el compose de este repo.
 - **Fijar la imagen del agente y el build de desktop al `uv.lock`.** Hoy el
