@@ -18,6 +18,10 @@ from sat_descarga import (
     descargar_constancia_fiel,
     descargar_opinion_ciec,
     descargar_opinion_fiel,
+    descargar_declaraciones_ciec,
+    descargar_declaraciones_fiel,
+    descargar_diot_ciec,
+    descargar_diot_fiel,
 )
 
 
@@ -348,6 +352,146 @@ def descargar_opinion_cmd(metodo, rfc, ciec, cer, key, password, salida, ver_nav
     else:
         print_error("No se pudo descargar la opinión 32-D (revisa el log).")
         raise click.Abort()
+
+
+@descargar.command(name="declaraciones")
+@click.option("--metodo", type=click.Choice(["ciec", "fiel"]), default="fiel",
+              help="Autenticación: fiel (e.firma, automático) o ciec (captcha)")
+@click.option("--rfc", default=None,
+              help="RFC del contribuyente (si está en el catálogo, toma cer/key/password de ahí)")
+@click.option("--ciec", default=None, help="(metodo ciec) Contraseña CIEC")
+@click.option("--cer", type=click.Path(exists=True), default=None, help="(metodo fiel) archivo .cer")
+@click.option("--key", type=click.Path(exists=True), default=None, help="(metodo fiel) archivo .key")
+@click.option("--password", default=None, help="(metodo fiel) contraseña de la clave privada")
+@click.option("--desde", required=True, help="Primer periodo mensual (YYYY-MM)")
+@click.option("--hasta", default=None, help="Último periodo mensual (YYYY-MM; default = --desde)")
+@click.option("--tipo", type=click.Choice(["declaracion", "acuse", "ambos"]), default="ambos",
+              help="Qué PDF bajar: la declaración, su acuse de recibo o ambos")
+@click.option("--salida", default=None,
+              help="Directorio base de salida (default descargas/declaracion/<RFC>/<YYYY-MM>/)")
+@click.option("--ver-navegador", is_flag=True, default=False, help="Debug: mostrar el navegador (headful)")
+def descargar_declaraciones_cmd(metodo, rfc, ciec, cer, key, password, desde, hasta, tipo,
+                                salida, ver_navegador):
+    """Declaraciones presentadas (Provisionales y Definitivas) y sus acuses, por periodo mensual."""
+    rfc = (rfc or "").strip().upper() or None
+    if metodo == "ciec":
+        if not rfc:
+            rfc = click.prompt("  RFC").strip().upper()
+        if not ciec:
+            try:
+                ciec = config_store.get_empresa(rfc).get("ciec")
+            except KeyError:
+                ciec = None
+        if not ciec:
+            ciec = click.prompt("  Contraseña CIEC", hide_input=True)
+        salida = str(paths.dir_declaraciones(rfc, salida_base=salida))
+        print_header(f"Declaraciones (CIEC) — {rfc} ({desde} a {hasta or desde}, {tipo})")
+        resultados = descargar_declaraciones_ciec(
+            rfc=rfc, ciec=ciec, desde=desde, hasta=hasta, tipos=tipo,
+            directorio_salida=salida, headless=not ver_navegador,
+        )
+    else:  # fiel
+        if rfc and not (cer and key):
+            try:
+                empresa = config_store.get_empresa(rfc)
+                cer = cer or empresa.get("cer_path")
+                key = key or empresa.get("key_path")
+                password = password or empresa.get("password")
+            except KeyError:
+                print_error(f"Empresa {rfc} no registrada. Pasa --cer/--key explícitamente.")
+                raise click.Abort()
+        if not cer or not key:
+            print_error("Faltan credenciales. Pasa --rfc (empresa registrada) o --cer/--key.")
+            raise click.Abort()
+        if not password:
+            password = click.prompt("  Contraseña de la clave privada", hide_input=True)
+        rfc_cert = _rfc_de_cert(cer, key, password) or (rfc or "")
+        salida = str(paths.dir_declaraciones(rfc_cert, salida_base=salida))
+        print_header(f"Declaraciones (e.firma) — {rfc_cert} ({desde} a {hasta or desde}, {tipo})")
+        resultados = descargar_declaraciones_fiel(
+            cer_path=cer, key_path=key, password=password, desde=desde, hasta=hasta,
+            tipos=tipo, directorio_salida=salida, headless=not ver_navegador,
+        )
+
+    _reportar_descargas(resultados, salida)
+
+
+def _reportar_descargas(resultados, salida):
+    """Imprime una línea por fila descargada y aborta si no bajó ningún PDF."""
+    descargados = [r for r in resultados if r.get("archivo")]
+    for r in resultados:
+        marca = "✓" if r.get("archivo") else "✗"
+        extra = f" + Excel {r['archivo_excel']}" if r.get("archivo_excel") else ""
+        click.echo(f"  {marca} {r['periodo']} {r['tipo']:<11} op. {r['numero_operacion']} "
+                   f"{r.get('tipo_declaracion', '')} {r.get('tipo_complementaria', '')} "
+                   f"({r.get('fecha_presentacion', '')}) -> {r.get('archivo') or 'sin PDF'}{extra}")
+    if descargados:
+        print_success(f"{len(descargados)} PDF(s) en {salida}")
+    else:
+        print_error("No se descargó ningún PDF (revisa el log).")
+        raise click.Abort()
+
+
+@descargar.command(name="diot")
+@click.option("--metodo", type=click.Choice(["ciec", "fiel"]), default="fiel",
+              help="Autenticación: fiel (e.firma, automático) o ciec (captcha)")
+@click.option("--rfc", default=None,
+              help="RFC del contribuyente (si está en el catálogo, toma cer/key/password de ahí)")
+@click.option("--ciec", default=None, help="(metodo ciec) Contraseña CIEC")
+@click.option("--cer", type=click.Path(exists=True), default=None, help="(metodo fiel) archivo .cer")
+@click.option("--key", type=click.Path(exists=True), default=None, help="(metodo fiel) archivo .key")
+@click.option("--password", default=None, help="(metodo fiel) contraseña de la clave privada")
+@click.option("--desde", required=True, help="Primer periodo mensual (YYYY-MM)")
+@click.option("--hasta", default=None, help="Último periodo mensual (YYYY-MM; default = --desde)")
+@click.option("--tipo", type=click.Choice(["declaracion", "acuse", "ambos"]), default="ambos",
+              help="Qué bajar: la DIOT presentada (PDF + Excel), su acuse de recibo o ambos")
+@click.option("--sin-excel", is_flag=True, default=False, help="No bajar el Excel de la declaración")
+@click.option("--salida", default=None,
+              help="Directorio base de salida (default descargas/diot/consultas/<RFC>/<YYYY-MM>/)")
+@click.option("--ver-navegador", is_flag=True, default=False, help="Debug: mostrar el navegador (headful)")
+def descargar_diot_cmd(metodo, rfc, ciec, cer, key, password, desde, hasta, tipo, sin_excel,
+                       salida, ver_navegador):
+    """DIOT presentadas (PDF + Excel) y sus acuses, por periodo mensual."""
+    rfc = (rfc or "").strip().upper() or None
+    if metodo == "ciec":
+        if not rfc:
+            rfc = click.prompt("  RFC").strip().upper()
+        if not ciec:
+            try:
+                ciec = config_store.get_empresa(rfc).get("ciec")
+            except KeyError:
+                ciec = None
+        if not ciec:
+            ciec = click.prompt("  Contraseña CIEC", hide_input=True)
+        salida = str(paths.dir_diot_consultas(rfc, salida_base=salida))
+        print_header(f"DIOT presentadas (CIEC) — {rfc} ({desde} a {hasta or desde}, {tipo})")
+        resultados = descargar_diot_ciec(
+            rfc=rfc, ciec=ciec, desde=desde, hasta=hasta, tipos=tipo, excel=not sin_excel,
+            directorio_salida=salida, headless=not ver_navegador,
+        )
+    else:  # fiel
+        if rfc and not (cer and key):
+            try:
+                empresa = config_store.get_empresa(rfc)
+                cer = cer or empresa.get("cer_path")
+                key = key or empresa.get("key_path")
+                password = password or empresa.get("password")
+            except KeyError:
+                print_error(f"Empresa {rfc} no registrada. Pasa --cer/--key explícitamente.")
+                raise click.Abort()
+        if not cer or not key:
+            print_error("Faltan credenciales. Pasa --rfc (empresa registrada) o --cer/--key.")
+            raise click.Abort()
+        if not password:
+            password = click.prompt("  Contraseña de la clave privada", hide_input=True)
+        rfc_cert = _rfc_de_cert(cer, key, password) or (rfc or "")
+        salida = str(paths.dir_diot_consultas(rfc_cert, salida_base=salida))
+        print_header(f"DIOT presentadas (e.firma) — {rfc_cert} ({desde} a {hasta or desde}, {tipo})")
+        resultados = descargar_diot_fiel(
+            cer_path=cer, key_path=key, password=password, desde=desde, hasta=hasta,
+            tipos=tipo, excel=not sin_excel, directorio_salida=salida, headless=not ver_navegador,
+        )
+    _reportar_descargas(resultados, salida)
 
 
 @click.command()

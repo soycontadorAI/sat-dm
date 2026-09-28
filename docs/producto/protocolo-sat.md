@@ -190,3 +190,45 @@ sesión SSO sirve en ambos. El portal de envío se traga interacciones en silenc
 transitorio del xmlTemp es la norma (1-4 intentos por archivo). La búsqueda de acuses es un
 POST JSON ejecutado DESDE la página (same-origin). Detalle completo y tabla de hallazgos:
 `docs/producto/contabilidad-electronica.md`.
+
+## Portal de declaraciones (pstcdypisr) — `sat_descarga/portal/declaraciones.py`
+
+Consulta y descarga de declaraciones presentadas y sus acuses (sep 2026, recorrido real):
+
+- **Entrada**: `https://pstcdypisr.clouda.sat.gob.mx/` → redirige a
+  `loginda.siat.sat.gob.mx/nidp/wsfed/ep?id=ciec...` (mismo widget NIDP: `form#IDPLogin`,
+  `#rfc`/`#password`/`#userCaptcha`, o e.firma vía `#buttonFiel`). Aterriza de vuelta en
+  `pstcdypisr` (predicado: host parseado, excluyendo `/nidp`).
+- **Menú Consultas**: `/Consulta/Consulta?tipoDocumento=1` (De la declaración), `=2`
+  (Declaraciones pagadas), `=3` (Acuse de recibo de la declaración), `=4` (Por obligación).
+- **Form** (`#cDataConsulta data-tipodocumento`): `#IdDeclaracion` (001 Provisionales y
+  Definitivas), `#TipoDeclaracion` (opcional), `#Ejercicio`, `#Periodicidad` (M/T/S/B/N; al
+  elegir M se llena y habilita `#Periodo` con 001..012), `#NumeroOperacion`, `#LineaCaptura`,
+  `#btnBuscar`.
+- **Resultado**: `#tableResult tbody#tableBody`, una `<tr>` por declaración: link
+  `a#linkDescargaPDF` (`/Consulta/RecuperarArchivo?enLinea=0&tipoDocumento=N&numeroOperacion=X&ejercicio=AAAA`),
+  No. de operación, tipo (Normal/Complementaria), tipo de complementaria, línea de captura,
+  fecha de presentación, periodicidad, periodo, fecha de causación y un `td.d-none` Estado.
+  El link descarga el PDF directo (Content-Disposition); nombres tipo `RFC.38.AAAA.pdf` y
+  `Acuse.RFC.38.AAAA.pdf`. Si no hay registros, el portal avisa con un bootbox.
+
+### Consulta de DIOT presentadas (pstcdi) — `sat_descarga/portal/diot_consulta.py`
+
+Recorrido real (sep 2026), gemelo del portal de pagos provisionales:
+
+- **Entrada** `https://pstcdi.clouda.sat.gob.mx/` → mismo widget NIDP (loginda); aterriza en
+  `pstcdi` (host parseado, sin `/nidp`). Menú: «Presentar declaración» (`/Declaracion/Temporales`),
+  «Consultar declaración» (`/Consulta/Consulta/1`) e «Impresión de acuse» (`/Consulta/Consulta/3`).
+- **Form** (`#bodyDiv`): `#IdDeclaracion` (001 Declaraciones Informativas), `#TipoDeclaracion`
+  (opcional), `#Ejercicio`, `#Periodicidad` (M/T/Q/S/L/Y/B; M habilita `#Periodo` 001..012),
+  `#NumeroOperacion`, `#TipoConcepto` (9002 DIEMSE, 9003 Forma 81, 9004 Forma 63, 9005 Forma 76,
+  **9006 DIOT**), `#btnBuscar`.
+- **Resultado** `#tableResult tbody#tableBody`: [link PDF, link Excel (`td.descargaExcel`, oculto
+  en acuses), No. de Operación, Estatus (Vigente), Tipo de Declaración, Tipo de Complementaria,
+  Fecha de Presentación, Periodicidad, Período]. El PDF va en
+  `onclick="abrirArchivoPDF('/Consulta/RecuperarArchivo?enLinea=0&tipoDocumento=1&numeroOperacion=X&ejercicio=AAAA&tipoArchivo=0&periodo=001&tipoConcepto=9006')"`
+  (descarga directa); el Excel en `onclick="buscarArchivoExcel(crear, recuperar, estado)"`
+  (`CrearArchivoExcelDiot` → modal «Generando archivo» 3-4 s → `RecuperarArchivo?...tipoArchivo=1`).
+- **Nombres que entrega el SAT**: `Decla_<op>_0MMAAAA.pdf` (declaración), `Detalle_<op>_0MMAAAA.xlsx`
+  (Excel con las operaciones) y `Acuse_<op>_0MMAAAA.pdf` (acuse). Las descargas se indexan en
+  `descargas/diot/consultas/{RFC}/diot.json`.
