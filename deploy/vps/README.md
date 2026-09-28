@@ -76,14 +76,18 @@ agente y la clave AES de `secretos.enc` de cada usuario.
 
 ## Actualizar la imagen de los agentes
 
-```bash
-# 1. Nueva imagen (tag nuevo o pisar :dev):
-git archive --format=tar <branch> | ssh root@187.77.152.160 \
-  'docker build -f docker/agente/Dockerfile -t todoconta/agente:dev -'
+Con el **mismo tag del release de desktop**, el mismo día (reglas en
+[docs/infra/despliegue-vps.md](../../docs/infra/despliegue-vps.md)):
 
-# 2. Recrear los agentes conservando volumen/env/labels:
-./actualizar-agentes.sh            # (este directorio; ver --help)
+```bash
+deploy/desplegar.sh agente vX.Y.Z   # build + actualizar-agentes.sh + verificación
+deploy/desfase.sh                    # confirma que web == último release
 ```
+
+El script construye `todoconta/agente:X.Y.Z` (y `:dev`), recrea cada
+`agente-<slug>` con `actualizar-agentes.sh` y verifica que todos queden
+healthy en esa versión. El provisioner solo crea contenedores nuevos: los que
+ya existen siguen con la imagen vieja hasta que se recrean.
 
 Los volúmenes (`agente-datos-*`) y las claves derivadas no cambian, así que las
 credenciales guardadas siguen legibles tras recrear el contenedor.

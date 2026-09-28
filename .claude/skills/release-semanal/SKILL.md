@@ -94,6 +94,23 @@ El tag dispara el build del instalador (workflow `release.yml` cuando exista) qu
 **draft release**; el humano lo publica. El link público de descarga
 (`todoconta.com/descargar`) resuelve solo al nuevo `latest` — no hay que tocar nada más.
 
+## 7. Mismo día: los agentes web a la misma versión
+
+Web y desktop corren la misma versión (regla 4 de
+[docs/infra/despliegue-vps.md](../../../docs/infra/despliegue-vps.md)). Con el tag
+ya empujado:
+
+1. `deploy/desplegar.sh agente vX.Y.Z`: construye la imagen del agente desde el
+   tag, recrea los contenedores de los usuarios web y verifica que queden
+   healthy en `X.Y.Z`. Recrear corta unos segundos a cada usuario web: en horas
+   valle si se puede.
+2. Si el release trae cambios en `deploy/` (gateway, provisioner, ops), despliega
+   cada servicio tocado con `deploy/desplegar.sh <servicio>`.
+3. `deploy/desfase.sh` debe salir en verde. Reporta su salida al usuario.
+
+Estos comandos escriben en el VPS: si la sesión no tiene permiso para `ssh`
+al VPS, dáselos al usuario para que los corra con `!`.
+
 ## Recordatorios
 
 - Nunca commitees directo en `main` (rama → PR → merge). Corre `git branch --show-current`

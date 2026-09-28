@@ -13,19 +13,24 @@ de "departamentos" automatizados del plan de ventas jul–dic 2026:
 | `agents/cotizaciones.py` | ⚪ | Cada 15 min en horas hábiles: busca correos a cotizaciones@todoconta.com (send-as sobre la MISMA cuenta real que soporte@; INBOX readonly). Dos modos — **directo** (cliente escribe: cotiza con precios del catálogo `data/productos.json`, arma bitácora del historial) y **forward** (Israel reenvía con contexto: su texto puede fijar concepto/precio libre). Renderiza el **PDF de marca** (Chromium/Playwright, plantilla del design-system) y deja el **borrador con el PDF adjunto** hilado en Borradores (sale como el alias), avisando a Israel. Precios del catálogo o del forward de Israel; datos bancarios SIEMPRE de `data/emisor.json`, nunca del correo. Dedupe por Message-ID en `/data`. **No envía nada solo** (v1). |
 | `agents/sync_abacus_waitlist.py` | ⚪ | Diario 08:10 CDMX: lee la waitlist de Abacus en Notion y la registra en `crm_leads` (`fuente=abacus`, nombre, teléfono en E.164, etapa según el Estado de Notion sin retroceder). Cierra el hueco por el que 114 personas en Sendy nunca llegaron al CRM. Solo lee Notion y escribe `crm_*`: la allowlist de OpenClaw NO se toca. |
 
-## Despliegue (patrón de deploy/{gateway,provisioner,sendy})
+## Despliegue
+
+Siempre con `deploy/desplegar.sh ops` desde `main` (reglas en
+[docs/infra/despliegue-vps.md](../../docs/infra/despliegue-vps.md)). Nunca con
+`scp`: así fue como el VPS se quedó meses con el código de julio.
 
 ```bash
-# 1. Copiar la carpeta al VPS (o git archive del branch):
-scp -r deploy/ops root@187.77.152.160:/docker/ops
-# 2. Crear /docker/ops/.env (chmod 600) — ver abajo.
-# 3. Usuario MySQL de SOLO LECTURA en sendy-db (una vez):
+# Actualizar (lo normal):
+deploy/desplegar.sh ops
+
+# Primera vez en un VPS nuevo, además:
+# 1. Crear /docker/ops/.env (chmod 600) — ver abajo.
+# 2. Usuario MySQL de SOLO LECTURA en sendy-db (una vez):
 docker exec -it sendy-db mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e \
   "CREATE USER IF NOT EXISTS 'ops_ro'@'%' IDENTIFIED BY '<password>';
    GRANT SELECT ON sendy.* TO 'ops_ro'@'%'; FLUSH PRIVILEGES;"
-# 4. Levantar:
-cd /docker/ops && docker compose up -d --build
-# 5. Probar sin efectos (ninguno manda nada en --dry-run):
+# 3. deploy/desplegar.sh ops
+# 4. Probar sin efectos (ninguno manda nada en --dry-run):
 docker compose run --rm ops python agents/reporte_semanal.py --dry-run
 docker compose run --rm ops python agents/sdr_inbound.py --dry-run
 docker compose run --rm ops python agents/soporte.py --dry-run
