@@ -38,12 +38,27 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    # Rehacer un build de un release ya etiquetado (p. ej. si falló una
+    # plataforma) SIN mover el tag: el workflow corre con la definición de la
+    # rama elegida y compila el código exacto de `ref`.
+    inputs:
+      ref:
+        description: "Tag o commit a compilar (vacío = la rama del dispatch)"
+        required: false
+        default: ""
+      plataformas:
+        description: "Qué construir"
+        required: false
+        default: todas
+        type: choice
+        options: [todas, windows, macos]
 
 permissions:
   contents: write
 
 jobs:
   release-windows:
+    if: github.event_name != 'workflow_dispatch' || inputs.plataformas != 'macos'
     runs-on: windows-latest
     timeout-minutes: 30
     env:
@@ -57,6 +72,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Setup Python 3.12
         uses: actions/setup-python@v5
@@ -240,11 +257,18 @@ jobs:
   # arch subía el suyo y el último ganaba), así el auto-update de macOS es limpio.
   # ---------------------------------------------------------------------
   release-macos:
+    if: github.event_name != 'workflow_dispatch' || inputs.plataformas != 'windows'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-latest
+          # macos-15 y NO macos-latest: desde la imagen macOS 26.6 (sep 2026),
+          # electron-builder 25.x truena al firmar ("SecKeychainUnlock: The user
+          # name or passphrase you entered is not correct"): le pasa la
+          # contraseña del .p12 a `security set-key-partition-list` en vez de la
+          # del llavero temporal, y 26.6 ya no lo tolera. Se arregló en
+          # electron-builder 26.16.1; al subir de versión, volver a macos-latest.
+          - runner: macos-15
             arch: arm64
     runs-on: ${{ matrix.runner }}
     # Holgado para firma + notarización (notarytool sube el .app a Apple y espera).
@@ -264,6 +288,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Setup Python 3.12
         uses: actions/setup-python@v5
