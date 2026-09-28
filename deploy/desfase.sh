@@ -6,8 +6,8 @@
 #
 # Por servicio compara, archivo por archivo, lo trackeado en deploy/<servicio>/
 # contra /docker/<servicio>/ y muestra el .deployed (qué commit se subió y
-# cuándo). Para los agentes web compara su versión contra el último tag de
-# release: web y desktop deben correr la misma.
+# cuándo). Luego revisa que todo lo que lleva versión (release publicado,
+# UI web, agentes web y piloto) esté en la del último tag de release.
 #
 # Sale con 1 si hay desfase funcional. Un README o .gitignore distinto se
 # reporta, pero no cuenta como desfase.
@@ -60,22 +60,49 @@ for s in gateway provisioner ops sendy; do
 done
 
 echo
+# ── Una versión en todos lados ───────────────────────────────────────────────
+# Todo lo que lleva versión debe ir en la del último tag de release: el release
+# publicado (lo que baja desktop y su auto-update), la UI web, los agentes web
+# y el piloto.
 ultimo_tag=$(git tag --merged origin/main | sort -V | tail -1)
 esperada=$(git show "$ultimo_tag:pyproject.toml" | sed -n 's/^version = "\(.*\)"/\1/p' | head -1)
+echo "Versión: último tag $ultimo_tag (v$esperada)"
+
+ok() { echo "✅ $1"; }
+mal() { desfase=1; echo "❌ $1"; }
+
+if command -v gh >/dev/null; then
+  publicado=$(gh release view --json tagName --jq .tagName 2>/dev/null || echo "?")
+  [ "$publicado" = "$ultimo_tag" ] && ok "release publicado (desktop, auto-update): $publicado" \
+    || mal "release publicado (desktop, auto-update): $publicado, se esperaba $ultimo_tag"
+  borradores=$(gh release list --limit 20 --json tagName,isDraft --jq '[.[]|select(.isDraft)|.tagName]|join(", ")' 2>/dev/null)
+  [ -n "$borradores" ] && echo "     borradores sin publicar: $borradores"
+else
+  echo "ℹ️  sin gh: no se revisa el release publicado"
+fi
+
+ui_ok=0
+for c in $(curl -s "https://app.todoconta.com/ajustes" | grep -o '/_next/static/chunks/[^"]*\.js' | sort -u); do
+  curl -s "https://app.todoconta.com$c" | grep -q "\"$esperada\"" && { ui_ok=1; break; }
+done
+[ "$ui_ok" = 1 ] && ok "UI web (app.todoconta.com): v$esperada" || mal "UI web (app.todoconta.com): no sirve v$esperada"
+
 versiones=$(ssh "$VPS" 'for c in $(docker ps --filter label=todoconta.agente=1 --format "{{.Names}}"); do
     docker exec "$c" python -c "from importlib.metadata import version; print(version(\"sat-descarga-masiva\"))" 2>/dev/null || echo "?"
   done | sort | uniq -c')
 total=$(printf '%s\n' "$versiones" | awk '{n+=$1} END {print n+0}')
 en_version=$(printf '%s\n' "$versiones" | awk -v v="$esperada" '$2==v {print $1}')
 if [ "${en_version:-0}" = "$total" ] && [ "$total" -gt 0 ]; then
-  echo "✅ agentes web: $total en v$esperada (último release: $ultimo_tag)"
+  ok "agentes web: $total en v$esperada"
 else
-  desfase=1
-  echo "❌ agentes web: se esperaba v$esperada ($ultimo_tag) y corren:"
+  mal "agentes web: se esperaba v$esperada y corren:"
   printf '%s\n' "$versiones" | sed 's/^/     /'
 fi
 echo "     desplegado: $(ssh "$VPS" 'cat /docker/agentes/.deployed 2>/dev/null' || true)"
+
 piloto=$(ssh "$VPS" 'docker exec agente-piloto python -c "from importlib.metadata import version; print(version(\"sat-descarga-masiva\"))" 2>/dev/null' || true)
-[ -n "$piloto" ] && echo "ℹ️  agente-piloto: v$piloto (compose propio, fuera de desplegar.sh)"
+if [ -n "$piloto" ]; then
+  [ "$piloto" = "$esperada" ] && ok "agente-piloto: v$piloto" || mal "agente-piloto: v$piloto, se esperaba v$esperada"
+fi
 
 exit $desfase
