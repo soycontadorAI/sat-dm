@@ -83,7 +83,9 @@ mkdir -p "$DIR" /docker/backups
 cd "$DIR"
 
 # Respaldo solo de lo que se va a pisar (el .env y los datos no se tocan).
-existentes=$(cd "$src" && find . -type f | sed 's|^\./||' | while read -r f; do [ -f "$f" ] && echo "$f"; done || true)
+# La lista sale de lo que trae git, pero la existencia se revisa en $DIR: un
+# archivo nuevo (que aún no está en el VPS) no tiene nada que respaldar.
+existentes=$( (cd "$src" && find . -type f | sed 's|^\./||') | while read -r f; do [ -f "$DIR/$f" ] && echo "$f"; done || true)
 [ -n "$existentes" ] && tar -czf "/docker/backups/$SERVICIO-$TS.tgz" $existentes
 [ -f .deployed ] && cp .deployed "/docker/backups/$SERVICIO-$TS.deployed"
 
