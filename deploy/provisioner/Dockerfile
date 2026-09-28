@@ -5,8 +5,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Versiones FIJAS: las que corrieron en producción de jul a sep 2026. Con ">="
+# cada rebuild sin caché trae lo último de PyPI (ver deploy/gateway/Dockerfile).
 RUN pip install --no-cache-dir \
-    "fastapi>=0.104.0" "uvicorn[standard]>=0.24.0" "requests>=2.31.0" "docker>=7.0.0"
+    "fastapi==0.139.0" "starlette==1.3.1" "pydantic==2.13.4" \
+    "uvicorn[standard]==0.51.0" "requests==2.34.2" "docker==7.2.0"
 
 COPY main.py .
 
