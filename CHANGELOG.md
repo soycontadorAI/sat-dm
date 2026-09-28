@@ -6,14 +6,57 @@
 
 _Cambios mergeados a `main` aún no etiquetados; el release de la semana los promueve._
 
+## [2.2.0] - 2026-09-28
+
+### Feature
+
+- **Contabilidad electrónica al SAT, con e.firma.** `sat-dm ce enviar` sube tu
+  catálogo de cuentas y tus balanzas (Anexo 24) al portal del SAT. Por default
+  solo valida y cancela; el envío real pide `--enviar`. Antes de subir revisa
+  en el portal qué ya está presentado y lo omite, para que una tanda cortada a
+  medias no duplique envíos (los rechazados sí se reenvían). `sat-dm ce
+  inventario` hace la revisión previa sin entrar al portal.
+- **Acuses de contabilidad electrónica: Recibido, Aceptado o Rechazado.**
+  `sat-dm ce acuses --rfc RFC --anio N --bajar` lista lo enviado con su estatus
+  y baja los acuses de recepción y de aceptación a tu carpeta TodoConta
+  (`ce/<RFC>/<ejercicio>/`). Ojo: el acuse de recepción no ampara el
+  cumplimiento; solo "Aceptado".
+- **Si el portal del SAT se cae a medio envío, la app lo retoma sola.** Los
+  envíos que fallan por lentitud o mantenimiento del SAT quedan en cola
+  (`sat-dm ce pendientes`) y la app los reintenta cada 30 minutos, sin
+  encimarse con lo que estés haciendo. También se retoman a mano con `sat-dm ce
+  reanudar`. Los errores de fondo no se reintentan: esos hay que corregirlos.
+- **Tus declaraciones presentadas y sus acuses, por periodo.** `sat-dm
+  descargar declaraciones --rfc RFC --desde AAAA-MM --hasta AAAA-MM` entra con
+  CIEC o e.firma y baja el PDF de cada declaración (normal y complementarias) y
+  su acuse, con un índice por RFC que guarda tipo, número de operación y fecha.
+  Volver a correr un periodo reemplaza el archivo en vez de acumular copias.
+- **Las DIOT que ya presentaste, en PDF y Excel.** `sat-dm descargar diot --rfc
+  RFC --desde AAAA-MM --hasta AAAA-MM` baja la declaración, el Excel de detalle
+  y el acuse de cada DIOT del periodo.
+
+### Tooling
+
+- **El agente ya expone el envío de CE y la presentación de DIOT como
+  trabajos con avance en vivo** (`/ce/*`, `/diot/presentar`, `/diot/acuse`),
+  listos para que la app les ponga pantalla. La presentación de DIOT exige
+  declarar que la empresa no tiene estímulos fiscales, o no llega al portal.
+- **Renovación de e.firma: estado del trámite y respaldo descargable**
+  (`/renovar/estado`, `/renovar/respaldo`). El respaldo es un ZIP con la llave
+  nueva, el .ren, el .cer y el acuse, disponible desde antes de que el SAT
+  reciba nada: la llave privada nueva no se puede volver a bajar. Es la base
+  para habilitar la renovación en la app; la pantalla sigue apagada.
+
 ### Fix
 
 - **La versión web ya no encierra a quien apenas va entrando.** Si tu prueba
   sigue vigente, la web te deja pasar: antes rebotaba a **todos** los usuarios
   en prueba, porque la validación miraba un campo que el servicio de licencias
   nunca devolvió. Y si tu plan sí venció, el aviso ahora trae el enlace para
-  activarlo — antes era un callejón sin salida, porque el pago vive dentro de
+  activarlo. Antes era un callejón sin salida, porque el pago vive dentro de
   la app y a la app no se podía entrar sin plan.
+
+- Bump 2.1.0 → 2.2.0 (3 archivos).
 
 ## [2.1.0] - 2026-08-15
 
