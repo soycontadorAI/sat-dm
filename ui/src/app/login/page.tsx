@@ -49,11 +49,25 @@ interface OtpContexto {
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
 
-function mensajeAuth(e: unknown): string {
+/** Pricing público: el único lugar donde se puede activar un plan sin entrar. */
+const URL_PLANES = 'https://todoconta.com/planes';
+
+/** Error del login: mensaje y, cuando aplica, la salida para desatorarse. */
+interface ErrorAuth {
+  mensaje: string;
+  /** El provisioner rechazó por plan (403): sin CTA el usuario queda encerrado. */
+  sinPlan?: boolean;
+}
+
+function errorAuth(e: unknown): ErrorAuth {
   // ApiError.message viene como "[401] detalle"; mostramos solo el detalle.
-  if (e instanceof ApiError) return e.detail;
-  if (e instanceof ProvisionerError) return e.detail;
-  return mensajeDeError(e);
+  if (e instanceof ApiError) return { mensaje: e.detail };
+  if (e instanceof ProvisionerError) {
+    // El checkout vive detrás del agente y el agente no enciende sin plan, así
+    // que el 403 tiene que ofrecer a dónde ir o no hay forma de salir del loop.
+    return { mensaje: e.detail, sinPlan: e.status === 403 };
+  }
+  return { mensaje: mensajeDeError(e) };
 }
 
 /** Payload del deep link `todoconta://<action>?code=…` que reenvía el preload. */
@@ -114,7 +128,7 @@ export default function LoginPage() {
   const [nombre, setNombre] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorAuth | null>(null);
 
   // OAuth Google (solo desktop): el flujo va por el navegador del SO y vuelve
   // por el deep link `todoconta://auth-callback`. `googleEsperando` cubre el
@@ -159,7 +173,7 @@ export default function LoginPage() {
         setPaso('done');
       } catch (err) {
         setGoogleEsperando(false);
-        setError(mensajeAuth(err));
+        setError(errorAuth(err));
       }
     },
     [apiClient],
@@ -179,7 +193,7 @@ export default function LoginPage() {
       } else {
         // El usuario canceló o Google devolvió error.
         setGoogleEsperando(false);
-        setError('No se pudo continuar con Google. Intenta de nuevo.');
+        setError({ mensaje: 'No se pudo continuar con Google. Intenta de nuevo.' });
       }
     });
   }, [manejarCodigoGoogle]);
@@ -194,7 +208,7 @@ export default function LoginPage() {
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (err) {
       setGoogleEsperando(false);
-      setError(mensajeAuth(err));
+      setError(errorAuth(err));
     }
   }, [apiClient]);
 
@@ -239,7 +253,7 @@ export default function LoginPage() {
       e.preventDefault();
       const correo = email.trim();
       if (!EMAIL_RE.test(correo)) {
-        setError('Escribe un correo válido.');
+        setError({ mensaje: 'Escribe un correo válido.' });
         return;
       }
       setError(null);
@@ -247,7 +261,7 @@ export default function LoginPage() {
       try {
         if (esLogin && esPwd) {
           if (!password) {
-            setError('Escribe tu contraseña.');
+            setError({ mensaje: 'Escribe tu contraseña.' });
             return;
           }
           await loginConPassword(correo, password);
@@ -258,7 +272,7 @@ export default function LoginPage() {
           setPaso('otp');
         } else if (esPwd) {
           if (password.length < 8) {
-            setError('La contraseña debe tener mínimo 8 caracteres.');
+            setError({ mensaje: 'La contraseña debe tener mínimo 8 caracteres.' });
             return;
           }
           const r = await apiClient.authSignup(correo, password, nombre.trim());
@@ -277,7 +291,7 @@ export default function LoginPage() {
           setPaso('otp');
         }
       } catch (err) {
-        setError(mensajeAuth(err));
+        setError(errorAuth(err));
       } finally {
         setLoading(false);
       }
@@ -419,7 +433,7 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {error && <ErrorInline mensaje={error} />}
+              {error && <ErrorInline error={error} />}
 
               <BotonPrimario loading={loading}>
                 {esLogin ? (esPwd ? 'Iniciar sesión' : 'Continuar') : 'Crear cuenta'}
@@ -558,7 +572,7 @@ function OtpStep({
   const [vals, setVals] = useState<string[]>(Array(OTP_LEN).fill(''));
   const [secs, setSecs] = useState(RESEND_SECS);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorAuth | null>(null);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -602,7 +616,7 @@ function OtpStep({
       await verificarCodigo(vals.join(''));
       onExito();
     } catch (e) {
-      setError(mensajeAuth(e));
+      setError(errorAuth(e));
     } finally {
       setLoading(false);
     }
@@ -616,7 +630,7 @@ function OtpStep({
       setVals(Array(OTP_LEN).fill(''));
       refs.current[0]?.focus();
     } catch (e) {
-      setError(mensajeAuth(e));
+      setError(errorAuth(e));
     }
   };
 
@@ -663,7 +677,7 @@ function OtpStep({
 
       {error && (
         <div className="mt-4">
-          <ErrorInline mensaje={error} />
+          <ErrorInline error={error} />
         </div>
       )}
 
@@ -809,14 +823,25 @@ function Divider({ children }: { children: ReactNode }) {
   );
 }
 
-function ErrorInline({ mensaje }: { mensaje: string }) {
+function ErrorInline({ error }: { error: ErrorAuth }) {
   return (
-    <p
+    <div
       role="alert"
       className="mb-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[13px] leading-snug text-destructive"
     >
-      {mensaje}
-    </p>
+      <p>{error.mensaje}</p>
+      {error.sinPlan && (
+        <a
+          href={URL_PLANES}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1.5 inline-flex items-center gap-1 font-semibold underline underline-offset-2"
+        >
+          Ver planes y activar
+          <Icon icon="ph:arrow-up-right-light" className="size-3.5" />
+        </a>
+      )}
+    </div>
   );
 }
 

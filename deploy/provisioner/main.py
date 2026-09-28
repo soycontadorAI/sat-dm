@@ -187,6 +187,28 @@ def _sesion_de(data: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
+# Planes que abren la versión web. Los calcula `getDesktopLicense`
+# (todoconta-apps, apps/web/src/lib/desktop/auth.ts): free | trial | premium |
+# founder. El trial entra: son los 15 días que promete el producto.
+PLANES_CON_ACCESO = ("trial", "premium", "founder")
+
+
+def _plan_da_acceso(lic: dict) -> bool:
+    """True si la licencia que devolvió /api/desktop/license abre la web.
+
+    Ese endpoint expone `plan`, `is_founder` y `premium_features_unlocked` —
+    NO `subscription_active` ni `subscription_status`. Mirar esos dos (como se
+    hacía antes) dejaba muerta la rama del trial: quien estaba dentro de sus 15
+    días rebotaba con el mismo 403 que una cuenta sin plan, y como el checkout
+    vive detrás del agente, no tenía por dónde salir.
+    """
+    return bool(
+        lic.get("plan") in PLANES_CON_ACCESO
+        or lic.get("is_founder")
+        or lic.get("premium_features_unlocked")
+    )
+
+
 def _validar_licencia(access_token: str, email: Optional[str]) -> None:
     """403 si la cuenta no tiene plan que dé acceso a la versión web."""
     if email and email.lower() in ALLOWLIST_EMAILS:
@@ -205,18 +227,13 @@ def _validar_licencia(access_token: str, email: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="La sesión no es válida. Vuelve a iniciar sesión.")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="No pudimos validar tu plan. Intenta más tarde.")
-    lic = resp.json()
-    # Campos que hoy expone /api/desktop/license; cualquiera habilita el acceso.
-    permitido = bool(
-        lic.get("is_founder")
-        or lic.get("premium_features_unlocked")
-        or lic.get("subscription_active")
-        or lic.get("subscription_status") in ("active", "trialing")
-    )
-    if not permitido:
+    if not _plan_da_acceso(resp.json()):
         raise HTTPException(
             status_code=403,
-            detail="La versión web requiere un plan activo de TodoConta.",
+            detail=(
+                "Tu prueba de TodoConta terminó o tu plan no está activo. "
+                "Actívalo en todoconta.com/planes y vuelve a entrar."
+            ),
         )
 
 

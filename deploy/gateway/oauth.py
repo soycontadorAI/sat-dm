@@ -205,6 +205,25 @@ def _gotrue_post(path: str, payload: dict, params: Optional[dict] = None) -> dic
         return {}
 
 
+# Mismos planes que abre el provisioner (deploy/provisioner/main.py). Los
+# calcula `getDesktopLicense` en todoconta-apps: free | trial | premium | founder.
+PLANES_CON_ACCESO = ("trial", "premium", "founder")
+
+
+def _plan_da_acceso(lic: dict) -> bool:
+    """True si la licencia de /api/desktop/license abre el espacio del usuario.
+
+    Ese endpoint expone `plan`, `is_founder` y `premium_features_unlocked` —
+    NO `subscription_active` ni `subscription_status`, que es lo que se miraba
+    antes: la rama del trial nunca se cumplía.
+    """
+    return bool(
+        lic.get("plan") in PLANES_CON_ACCESO
+        or lic.get("is_founder")
+        or lic.get("premium_features_unlocked")
+    )
+
+
 def _validar_licencia(access_token: str, email: Optional[str]) -> None:
     """Mismo criterio que el provisioner: sin plan vigente no se abre espacio."""
     if email and email.lower() in ALLOWLIST_EMAILS:
@@ -223,20 +242,12 @@ def _validar_licencia(access_token: str, email: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="La sesión no es válida. Vuelve a iniciar sesión.")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="No pudimos validar tu plan. Intenta más tarde.")
-    lic = resp.json()
-    # Campos que hoy expone /api/desktop/license; cualquiera habilita el acceso.
-    permitido = bool(
-        lic.get("is_founder")
-        or lic.get("premium_features_unlocked")
-        or lic.get("subscription_active")
-        or lic.get("subscription_status") in ("active", "trialing")
-    )
-    if not permitido:
+    if not _plan_da_acceso(resp.json()):
         raise HTTPException(
             status_code=403,
             detail=(
-                "Tu cuenta no tiene un plan activo de TodoConta. "
-                "Contrata o renueva en todoconta.com y vuelve a intentar."
+                "Tu prueba de TodoConta terminó o tu plan no está activo. "
+                "Actívalo en todoconta.com/planes y vuelve a intentar."
             ),
         )
 

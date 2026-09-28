@@ -6,6 +6,15 @@
 
 _Cambios mergeados a `main` aún no etiquetados; el release de la semana los promueve._
 
+### Fix
+
+- **La versión web ya no encierra a quien apenas va entrando.** Si tu prueba
+  sigue vigente, la web te deja pasar: antes rebotaba a **todos** los usuarios
+  en prueba, porque la validación miraba un campo que el servicio de licencias
+  nunca devolvió. Y si tu plan sí venció, el aviso ahora trae el enlace para
+  activarlo — antes era un callejón sin salida, porque el pago vive dentro de
+  la app y a la app no se podía entrar sin plan.
+
 ## [2.1.0] - 2026-08-15
 
 ### Feature
