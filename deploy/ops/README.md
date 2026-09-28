@@ -7,7 +7,7 @@ de "departamentos" automatizados del plan de ventas jul–dic 2026:
 | Agente | Estado | Qué hace |
 |---|---|---|
 | `agents/reporte_semanal.py` | ✅ | Lunes 07:00 CDMX: métricas de Supabase (usuarios/planes/CRM 034) + Stripe (suscripciones/ARR) + Sendy (listas) → deltas vs semana pasada → narrativa con Claude → correo SES a Israel. |
-| `agents/contenido_semanal.py` | ✅ | Lunes 06:30 CDMX: genera con Claude (Sonnet) el paquete semanal — post de blog con frontmatter listo, ficha SEO + heroImage y guion de video — y abre PR `drafts/semana-NN` en todoconta-apps. Los 3 posts sociales NO van en el PR: se crean como filas en la base de Notion **Contenido social — TodoConta** (`NOTION_DB_SOCIALES`), en `Borrador`. El correo tampoco: la newsletter se arma con la skill `/partida-doble` usando este post como hero. Los archivos viven en `drafts/`: **mergear tampoco publica**; Israel mueve el post al blog cuando lo aprueba. Fuente de temas: **el calendario editorial del repo** (`apps/landing/editorial/calendario-editorial-2026.csv`, leído en runtime — editarlo NO requiere redeploy; toma la fila más próxima con `publicado=no` y usa su brief/fuentes); backlog embebido solo como respaldo. Lee además el listado del blog para interlinkear con slugs reales y no repetir temas ya publicados. |
+| `agents/contenido_semanal.py` | ⛔ | **Dado de baja el 2026-09-28**: los PRs `drafts/semana-NN` se acumulaban sin revisar ni pasar al blog (se cerraron siete, de la semana 31 a la 39). Sale del crontab y `OPS_CONTENIDO_ENABLED=0`; el script se queda por si se retoma. Lo que hacía: lunes 06:30 CDMX generaba con Claude (Sonnet) el paquete semanal — post de blog con frontmatter listo, ficha SEO + heroImage y guion de video — y abre PR `drafts/semana-NN` en todoconta-apps. Los 3 posts sociales NO van en el PR: se crean como filas en la base de Notion **Contenido social — TodoConta** (`NOTION_DB_SOCIALES`), en `Borrador`. El correo tampoco: la newsletter se arma con la skill `/partida-doble` usando este post como hero. Los archivos viven en `drafts/`: **mergear tampoco publica**; Israel mueve el post al blog cuando lo aprueba. Fuente de temas: **el calendario editorial del repo** (`apps/landing/editorial/calendario-editorial-2026.csv`, leído en runtime — editarlo NO requiere redeploy; toma la fila más próxima con `publicado=no` y usa su brief/fuentes); backlog embebido solo como respaldo. Lee además el listado del blog para interlinkear con slugs reales y no repetir temas ya publicados. |
 | `agents/sdr_inbound.py` | ✅ | Cada hora (9:15–17:15 CDMX): lee `crm_leads` etapa=lead con fuente en `SDR_FUENTES` (SOLO gente que llenó un formulario — opt-in estricto; hoy solo `abacus`), puntúa y redacta con Claude **respondiendo a la intención real de la fuente** (abacus → ayudar a activar su prueba de WhatsApp; diagnostico → entregar el plan prometido), manda el correo por SES como Israel (BCC al buzón del CRM), etapa→`mql` + evento `email_enviado` con el **cuerpo completo**. Secuencia de 3 toques (día 0, 3 y 7) que se corta sola si el lead responde, crea cuenta o sale de `mql`. |
 | `agents/soporte.py` | ✅ | Cada hora: busca correos dirigidos a soporte@todoconta.com (que es un ALIAS dentro de la cuenta real de Israel — el agente entra por IMAP a esa cuenta pero SOLO procesa lo dirigido al alias, INBOX en readonly, banderas intactas), descarta auto-correos, clasifica y redacta BORRADOR con Claude, lo deja hilado en Borradores (sale como el alias) y avisa a Israel. Dedupe por Message-ID en `/data`. **No auto-responde a nadie** (v1). |
 | `agents/cotizaciones.py` | ⚪ | Cada 15 min en horas hábiles: busca correos a cotizaciones@todoconta.com (send-as sobre la MISMA cuenta real que soporte@; INBOX readonly). Dos modos — **directo** (cliente escribe: cotiza con precios del catálogo `data/productos.json`, arma bitácora del historial) y **forward** (Israel reenvía con contexto: su texto puede fijar concepto/precio libre). Renderiza el **PDF de marca** (Chromium/Playwright, plantilla del design-system) y deja el **borrador con el PDF adjunto** hilado en Borradores (sale como el alias), avisando a Israel. Precios del catálogo o del forward de Israel; datos bancarios SIEMPRE de `data/emisor.json`, nunca del correo. Dedupe por Message-ID en `/data`. **No envía nada solo** (v1). |
@@ -27,7 +27,6 @@ docker exec -it sendy-db mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e \
 cd /docker/ops && docker compose up -d --build
 # 5. Probar sin efectos (ninguno manda nada en --dry-run):
 docker compose run --rm ops python agents/reporte_semanal.py --dry-run
-docker compose run --rm ops python agents/contenido_semanal.py --dry-run
 docker compose run --rm ops python agents/sdr_inbound.py --dry-run
 docker compose run --rm ops python agents/soporte.py --dry-run
 docker compose run --rm ops python agents/cotizaciones.py --dry-run
@@ -39,7 +38,7 @@ docker compose run --rm ops python agents/cotizaciones.py --dry-run
 # Kill switches (1 = encendido). SDR/soporte/contenido nacen APAGADOS:
 # se encienden uno por uno cuando Israel valida su dry-run.
 OPS_REPORTE_ENABLED=1
-OPS_CONTENIDO_ENABLED=0
+OPS_CONTENIDO_ENABLED=0   # dado de baja 2026-09-28; no volver a encender
 OPS_SDR_ENABLED=0
 OPS_SOPORTE_ENABLED=0
 OPS_COTIZACIONES_ENABLED=0
@@ -173,14 +172,12 @@ OPS_COTIZACIONES_MAX=10
 ```bash
 docker logs ops --tail 20              # supercronic cargó el crontab
 docker compose run --rm ops python agents/reporte_semanal.py --dry-run
-docker compose run --rm ops python agents/contenido_semanal.py --dry-run   # imprime el paquete, sin PR
 docker compose run --rm ops python agents/sdr_inbound.py --dry-run         # imprime correos, sin mandar
 docker compose run --rm ops python agents/soporte.py --dry-run             # imprime clasificación, sin tocar el buzón
 docker compose run --rm ops python agents/cotizaciones.py --dry-run        # imprime el plan de cotización, sin tocar nada
 pgrep -f openclaw                      # checklist del host (runbook deploy/vps)
 ```
 
-Secuencia de encendido sugerida: validar cada dry-run → `OPS_CONTENIDO_ENABLED=1`
-(el PR es inofensivo) → `OPS_SOPORTE_ENABLED=1` y `OPS_COTIZACIONES_ENABLED=1`
+Secuencia de encendido sugerida: validar cada dry-run → `OPS_SOPORTE_ENABLED=1` y `OPS_COTIZACIONES_ENABLED=1`
 (solo borradores) → `OPS_SDR_ENABLED=1` al final (este sí manda correo a leads;
 empezar con `OPS_SDR_MAX_DIA=2` y subir cuando el tono esté validado).

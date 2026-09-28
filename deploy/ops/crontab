@@ -4,8 +4,10 @@
 # Reporte semanal de métricas → correo a Israel. Lunes 07:00 CDMX.
 0 13 * * 1 python /app/agents/reporte_semanal.py
 
-# Borradores de contenido de la semana → PR drafts/semana-NN. Lunes 06:30 CDMX.
-30 12 * * 1 python /app/agents/contenido_semanal.py
+# Borradores de contenido de la semana → PR drafts/semana-NN. DADO DE BAJA el
+# 2026-09-28: los PRs se acumulaban sin revisar ni pasar al blog. El script
+# sigue en agents/ por si se retoma; para eso basta con quitar el comentario.
+# 30 12 * * 1 python /app/agents/contenido_semanal.py
 
 # SDR inbound: primer contacto a leads de formulario. Cada hora, 9:15-17:15 CDMX.
 15 15-23 * * * python /app/agents/sdr_inbound.py
