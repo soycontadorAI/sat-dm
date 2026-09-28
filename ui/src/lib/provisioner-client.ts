@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Cliente del provisioner (versión web): el servicio en el VPS que hace el
 // PRIMER login (contra Supabase), valida la licencia y enciende/devuelve el
-// agente personal del usuario. Ver docs/infra/despliegue-web.md.
+// agente personal del usuario. Ver docs/producto/especificaciones.md (Parte I).
 //
 // Solo aplica al build web (NEXT_PUBLIC_PROVISIONER_URL); en desktop el login
 // va directo al agente local.

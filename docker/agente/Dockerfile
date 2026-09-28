@@ -1,5 +1,6 @@
 # Imagen del agente en modo hosted (versión online): un contenedor POR USUARIO
-# detrás de Traefik en el VPS. Arquitectura y runbook: docs/infra/despliegue-web.md.
+# detrás de Traefik en el VPS. Arquitectura: docs/producto/especificaciones.md;
+# despliegue: docs/infra/despliegue-vps.md.
 #
 # Build (desde la raíz del repo):
 #   docker build -f docker/agente/Dockerfile -t todoconta/agente:dev .

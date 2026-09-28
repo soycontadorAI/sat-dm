@@ -1,7 +1,8 @@
 # Runbook del VPS — versión online
 
-VPS Hostinger (`root@187.77.152.160`, Ubuntu 24.04, Docker + Traefik). Arquitectura
-completa: [docs/infra/despliegue-web.md](../../docs/infra/despliegue-web.md).
+VPS Hostinger (`root@187.77.152.160`, Ubuntu 24.04, Docker + Traefik). Arquitectura:
+[docs/producto/especificaciones.md](../../docs/producto/especificaciones.md) (Parte I).
+Reglas de despliegue: [docs/infra/despliegue-vps.md](../../docs/infra/despliegue-vps.md).
 
 ## ⚠️ Reglas del host (SIEMPRE)
 
