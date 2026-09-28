@@ -15,7 +15,12 @@ RUN chmod +x /usr/local/bin/supercronic
 # los agentes no lo usan.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-RUN pip install --no-cache-dir requests pymysql boto3 anthropic playwright \
+# Versiones FIJAS (ver deploy/gateway/Dockerfile): las cuatro primeras son las
+# que corrían en el contenedor ops del VPS en sep 2026; playwright es la misma
+# que usa la imagen del agente, así que su Chromium ya está probado.
+RUN pip install --no-cache-dir \
+    "requests==2.34.2" "pymysql==1.2.0" "boto3==1.43.50" "anthropic==0.117.0" \
+    "playwright==1.62.0" \
     && playwright install --with-deps chromium \
     && chmod -R a+rX /ms-playwright \
     && rm -rf /var/lib/apt/lists/* /root/.cache
