@@ -8,11 +8,13 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Feature
 
-- **Ya puedes crear tu cuenta desde la web.** En app.todoconta.com ahora aparece
-  "Crea tu cuenta": con un código a tu correo o con contraseña. Confirmas tu
-  correo y tu prueba de 15 días arranca en tu espacio privado, sin instalar
-  nada. Antes la web solo dejaba entrar a quien ya había creado su cuenta en la
-  app de escritorio. Tu e.firma se guarda cifrada en un espacio que solo usa tu
+- **Ya puedes crear tu cuenta desde la web, también con Google.** En
+  app.todoconta.com ahora aparece "Crea tu cuenta": con un código a tu correo,
+  con contraseña o con tu cuenta de Google. Tu prueba de 15 días arranca en tu
+  espacio privado, sin instalar nada. Antes la web solo dejaba entrar a quien
+  ya había creado su cuenta en la app de escritorio, y el botón de Google decía
+  "Próximamente". Si ya tenías cuenta con el mismo correo, Google entra a esa
+  misma cuenta. Tu e.firma se guarda cifrada en un espacio que solo usa tu
   cuenta.
 
 ### Tooling

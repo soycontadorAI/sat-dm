@@ -82,6 +82,7 @@ espacio, igual que un login.
 | `DOMINIOS_DESECHABLES` | lista corta en `main.py` | Dominios de correo temporal que no pueden registrarse (separados por coma; reemplaza la lista). También bloquea sus subdominios. El login no se ve afectado. |
 | `RATE_MAX_CORREO` | `8` | Intentos por correo cada 10 min (envío, reenvío y verificación), además de los 8 por IP cada 5 min. |
 | `CONFIAR_X_FORWARDED_FOR` | `1` | Toma la IP del cliente de `X-Forwarded-For` (Traefik). Sin esto, todos los intentos compartían la IP de Traefik y el límite por IP era global. Poner `0` solo si el provisioner quedara expuesto sin Traefik. |
+| `OAUTH_REDIRECT_WEB` | `https://app.todoconta.com/acceso/google` | A dónde regresa el acceso con Google en la web. Es fijo: el provisioner ignora cualquier redirect que mande el cliente. Va fuera de `/auth/*` porque Vercel reescribe esa ruta al producto viejo. Tiene que estar en "Redirect URLs" de Supabase Auth. |
 
 **Por qué 40:** un agente inactivo usa ~55 MB, pero cada trabajo con Chromium
 (portal con Contraseña o e.firma, constancia, opinión) puede llegar a 1 GB. Con
@@ -89,7 +90,19 @@ espacio, igual que un login.
 vez. Sube el tope solo después de medir con `docker stats` en hora pico (fin de
 mes, día 17) o al pasar a un VPS más grande.
 
+**Acceso con Google en la web:** `POST /provision/oauth/start` arma la URL de
+`/authorize` (PKCE S256, redirect fijo `OAUTH_REDIRECT_WEB`) y devuelve el
+verifier, que el navegador guarda en sessionStorage; al volver,
+`/acceso/google` canjea el código en `POST /provision/oauth/callback`, que sigue
+el mismo camino que un login (licencia + guarda de capacidad). Si el correo ya
+tenía cuenta, Supabase vincula Google al mismo usuario: mismo contenedor.
+
 **Pendiente en Supabase Auth (no cambia nada de código):**
+- Agregar **`https://app.todoconta.com/acceso/google`** en Authentication →
+  URL Configuration → **Redirect URLs**. Sin eso, Supabase regresa al Site URL
+  y el acceso con Google no se completa.
+- Confirmar que el **proveedor Google** esté activo (Authentication →
+  Providers). Es el mismo que ya usa la desktop.
 - Confirmar que **"Allow new users to sign up"** sigue activo (la desktop ya
   registra por la misma API, así que debería estarlo).
 - Confirmar que las plantillas **Confirm signup** y **Magic Link** incluyen

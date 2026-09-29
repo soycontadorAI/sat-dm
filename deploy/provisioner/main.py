@@ -14,6 +14,13 @@ validación, igual que en la desktop. Antiabuso: límite por IP y por correo,
 dominios de correo desechables bloqueados y un tope de contenedores NUEVOS
 (`MAX_AGENTES`); quien ya tiene su espacio siempre entra.
 
+Acceso con Google en la web (PKCE): `/provision/oauth/start` arma la URL de
+`/authorize` de GoTrue con un redirect FIJO por env (`OAUTH_REDIRECT_WEB`,
+nunca el que mande el cliente) y devuelve el `code_verifier`, que el navegador
+guarda en sessionStorage; `/provision/oauth/callback` canjea el `auth_code` y
+sigue el mismo camino que un login (licencia + contenedor). El navegador no
+puede hablar con Supabase directo (CSP), por eso el canje vive aquí.
+
 Derivación determinista (sin base de datos): slug, token del agente y clave de
 secretos salen de HMAC(SAT_DM_MASTER_KEY, user_id) — un login desde otro
 navegador recupera exactamente el mismo contenedor, y recrearlo (upgrade de
@@ -31,11 +38,13 @@ import json
 import logging
 import os
 import re
+import secrets
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlencode
 
 import requests
 from fastapi import FastAPI, HTTPException, Request
@@ -86,6 +95,14 @@ CORS_WEB = [
     if o.strip()
 ]
 REGISTRO_PATH = Path(os.environ.get("REGISTRO_PATH", "/registro/registry.json"))
+
+# A dónde regresa Google (vía Supabase) en la web. Fijo por env: el cliente NO
+# elige el redirect, así nadie puede mandar el `auth_code` a otro dominio. Debe
+# estar en "Redirect URLs" de Supabase Auth. Va fuera de /auth/*, que Vercel
+# reescribe al producto viejo (ui/vercel.json).
+OAUTH_REDIRECT_WEB = os.environ.get(
+    "OAUTH_REDIRECT_WEB", "https://app.todoconta.com/acceso/google"
+).strip()
 
 # Tope de contenedores de agente CORRIENDO para abrir espacios NUEVOS (0 = sin
 # tope). No aplica a quien ya tiene contenedor: ese siempre entra. Un agente
@@ -166,12 +183,30 @@ _MENSAJES = {
     "weak_password": "Esa contraseña es muy débil. Usa al menos 8 caracteres, con letras y números.",
     "email_address_invalid": "Escribe un correo válido.",
     "signup_disabled": "Por ahora no estamos creando cuentas nuevas. Intenta más tarde.",
+    # Acceso con Google (PKCE): el code o el verifier no cuadran, o el flujo expiró.
+    "bad_code_verifier": "No pudimos completar el acceso con Google. Intenta de nuevo.",
+    "bad_oauth_state": "No pudimos completar el acceso con Google. Intenta de nuevo.",
+    "bad_oauth_callback": "No pudimos completar el acceso con Google. Intenta de nuevo.",
+    "flow_state_not_found": "El acceso con Google expiró. Vuelve a intentarlo.",
+    "flow_state_expired": "El acceso con Google expiró. Vuelve a intentarlo.",
+    "provider_disabled": "El acceso con Google no está disponible por el momento.",
 }
 
 # Códigos de GoTrue que dicen "ese correo ya tiene cuenta". En el registro se
 # contestan igual que un registro nuevo para no revelar qué correos existen.
 _CODIGOS_CORREO_EXISTE = ("user_already_exists", "email_exists")
 _CODIGOS_LIMITE = ("over_email_send_rate_limit", "over_request_rate_limit")
+# Errores del canje de Google que ya traen su propio mensaje; cualquier otro se
+# contesta con el genérico de Google (nunca "Correo o contraseña incorrectos").
+_CODIGOS_OAUTH = (
+    "bad_code_verifier",
+    "bad_oauth_state",
+    "bad_oauth_callback",
+    "flow_state_not_found",
+    "flow_state_expired",
+    "provider_disabled",
+)
+_PROVIDERS_OAUTH = {"google"}
 
 
 class ErrorGotrue(HTTPException):
@@ -614,6 +649,15 @@ class ConTokenRequest(BaseModel):
     refresh_token: Optional[str] = None
 
 
+class OauthStartRequest(BaseModel):
+    provider: str = "google"
+
+
+class OauthCallbackRequest(BaseModel):
+    code: str
+    verifier: str
+
+
 def _aprovisionar(sesion: dict) -> dict:
     """Valida licencia + asegura contenedor. Devuelve el payload para la UI."""
     user_id = sesion["user_id"]
@@ -735,3 +779,72 @@ def con_token(req: ConTokenRequest, request: Request):
         "email": user.get("email"),
     }
     return _aprovisionar(sesion)
+
+
+# ---------------------------------------------------------------------------
+# Acceso con Google en la web (OAuth con PKCE)
+# ---------------------------------------------------------------------------
+
+
+def _code_verifier() -> str:
+    """code_verifier PKCE: base64url sin padding (~43 caracteres)."""
+    return base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode("ascii")
+
+
+def _code_challenge(verifier: str) -> str:
+    """code_challenge S256 del verifier (base64url sin padding)."""
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+@app.post("/provision/oauth/start")
+def oauth_start(req: OauthStartRequest, request: Request):
+    """URL de `/authorize` de GoTrue + el verifier que el navegador guarda.
+
+    El redirect sale de `OAUTH_REDIRECT_WEB`: cualquier `redirect_to` que mande
+    el cliente se ignora (el modelo no tiene ese campo).
+    """
+    _rate_limit(request)
+    if req.provider not in _PROVIDERS_OAUTH:
+        raise HTTPException(status_code=400, detail=_MENSAJES["provider_disabled"])
+    verifier = _code_verifier()
+    params = {
+        "provider": req.provider,
+        "redirect_to": OAUTH_REDIRECT_WEB,
+        "code_challenge": _code_challenge(verifier),
+        "code_challenge_method": "s256",
+    }
+    return {
+        "url": f"{SUPABASE_URL}/auth/v1/authorize?{urlencode(params)}",
+        "verifier": verifier,
+    }
+
+
+@app.post("/provision/oauth/callback")
+def oauth_callback(req: OauthCallbackRequest, request: Request):
+    """Canjea el `auth_code` de Google y abre el espacio, como un login.
+
+    Mismo camino que `con-token`: valida la licencia (en una cuenta nueva la
+    prueba arranca sola) y aplica la guarda de capacidad a espacios nuevos. Si
+    el correo ya tenía cuenta (por código o contraseña), Supabase vincula la
+    identidad de Google al mismo usuario: mismo user_id, mismo contenedor.
+    """
+    _rate_limit(request)
+    code = req.code.strip()
+    verifier = req.verifier.strip()
+    if not code or not verifier:
+        raise HTTPException(status_code=400, detail=_MENSAJES["flow_state_expired"])
+    try:
+        data = _gotrue_post(
+            "/token",
+            {"auth_code": code, "code_verifier": verifier},
+            params={"grant_type": "pkce"},
+        )
+    except ErrorGotrue as e:
+        if e.codigo in _CODIGOS_LIMITE or e.codigo in _CODIGOS_OAUTH:
+            raise
+        logger.warning("canje de Google rechazado por GoTrue (%s)", e.codigo or e.status_code)
+        raise ErrorGotrue(
+            status_code=e.status_code, detail=_MENSAJES["bad_code_verifier"], codigo=e.codigo
+        )
+    return _aprovisionar(_sesion_de(data))

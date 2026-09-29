@@ -19,6 +19,7 @@ import { ApiError, SatApiClient } from '@/lib/api-client';
 import { esWeb } from '@/lib/modo';
 import {
   ProvisionerError,
+  iniciarGoogleWeb,
   provisionerDisponible,
   provisionLoginPassword,
   provisionOtpSend,
@@ -222,6 +223,22 @@ export default function LoginPage() {
       setError(errorAuth(err));
     }
   }, [apiClient]);
+
+  // Web: Google va por el provisioner (el navegador no llega a Supabase por la
+  // CSP) y regresa a /acceso/google en esta misma pestaña. Sirve igual para
+  // entrar que para crear cuenta: Supabase la crea en el primer acceso.
+  const googleWeb = esWeb() && provisionerDisponible();
+  const iniciarGoogleEnWeb = useCallback(async () => {
+    setError(null);
+    setGoogleEsperando(true);
+    try {
+      await iniciarGoogleWeb();
+      // Sin reset: la pestaña ya va camino a Google.
+    } catch (err) {
+      setGoogleEsperando(false);
+      setError(errorAuth(err));
+    }
+  }, []);
 
   // Login/OTP unificados: en la web sin conexión pasan por el provisioner
   // (que además conecta con el agente); en desktop o ya conectados, directo
@@ -494,11 +511,30 @@ export default function LoginPage() {
             <Divider>{esLogin ? 'o continúa con' : 'o regístrate con'}</Divider>
 
             {/* OAuth Google. En desktop el flujo va por el navegador del SO y
-                vuelve por el deep link `todoconta://auth-callback`; en
-                navegador (sin Electron) no aplica el deep link → queda
-                "Próximamente". Una cuenta @gmail creada por OTP se vincula sola
-                en Supabase (mismo email verificado). */}
-            {esDesktop ? (
+                vuelve por el deep link `todoconta://auth-callback`; en la web
+                va por el provisioner y vuelve a /acceso/google. Una cuenta
+                creada antes por código o contraseña con el mismo correo se
+                vincula sola en Supabase (mismo email verificado). */}
+            {googleWeb ? (
+              <button
+                type="button"
+                onClick={iniciarGoogleEnWeb}
+                disabled={googleEsperando}
+                className="flex h-11.5 w-full items-center justify-center gap-2.5 rounded-lg border border-input bg-card text-[15px] font-semibold text-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60 dark:bg-secondary dark:hover:bg-secondary/80"
+              >
+                {googleEsperando ? (
+                  <>
+                    <Icon icon="ph:circle-notch-light" className="size-4.5 animate-spin" />
+                    Conectando con Google…
+                  </>
+                ) : (
+                  <>
+                    <GoogleG />
+                    Google
+                  </>
+                )}
+              </button>
+            ) : esDesktop ? (
               <>
                 <button
                   type="button"

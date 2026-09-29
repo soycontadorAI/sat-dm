@@ -126,3 +126,53 @@ export function provisionConToken(
     refresh_token: refreshToken ?? null,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Acceso con Google en la web (OAuth con PKCE)
+//
+// El provisioner arma la URL de Supabase (con el redirect fijo
+// https://app.todoconta.com/acceso/google) y entrega el code_verifier; el
+// navegador lo guarda en sessionStorage, navega a Google en la misma pestaña y,
+// al volver, /acceso/google lo canjea con el `code`. El navegador no puede
+// hablar con Supabase directo (CSP), por eso el canje también va por aquí.
+// ---------------------------------------------------------------------------
+
+const VERIFIER_GOOGLE_KEY = 'todoconta.google.verifier';
+
+export function provisionOauthStart(
+  provider: 'google' = 'google',
+): Promise<{ url: string; verifier: string }> {
+  return post<{ url: string; verifier: string }>('/provision/oauth/start', { provider });
+}
+
+export function provisionOauthCallback(code: string, verifier: string): Promise<ProvisionResult> {
+  return post<ProvisionResult>('/provision/oauth/callback', { code, verifier });
+}
+
+/** Guarda el verifier hasta que Google regrese a esta misma pestaña. */
+export function guardarVerifierGoogle(verifier: string): void {
+  try {
+    window.sessionStorage.setItem(VERIFIER_GOOGLE_KEY, verifier);
+  } catch {
+    // sessionStorage bloqueado: el canje fallará con "expiró" y se reintenta.
+  }
+}
+
+/** Lee y borra el verifier (es de un solo uso). */
+export function tomarVerifierGoogle(): string | null {
+  try {
+    const v = window.sessionStorage.getItem(VERIFIER_GOOGLE_KEY);
+    window.sessionStorage.removeItem(VERIFIER_GOOGLE_KEY);
+    return v;
+  } catch {
+    return null;
+  }
+}
+
+/** Arranca el acceso con Google: guarda el verifier y se va a Google. */
+export async function iniciarGoogleWeb(): Promise<void> {
+  const { url, verifier } = await provisionOauthStart('google');
+  guardarVerifierGoogle(verifier);
+  window.location.assign(url);
+}
+

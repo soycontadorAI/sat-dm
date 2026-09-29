@@ -6,10 +6,12 @@ no los servicios externos.
 """
 
 import base64
+import hashlib
 import importlib.util
 import sys
 import types
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -90,7 +92,11 @@ class FakeHttp:
         if ruta in self.respuestas:
             return self.respuestas[ruta]
         if ruta in ("/verify", "/token"):
-            correo = (json or {}).get("email", "x@x.mx")
+            if (params or {}).get("grant_type") == "pkce":
+                # Canje de Google: el usuario sale del auth_code de la prueba.
+                correo = f"{(json or {}).get('auth_code')}@gmail.com"
+            else:
+                correo = (json or {}).get("email", "x@x.mx")
             return Resp(
                 200,
                 {
@@ -517,3 +523,165 @@ def test_sin_plan_sigue_en_403(client, http, dk):
     )
     assert r.status_code == 403
     assert dk.containers.creados == []
+
+
+# ---------------------------------------------------------------------------
+# Acceso con Google en la web (PKCE)
+# ---------------------------------------------------------------------------
+
+
+def _params_de(url):
+    return {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
+
+
+def test_google_start_arma_la_url_con_pkce_y_redirect_fijo(client, prov):
+    r = client.post("/provision/oauth/start", json={"provider": "google"}, headers=_ip(80))
+    assert r.status_code == 200
+    cuerpo = r.json()
+    assert cuerpo["url"].startswith(f"{GOTRUE}/auth/v1/authorize?")
+    params = _params_de(cuerpo["url"])
+    esperado = (
+        base64.urlsafe_b64encode(hashlib.sha256(cuerpo["verifier"].encode()).digest())
+        .rstrip(b"=")
+        .decode()
+    )
+    assert params == {
+        "provider": "google",
+        "redirect_to": "https://app.todoconta.com/acceso/google",
+        "code_challenge": esperado,
+        "code_challenge_method": "s256",
+    }
+    assert len(cuerpo["verifier"]) >= 43
+
+
+def test_google_start_ignora_el_redirect_del_cliente(client, prov, monkeypatch):
+    monkeypatch.setattr(prov, "OAUTH_REDIRECT_WEB", "https://preview.todoconta.com/acceso/google")
+    r = client.post(
+        "/provision/oauth/start",
+        json={"provider": "google", "redirect_to": "https://evil.example/robar"},
+        headers=_ip(81),
+    )
+    assert r.status_code == 200
+    params = _params_de(r.json()["url"])
+    assert params["redirect_to"] == "https://preview.todoconta.com/acceso/google"
+    assert "evil" not in r.json()["url"]
+
+
+def test_google_start_solo_acepta_google(client):
+    r = client.post("/provision/oauth/start", json={"provider": "github"}, headers=_ip(82))
+    assert r.status_code == 400
+    assert "Google" in r.json()["detail"]
+
+
+def test_google_start_cada_verifier_es_nuevo(client):
+    a = client.post("/provision/oauth/start", json={}, headers=_ip(83)).json()["verifier"]
+    b = client.post("/provision/oauth/start", json={}, headers=_ip(84)).json()["verifier"]
+    assert a != b
+
+
+def test_google_callback_canjea_y_abre_el_espacio(client, http, dk, prov):
+    r = client.post(
+        "/provision/oauth/callback",
+        json={"code": "olga", "verifier": "v" * 43},
+        headers=_ip(85),
+    )
+    assert r.status_code == 200
+    cuerpo = r.json()
+    assert "/u/" in cuerpo["base_url"]
+    assert cuerpo["session"]["email"] == "olga@gmail.com"
+    (canje,) = http.gotrue("/token")
+    assert canje[2] == {"auth_code": "olga", "code_verifier": "v" * 43}
+    assert canje[3] == {"grant_type": "pkce"}
+    # Pasa por la licencia (ahí arranca la prueba) y crea su contenedor.
+    assert any(c[0] == "GET" and c[1] == LICENCIA for c in http.llamadas)
+    assert dk.containers.creados == [_nombre_contenedor(prov, "olga@gmail.com")]
+
+
+def test_google_callback_sin_verifier_no_llega_a_gotrue(client, http):
+    r = client.post(
+        "/provision/oauth/callback", json={"code": "pepe", "verifier": "  "}, headers=_ip(86)
+    )
+    assert r.status_code == 400
+    assert "expiró" in r.json()["detail"]
+    assert http.gotrue("/token") == []
+
+
+@pytest.mark.parametrize(
+    "respuesta, estado, mensaje",
+    [
+        (Resp(404, {"error_code": "flow_state_not_found"}), 404, "El acceso con Google expiró"),
+        (Resp(400, {"error_code": "flow_state_expired"}), 400, "El acceso con Google expiró"),
+        (Resp(400, {"error_code": "bad_code_verifier"}), 400, "No pudimos completar el acceso con Google"),
+        (Resp(400, {"error_code": "provider_disabled"}), 400, "no está disponible"),
+        # El formato OAuth de /token: nunca debe decir "Correo o contraseña".
+        (Resp(400, {"error": "invalid_grant", "error_description": "x"}), 400, "No pudimos completar el acceso con Google"),
+        (Resp(422, {"error_code": "algo_nuevo"}), 422, "No pudimos completar el acceso con Google"),
+    ],
+)
+def test_google_callback_traduce_errores(client, http, dk, respuesta, estado, mensaje):
+    http.respuestas["/token"] = respuesta
+    r = client.post(
+        "/provision/oauth/callback", json={"code": "quique", "verifier": "v" * 43}, headers=_ip(87)
+    )
+    assert r.status_code == estado
+    assert mensaje in r.json()["detail"]
+    assert dk.containers.creados == []
+
+
+def test_google_callback_informa_el_limite_de_gotrue(client, http):
+    http.respuestas["/token"] = Resp(429, {"error_code": "over_request_rate_limit"})
+    r = client.post(
+        "/provision/oauth/callback", json={"code": "rita", "verifier": "v" * 43}, headers=_ip(88)
+    )
+    assert r.status_code == 429
+
+
+def test_google_callback_capacidad_llena_frena_espacio_nuevo(client, dk, alertas):
+    for n in ("agente-aaa", "agente-bbb"):
+        dk.containers.items[n] = FakeContenedor(n)
+    r = client.post(
+        "/provision/oauth/callback", json={"code": "susy", "verifier": "v" * 43}, headers=_ip(89)
+    )
+    assert r.status_code == 503
+    assert r.json()["motivo"] == "capacidad"
+    assert dk.containers.creados == []
+    assert len(alertas) == 1
+
+
+def test_google_callback_cuenta_vinculada_entra_a_su_espacio(client, dk, prov, alertas):
+    # Una cuenta creada antes por código o contraseña que ahora entra con Google:
+    # Supabase vincula la identidad al mismo usuario, así que es el mismo
+    # user_id y el mismo contenedor, aunque la capacidad esté llena.
+    for n in ("agente-aaa", "agente-bbb"):
+        dk.containers.items[n] = FakeContenedor(n)
+    propio = _nombre_contenedor(prov, "tere@gmail.com")
+    dk.containers.items[propio] = FakeContenedor(propio, status="exited")
+    r = client.post(
+        "/provision/oauth/callback", json={"code": "tere", "verifier": "v" * 43}, headers=_ip(90)
+    )
+    assert r.status_code == 200
+    assert dk.containers.items[propio].arrancado is True
+    assert dk.containers.creados == []
+    assert alertas == []
+
+
+def test_google_sin_plan_sigue_en_403(client, http, dk):
+    http.plan = "free"
+    r = client.post(
+        "/provision/oauth/callback", json={"code": "ulises", "verifier": "v" * 43}, headers=_ip(91)
+    )
+    assert r.status_code == 403
+    assert dk.containers.creados == []
+
+
+def test_google_tiene_limite_por_ip(client, prov):
+    for i in range(prov._RATE_MAX):
+        r = client.post("/provision/oauth/start", json={}, headers=_ip(92))
+        assert r.status_code == 200
+    r = client.post("/provision/oauth/start", json={}, headers=_ip(92))
+    assert r.status_code == 429
+    r = client.post(
+        "/provision/oauth/callback", json={"code": "vale", "verifier": "v" * 43}, headers=_ip(92)
+    )
+    assert r.status_code == 429
+
