@@ -59,11 +59,67 @@ AGENTE_IMAGEN=todoconta/agente:dev
 # ALLOWLIST_EMAILS=correo1@x.mx,correo2@x.mx   # beta cerrada
 # EXIGIR_LICENCIA=0                            # kill switch (beta)
 # CORS_ORIGINS=https://app.todoconta.com,https://<preview>.vercel.app
+# MAX_AGENTES=40                               # tope de espacios NUEVOS (ver "Registro desde la web")
+# ALERTA_WEBHOOK_URL=https://hooks...          # aviso cuando se llena el tope
 EOF
 chmod 600 .env
 docker compose up -d --build
 curl -s https://agente.todoconta.com/provision/health
 ```
+
+## Registro desde la web
+
+El provisioner también **crea cuentas**: `POST
+/provision/signup` (correo y contraseña, confirmación por código) y `otp-send`
+con `crear_cuenta: true` (registro por código). Al confirmar el correo, la
+licencia (`/api/desktop/license`) arranca la prueba de 15 días y se abre el
+espacio, igual que un login.
+
+| Env | Default | Qué hace |
+|---|---|---|
+| `MAX_AGENTES` | `40` | Tope de agentes **corriendo** para abrir espacios NUEVOS (`0` = sin tope). Quien ya tiene contenedor, aunque esté detenido, siempre entra. Con el tope lleno responde 503 `{"detail", "motivo": "capacidad"}` y la UI ofrece la app de escritorio. |
+| `ALERTA_WEBHOOK_URL` | vacío | Webhook (Slack, Discord o similar) que recibe `{"text", "content"}` cuando se llena el tope. Máximo un aviso cada 10 min. Además queda un `WARNING` en los logs. |
+| `DOMINIOS_DESECHABLES` | lista corta en `main.py` | Dominios de correo temporal que no pueden registrarse (separados por coma; reemplaza la lista). También bloquea sus subdominios. El login no se ve afectado. |
+| `RATE_MAX_CORREO` | `8` | Intentos por correo cada 10 min (envío, reenvío y verificación), además de los 8 por IP cada 5 min. |
+| `CONFIAR_X_FORWARDED_FOR` | `1` | Toma la IP del cliente de `X-Forwarded-For` (Traefik). Sin esto, todos los intentos compartían la IP de Traefik y el límite por IP era global. Poner `0` solo si el provisioner quedara expuesto sin Traefik. |
+| `OAUTH_REDIRECT_WEB` | `https://app.todoconta.com/acceso/google` | A dónde regresa el acceso con Google en la web. Es fijo: el provisioner ignora cualquier redirect que mande el cliente. Va fuera de `/auth/*` porque Vercel reescribe esa ruta al producto viejo. Tiene que estar en "Redirect URLs" de Supabase Auth. |
+
+**Por qué 40:** un agente inactivo usa ~55 MB, pero cada trabajo con Chromium
+(portal con Contraseña o e.firma, constancia, opinión) puede llegar a 1 GB. Con
+~6 GB libres para agentes, 40 deja holgura para varios trabajos pesados a la
+vez. Sube el tope solo después de medir con `docker stats` en hora pico (fin de
+mes, día 17) o al pasar a un VPS más grande.
+
+**Acceso con Google en la web:** `POST /provision/oauth/start` arma la URL de
+`/authorize` (PKCE S256, redirect fijo `OAUTH_REDIRECT_WEB`) y devuelve el
+verifier, que el navegador guarda en sessionStorage; al volver,
+`/acceso/google` canjea el código en `POST /provision/oauth/callback`, que sigue
+el mismo camino que un login (licencia + guarda de capacidad). Si el correo ya
+tenía cuenta, Supabase vincula Google al mismo usuario: mismo contenedor.
+
+**Pendiente en Supabase Auth (no cambia nada de código):**
+- Agregar **`https://app.todoconta.com/acceso/google`** en Authentication →
+  URL Configuration → **Redirect URLs**. Sin eso, Supabase regresa al Site URL
+  y el acceso con Google no se completa.
+- Confirmar que el **proveedor Google** esté activo (Authentication →
+  Providers). Es el mismo que ya usa la desktop.
+- Confirmar que **"Allow new users to sign up"** sigue activo (la desktop ya
+  registra por la misma API, así que debería estarlo).
+- Confirmar que las plantillas **Confirm signup** y **Magic Link** incluyen
+  `{{ .Token }}` (el código de 6 dígitos que se teclea en la app).
+- Revisar el **rate limit de correos** de Auth: con el registro abierto, el
+  límite del SMTP (el integrado de Supabase es muy bajo) puede cortar
+  confirmaciones. Con SMTP propio, ajusta "Rate limit for sending emails".
+- Opcional: activar **CAPTCHA** (Turnstile o hCaptcha) en Auth; pediría
+  mandar el token desde la UI (no está implementado).
+
+**Despliegue:**
+1. Provisioner: copiar `deploy/provisioner/main.py` a `/docker/provisioner/`, agregar
+   las envs que quieras al `.env` y `docker compose up -d --build`. Verifica
+   `curl -s https://agente.todoconta.com/provision/health`.
+2. UI: el deploy normal de Vercel (build web con `NEXT_PUBLIC_MODO_WEB=1` y
+   `NEXT_PUBLIC_PROVISIONER_URL`). Desplegar la UI **después** del provisioner:
+   la UI nueva llama a `/provision/signup`, que el provisioner viejo no tiene.
 
 ## La master key (`SAT_DM_MASTER_KEY`)
 

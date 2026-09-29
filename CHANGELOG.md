@@ -6,6 +6,27 @@
 
 _Cambios mergeados a `main` aún no etiquetados; el release de la semana los promueve._
 
+### Feature
+
+- **Ya puedes crear tu cuenta desde la web, también con Google.** En
+  app.todoconta.com ahora aparece "Crea tu cuenta": con un código a tu correo,
+  con contraseña o con tu cuenta de Google. Tu prueba de 15 días arranca en tu
+  espacio privado, sin instalar nada. Antes la web solo dejaba entrar a quien
+  ya había creado su cuenta en la app de escritorio, y el botón de Google decía
+  "Próximamente". Si ya tenías cuenta con el mismo correo, Google entra a esa
+  misma cuenta. Tu e.firma se guarda cifrada en un espacio que solo usa tu
+  cuenta.
+
+### Tooling
+
+- **El provisioner registra cuentas nuevas con frenos contra abuso.** Límite de
+  intentos por IP (ahora la IP real del cliente, detrás de Traefik; antes todos
+  compartían la de Traefik) y por correo, correos temporales bloqueados en el
+  registro y un tope de espacios nuevos (`MAX_AGENTES`, 40 por default). Con el
+  tope lleno, quien apenas se registra ve un aviso amable con la opción de usar
+  la app de escritorio, y el aviso llega por webhook (`ALERTA_WEBHOOK_URL`);
+  quien ya tiene su espacio siempre entra. Envs en `deploy/vps/README.md`.
+
 ## [2.2.0] - 2026-09-28
 
 ### Feature

@@ -33,8 +33,12 @@ export function AppShell({ children }: AppShellProps) {
   // entrada manual al agente (piloto/soporte) cuando aún no hay conexión.
   const pathname = usePathname();
   const esConectar = esWeb() && !!pathname && pathname.startsWith('/conectar');
+  // (Versión web) La vuelta de Google (/acceso/google) tampoco necesita sesión:
+  // esa página canjea el código y conecta con el agente por su cuenta.
+  const esAcceso = esWeb() && !!pathname && pathname.startsWith('/acceso');
+  const sinSesion = esConectar || esAcceso;
 
-  if (loading && !esConectar) {
+  if (loading && !sinSesion) {
     return (
       <div className="flex h-screen flex-col overflow-hidden">
         <Titlebar />
@@ -43,14 +47,14 @@ export function AppShell({ children }: AppShellProps) {
     );
   }
 
-  if (!license?.authenticated || esConectar) {
+  if (!license?.authenticated || sinSesion) {
     // Renderea el LoginPage inline (no navegamos). La URL no cambia; al
     // autenticarse, `useAuth()` re-renderea con el shell normal.
     return (
       <div className="flex h-screen flex-col overflow-hidden">
         <Titlebar />
         <div className="flex-1 overflow-y-auto">
-          {esConectar ? children : <LoginPage />}
+          {sinSesion ? children : <LoginPage />}
         </div>
       </div>
     );

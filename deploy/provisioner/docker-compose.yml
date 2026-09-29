@@ -5,7 +5,10 @@
 #   .env junto a este archivo con al menos:
 #     SAT_DM_MASTER_KEY=<32+ bytes base64>  # python3 -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"
 #   (opcionales: AGENTE_IMAGEN, ALLOWLIST_EMAILS, EXIGIR_LICENCIA, CORS_ORIGINS,
-#    PUBLIC_BASE, LICENCIA_URL — ver deploy/vps/README.md)
+#    PUBLIC_BASE, LICENCIA_URL, MAX_AGENTES, ALERTA_WEBHOOK_URL,
+#    DOMINIOS_DESECHABLES, RATE_MAX_CORREO, CONFIAR_X_FORWARDED_FOR,
+#    OAUTH_REDIRECT_WEB
+#    ver deploy/vps/README.md)
 #
 # Despliegue: docker compose up -d --build
 
