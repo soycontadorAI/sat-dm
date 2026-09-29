@@ -23,6 +23,7 @@ import {
   provisionLoginPassword,
   provisionOtpSend,
   provisionOtpVerify,
+  provisionSignup,
   type ProvisionResult,
 } from '@/lib/provisioner-client';
 import { mensajeDeError } from '@/lib/errores';
@@ -52,11 +53,16 @@ const EMAIL_RE = /^\S+@\S+\.\S+$/;
 /** Pricing público: el único lugar donde se puede activar un plan sin entrar. */
 const URL_PLANES = 'https://todoconta.com/planes';
 
+/** Descarga de la app de escritorio (la página resuelve el sistema operativo). */
+const URL_DESCARGAR = 'https://todoconta.com/descargar';
+
 /** Error del login: mensaje y, cuando aplica, la salida para desatorarse. */
 interface ErrorAuth {
   mensaje: string;
   /** El provisioner rechazó por plan (403): sin CTA el usuario queda encerrado. */
   sinPlan?: boolean;
+  /** No caben espacios nuevos en la web por ahora (503 con motivo "capacidad"). */
+  sinEspacio?: boolean;
 }
 
 function errorAuth(e: unknown): ErrorAuth {
@@ -65,7 +71,12 @@ function errorAuth(e: unknown): ErrorAuth {
   if (e instanceof ProvisionerError) {
     // El checkout vive detrás del agente y el agente no enciende sin plan, así
     // que el 403 tiene que ofrecer a dónde ir o no hay forma de salir del loop.
-    return { mensaje: e.detail, sinPlan: e.status === 403 };
+    // Con la capacidad llena, la salida es la app de escritorio.
+    return {
+      mensaje: e.detail,
+      sinPlan: e.status === 403,
+      sinEspacio: e.motivo === 'capacidad',
+    };
   }
   return { mensaje: mensajeDeError(e) };
 }
@@ -226,10 +237,15 @@ export default function LoginPage() {
     [webNecesitaProvision, adoptarYConectar, apiClient],
   );
 
+  // Envío de código: login, registro por código (`crearCuenta`) o reenvío de
+  // la confirmación de un registro con contraseña (`tipo: 'signup'`).
   const enviarOtp = useCallback(
-    async (correo: string, opts: { crearCuenta?: boolean; nombre?: string } = {}) => {
+    async (
+      correo: string,
+      opts: { crearCuenta?: boolean; nombre?: string; tipo?: 'email' | 'signup' } = {},
+    ) => {
       if (webNecesitaProvision) {
-        await provisionOtpSend(correo);
+        await provisionOtpSend(correo, opts);
       } else {
         await apiClient.authOtpSend(correo, opts);
       }
@@ -240,7 +256,7 @@ export default function LoginPage() {
   const verificarOtp = useCallback(
     async (correo: string, codigo: string, tipo: 'email' | 'signup') => {
       if (webNecesitaProvision) {
-        await adoptarYConectar(await provisionOtpVerify(correo, codigo));
+        await adoptarYConectar(await provisionOtpVerify(correo, codigo, tipo));
       } else {
         await apiClient.authOtpVerify(correo, codigo, tipo);
       }
@@ -275,18 +291,28 @@ export default function LoginPage() {
             setError({ mensaje: 'La contraseña debe tener mínimo 8 caracteres.' });
             return;
           }
-          const r = await apiClient.authSignup(correo, password, nombre.trim());
-          if (r.requiere_confirmacion) {
-            setOtpCtx({ tipo: 'signup', crearCuenta: false, nombre: nombre.trim() });
-            setPaso('otp');
+          if (webNecesitaProvision) {
+            // Web: el provisioner registra y, al confirmar el correo, abre el
+            // espacio privado (la prueba de 15 días arranca sola).
+            const r = await provisionSignup(correo, password, nombre.trim());
+            if (r.requiere_confirmacion) {
+              setOtpCtx({ tipo: 'signup', crearCuenta: false, nombre: nombre.trim() });
+              setPaso('otp');
+            } else {
+              await adoptarYConectar(r);
+              setPaso('done');
+            }
           } else {
-            setPaso('done');
+            const r = await apiClient.authSignup(correo, password, nombre.trim());
+            if (r.requiere_confirmacion) {
+              setOtpCtx({ tipo: 'signup', crearCuenta: false, nombre: nombre.trim() });
+              setPaso('otp');
+            } else {
+              setPaso('done');
+            }
           }
         } else {
-          await apiClient.authOtpSend(correo, {
-            crearCuenta: true,
-            nombre: nombre.trim(),
-          });
+          await enviarOtp(correo, { crearCuenta: true, nombre: nombre.trim() });
           setOtpCtx({ tipo: 'email', crearCuenta: true, nombre: nombre.trim() });
           setPaso('otp');
         }
@@ -296,7 +322,18 @@ export default function LoginPage() {
         setLoading(false);
       }
     },
-    [apiClient, email, password, nombre, esLogin, esPwd, loginConPassword, enviarOtp],
+    [
+      apiClient,
+      email,
+      password,
+      nombre,
+      esLogin,
+      esPwd,
+      webNecesitaProvision,
+      adoptarYConectar,
+      loginConPassword,
+      enviarOtp,
+    ],
   );
 
   return (
@@ -328,7 +365,7 @@ export default function LoginPage() {
             verificar={(codigo) => verificarOtp(email.trim(), codigo, otpCtx.tipo)}
             reenviar={async () => {
               if (otpCtx.tipo === 'signup') {
-                await apiClient.authOtpSend(email.trim(), { tipo: 'signup' });
+                await enviarOtp(email.trim(), { tipo: 'signup' });
               } else {
                 await enviarOtp(email.trim(), {
                   crearCuenta: otpCtx.crearCuenta,
@@ -508,22 +545,22 @@ export default function LoginPage() {
             )}
 
             <div className="mt-7 text-center">
-              {/* En la web el acceso requiere una cuenta con plan (la valida el
-                  provisioner); el registro vive en la app de escritorio. */}
-              {webNecesitaProvision ? (
-                <p className="text-sm text-muted-foreground">
-                  Usa la cuenta con la que activaste TodoConta.
-                </p>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {esLogin ? '¿Primera vez?' : '¿Ya tienes cuenta?'}{' '}
-                  <button
-                    type="button"
-                    className="font-semibold text-primary hover:underline"
-                    onClick={() => cambiarVista(esLogin ? 'signup' : 'login')}
-                  >
-                    {esLogin ? 'Crea tu cuenta' : 'Inicia sesión'}
-                  </button>
+              {/* Web y desktop registran igual: en la web el provisioner crea la
+                  cuenta, arranca la prueba y abre el espacio privado. */}
+              <p className="text-sm text-muted-foreground">
+                {esLogin ? '¿Primera vez?' : '¿Ya tienes cuenta?'}{' '}
+                <button
+                  type="button"
+                  className="font-semibold text-primary hover:underline"
+                  onClick={() => cambiarVista(esLogin ? 'signup' : 'login')}
+                >
+                  {esLogin ? 'Crea tu cuenta' : 'Inicia sesión'}
+                </button>
+              </p>
+              {webNecesitaProvision && !esLogin && (
+                <p className="mx-auto mt-4 flex max-w-80 items-start justify-center gap-2 text-left text-[13px] leading-snug text-muted-foreground">
+                  <Icon icon="ph:lock-simple-light" className="mt-0.5 size-4 shrink-0" />
+                  <span>Tu e.firma se guarda cifrada en un espacio que solo usa tu cuenta.</span>
                 </p>
               )}
               <p className="mt-7 border-t border-border/60 pt-5 text-xs leading-relaxed text-muted-foreground/80">
@@ -838,6 +875,17 @@ function ErrorInline({ error }: { error: ErrorAuth }) {
           className="mt-1.5 inline-flex items-center gap-1 font-semibold underline underline-offset-2"
         >
           Ver planes y activar
+          <Icon icon="ph:arrow-up-right-light" className="size-3.5" />
+        </a>
+      )}
+      {error.sinEspacio && (
+        <a
+          href={URL_DESCARGAR}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1.5 inline-flex items-center gap-1 font-semibold underline underline-offset-2"
+        >
+          Mientras, usa la app de escritorio
           <Icon icon="ph:arrow-up-right-light" className="size-3.5" />
         </a>
       )}

@@ -8,6 +8,12 @@ arranca el contenedor personal del usuario (docker SDK) y (d) devuelve
 `{base_url, token, session}` para que la UI conecte y le entregue la sesión al
 agente vía POST /auth/adopt-session.
 
+También registra cuentas nuevas desde la web (por código o con contraseña): la
+prueba de 15 días la arranca sola `/api/desktop/license` en la primera
+validación, igual que en la desktop. Antiabuso: límite por IP y por correo,
+dominios de correo desechables bloqueados y un tope de contenedores NUEVOS
+(`MAX_AGENTES`); quien ya tiene su espacio siempre entra.
+
 Derivación determinista (sin base de datos): slug, token del agente y clave de
 secretos salen de HMAC(SAT_DM_MASTER_KEY, user_id) — un login desde otro
 navegador recupera exactamente el mismo contenedor, y recrearlo (upgrade de
@@ -24,6 +30,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -33,6 +40,7 @@ from typing import Optional
 import requests
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -79,6 +87,39 @@ CORS_WEB = [
 ]
 REGISTRO_PATH = Path(os.environ.get("REGISTRO_PATH", "/registro/registry.json"))
 
+# Tope de contenedores de agente CORRIENDO para abrir espacios NUEVOS (0 = sin
+# tope). No aplica a quien ya tiene contenedor: ese siempre entra. Un agente
+# inactivo usa ~55 MB, pero cada trabajo con Chromium puede llegar a 1 GB, así
+# que el default deja holgura en el VPS de 8 GB (ver deploy/vps/README.md).
+MAX_AGENTES = int(os.environ.get("MAX_AGENTES", "40"))
+# Webhook opcional (Slack/Discord o similar) para avisar que se llenó el tope.
+ALERTA_WEBHOOK_URL = os.environ.get("ALERTA_WEBHOOK_URL", "").strip()
+# El provisioner solo es alcanzable detrás de Traefik: la IP del cliente viene
+# en X-Forwarded-For. Sin esto, todos los intentos comparten la IP de Traefik y
+# el límite por IP se vuelve global. "0" = usar la IP de la conexión.
+CONFIAR_X_FORWARDED_FOR = os.environ.get("CONFIAR_X_FORWARDED_FOR", "1") != "0"
+# Dominios de correo temporales que no pueden registrar cuentas. Con la env
+# DOMINIOS_DESECHABLES (separados por coma) se reemplaza esta lista.
+_DESECHABLES_DEFAULT = (
+    "mailinator.com",
+    "guerrillamail.com",
+    "sharklasers.com",
+    "10minutemail.com",
+    "temp-mail.org",
+    "tempmail.com",
+    "yopmail.com",
+    "trashmail.com",
+    "getnada.com",
+    "maildrop.cc",
+    "dispostable.com",
+    "throwawaymail.com",
+)
+DOMINIOS_DESECHABLES = {
+    d.strip().lower()
+    for d in os.environ.get("DOMINIOS_DESECHABLES", ",".join(_DESECHABLES_DEFAULT)).split(",")
+    if d.strip()
+}
+
 _TIMEOUT = 15
 
 
@@ -122,10 +163,34 @@ _MENSAJES = {
     "otp_disabled": "No encontramos una cuenta con ese correo.",
     "over_email_send_rate_limit": "Demasiados intentos. Espera un minuto y vuelve a intentar.",
     "over_request_rate_limit": "Demasiados intentos. Espera un momento y vuelve a intentar.",
+    "weak_password": "Esa contraseña es muy débil. Usa al menos 8 caracteres, con letras y números.",
+    "email_address_invalid": "Escribe un correo válido.",
+    "signup_disabled": "Por ahora no estamos creando cuentas nuevas. Intenta más tarde.",
 }
 
+# Códigos de GoTrue que dicen "ese correo ya tiene cuenta". En el registro se
+# contestan igual que un registro nuevo para no revelar qué correos existen.
+_CODIGOS_CORREO_EXISTE = ("user_already_exists", "email_exists")
+_CODIGOS_LIMITE = ("over_email_send_rate_limit", "over_request_rate_limit")
 
-def _error_gotrue(resp: requests.Response) -> HTTPException:
+
+class ErrorGotrue(HTTPException):
+    """HTTPException con el código original de GoTrue (para decidir qué contestar)."""
+
+    def __init__(self, status_code: int, detail: str, codigo: str):
+        super().__init__(status_code=status_code, detail=detail)
+        self.codigo = codigo
+
+
+class ErrorProvision(HTTPException):
+    """Error con `motivo` legible por la UI (p. ej. "capacidad")."""
+
+    def __init__(self, status_code: int, detail: str, motivo: str):
+        super().__init__(status_code=status_code, detail=detail)
+        self.motivo = motivo
+
+
+def _error_gotrue(resp: requests.Response) -> ErrorGotrue:
     try:
         data = resp.json()
     except ValueError:
@@ -136,7 +201,7 @@ def _error_gotrue(resp: requests.Response) -> HTTPException:
         code = "invalid_credentials"
     detalle = _MENSAJES.get(code, "No pudimos completar la operación. Intenta de nuevo.")
     status = resp.status_code if 400 <= resp.status_code < 500 else 502
-    return HTTPException(status_code=status, detail=detalle)
+    return ErrorGotrue(status_code=status, detail=detalle, codigo=str(code))
 
 
 def _gotrue_post(path: str, payload: dict, params: Optional[dict] = None) -> dict:
@@ -266,8 +331,70 @@ def _labels_traefik(slug: str) -> dict:
     }
 
 
+MENSAJE_SIN_CAPACIDAD = (
+    "Estamos preparando más espacio para cuentas nuevas. "
+    "Vuelve a intentarlo en unos minutos."
+)
+
+_ALERTA_CADA_S = 600
+_ultima_alerta = 0.0
+_alerta_lock = threading.Lock()
+
+
+def _alertar(texto: str) -> None:
+    """Avisa por webhook (si hay) sin frenar la respuesta; máximo una cada 10 min."""
+    global _ultima_alerta
+    if not ALERTA_WEBHOOK_URL:
+        return
+    with _alerta_lock:
+        ahora = time.monotonic()
+        if _ultima_alerta and ahora - _ultima_alerta < _ALERTA_CADA_S:
+            return
+        _ultima_alerta = ahora
+
+    def _enviar() -> None:
+        try:
+            # "text" lo leen Slack y similares; "content", Discord.
+            requests.post(
+                ALERTA_WEBHOOK_URL, json={"text": texto, "content": texto}, timeout=5
+            )
+        except requests.RequestException:
+            logger.warning("no se pudo enviar la alerta al webhook", exc_info=True)
+
+    threading.Thread(target=_enviar, daemon=True).start()
+
+
+def _agentes_corriendo(cli) -> int:
+    """Contenedores de agente creados por el provisioner que están corriendo."""
+    return len(
+        cli.containers.list(filters={"label": "todoconta.agente=1", "status": "running"})
+    )
+
+
+def _verificar_capacidad(cli) -> None:
+    """503 (motivo "capacidad") si ya no caben espacios NUEVOS en el host."""
+    if MAX_AGENTES <= 0:
+        return
+    corriendo = _agentes_corriendo(cli)
+    if corriendo >= MAX_AGENTES:
+        logger.warning(
+            "capacidad llena: %s agentes corriendo (MAX_AGENTES=%s); una cuenta nueva quedó en espera",
+            corriendo,
+            MAX_AGENTES,
+        )
+        _alertar(
+            f"TodoConta: capacidad llena ({corriendo}/{MAX_AGENTES} agentes). "
+            "Una cuenta nueva no pudo abrir su espacio en la web."
+        )
+        raise ErrorProvision(status_code=503, detail=MENSAJE_SIN_CAPACIDAD, motivo="capacidad")
+
+
 def _asegurar_agente(user_id: str) -> dict:
-    """Crea (o arranca) el contenedor del usuario. Devuelve la derivación."""
+    """Crea (o arranca) el contenedor del usuario. Devuelve la derivación.
+
+    El tope `MAX_AGENTES` solo frena la creación de contenedores NUEVOS: si el
+    usuario ya tiene el suyo (corriendo o detenido), siempre entra.
+    """
     import docker as docker_sdk
 
     d = _derivar(user_id)
@@ -276,6 +403,15 @@ def _asegurar_agente(user_id: str) -> dict:
 
     with _docker_lock:
         cli = _docker()
+        try:
+            cont = cli.containers.get(nombre)
+        except docker_sdk.errors.NotFound:
+            cont = None
+
+        # Antes de crear red o volumen: si no cabe, no se deja basura a medias.
+        if cont is None:
+            _verificar_capacidad(cli)
+
         try:
             cli.networks.get(RED_AGENTES)
         except docker_sdk.errors.NotFound:
@@ -286,11 +422,10 @@ def _asegurar_agente(user_id: str) -> dict:
         except docker_sdk.errors.NotFound:
             cli.volumes.create(f"agente-datos-{slug}")
 
-        try:
-            cont = cli.containers.get(nombre)
+        if cont is not None:
             if cont.status != "running":
                 cont.start()
-        except docker_sdk.errors.NotFound:
+        else:
             cli.containers.run(
                 AGENTE_IMAGEN,
                 name=nombre,
@@ -356,27 +491,71 @@ def _registrar_login(user_id: str, email: Optional[str], slug: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Rate limit simple (en memoria, por IP)
+# Rate limit simple (en memoria, por IP y por correo)
 # ---------------------------------------------------------------------------
 
 _intentos: dict = {}
 _intentos_lock = threading.Lock()
 _RATE_MAX = 8
 _RATE_VENTANA_S = 300
+# Por correo: frena que alguien use el registro para bombardear un buzón
+# ajeno aunque cambie de IP. Cubre envío, reenvío y verificación del código.
+_RATE_MAX_CORREO = int(os.environ.get("RATE_MAX_CORREO", "8"))
+_RATE_VENTANA_CORREO_S = 600
+_MENSAJE_LIMITE = "Demasiados intentos. Espera unos minutos y vuelve a intentar."
 
 
-def _rate_limit(request: Request) -> None:
-    ip = (request.client.host if request.client else "?") or "?"
+def _ip_cliente(request: Request) -> str:
+    if CONFIAR_X_FORWARDED_FOR:
+        primera = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        if primera:
+            return primera
+    return (request.client.host if request.client else "?") or "?"
+
+
+def _consumir_intento(clave: str, maximo: int, ventana_s: float, ahora: float) -> None:
+    """Registra un intento para `clave`; 429 si ya se agotó su ventana."""
+    marcas = [t for t in _intentos.get(clave, []) if ahora - t < ventana_s]
+    if len(marcas) >= maximo:
+        raise HTTPException(status_code=429, detail=_MENSAJE_LIMITE)
+    marcas.append(ahora)
+    _intentos[clave] = marcas
+
+
+def _rate_limit(request: Request, email: Optional[str] = None) -> None:
     ahora = time.monotonic()
     with _intentos_lock:
-        marcas = [t for t in _intentos.get(ip, []) if ahora - t < _RATE_VENTANA_S]
-        if len(marcas) >= _RATE_MAX:
-            raise HTTPException(
-                status_code=429,
-                detail="Demasiados intentos. Espera unos minutos y vuelve a intentar.",
+        _consumir_intento(f"ip:{_ip_cliente(request)}", _RATE_MAX, _RATE_VENTANA_S, ahora)
+        correo = (email or "").strip().lower()
+        if correo:
+            _consumir_intento(
+                f"correo:{correo}", _RATE_MAX_CORREO, _RATE_VENTANA_CORREO_S, ahora
             )
-        marcas.append(ahora)
-        _intentos[ip] = marcas
+
+
+# ---------------------------------------------------------------------------
+# Registro de cuentas nuevas: validación del correo
+# ---------------------------------------------------------------------------
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _validar_correo_registro(email: str) -> None:
+    """400 si el correo no sirve para abrir una cuenta (formato o desechable)."""
+    correo = email.strip().lower()
+    if not _EMAIL_RE.match(correo):
+        raise HTTPException(status_code=400, detail="Escribe un correo válido.")
+    dominio = correo.rsplit("@", 1)[-1]
+    if dominio in DOMINIOS_DESECHABLES or any(
+        dominio.endswith(f".{d}") for d in DOMINIOS_DESECHABLES
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Usa un correo permanente, de tu despacho o personal. "
+                "No aceptamos correos temporales."
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +573,15 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(ErrorProvision)
+async def _manejar_error_provision(request: Request, exc: ErrorProvision):
+    # Mismo {"detail"} de siempre + `motivo`, para que la UI ofrezca la salida
+    # correcta (p. ej. con capacidad llena: usar la app de escritorio).
+    return JSONResponse(
+        status_code=exc.status_code, content={"detail": exc.detail, "motivo": exc.motivo}
+    )
+
+
 class LoginPasswordRequest(BaseModel):
     email: str
     password: str
@@ -401,11 +589,24 @@ class LoginPasswordRequest(BaseModel):
 
 class OtpSendRequest(BaseModel):
     email: str
+    # Registro por código: el mismo código crea la cuenta (con `nombre`).
+    crear_cuenta: bool = False
+    nombre: str = ""
+    # "signup": reenviar la confirmación de un registro con contraseña.
+    tipo: Optional[str] = None
 
 
 class OtpVerifyRequest(BaseModel):
     email: str
     token: str
+    # "email": login o registro por código · "signup": confirmar registro con contraseña.
+    tipo: str = "email"
+
+
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+    nombre: str = ""
 
 
 class ConTokenRequest(BaseModel):
@@ -435,7 +636,7 @@ def health():
 
 @app.post("/provision/login-password")
 def login_password(req: LoginPasswordRequest, request: Request):
-    _rate_limit(request)
+    _rate_limit(request, req.email)
     data = _gotrue_post(
         "/token",
         {"email": req.email.strip(), "password": req.password},
@@ -446,19 +647,78 @@ def login_password(req: LoginPasswordRequest, request: Request):
 
 @app.post("/provision/otp-send")
 def otp_send(req: OtpSendRequest, request: Request):
-    _rate_limit(request)
-    # create_user=False: la web no registra cuentas nuevas (el provisioner
-    # exigiría plan de todas formas); el registro vive en la desktop.
-    _gotrue_post("/otp", {"email": req.email.strip(), "create_user": False})
+    correo = req.email.strip()
+    _rate_limit(request, correo)
+
+    if req.tipo == "signup":
+        # Reenvío de la confirmación de un registro con contraseña. Si el
+        # correo no tiene registro pendiente se contesta igual (no revelamos
+        # qué correos existen); solo el límite de envíos se informa.
+        try:
+            _gotrue_post("/resend", {"type": "signup", "email": correo})
+        except ErrorGotrue as e:
+            if e.codigo in _CODIGOS_LIMITE:
+                raise
+            logger.info("resend signup sin efecto (%s)", e.codigo or e.status_code)
+        return {"ok": True}
+
+    if req.crear_cuenta:
+        # Registro por código: el código confirma el correo y crea la cuenta.
+        # Si el correo ya tiene cuenta, GoTrue manda un código de acceso normal.
+        _validar_correo_registro(correo)
+        payload: dict = {"email": correo, "create_user": True}
+        nombre = req.nombre.strip()
+        if nombre:
+            payload["data"] = {"full_name": nombre}
+        _gotrue_post("/otp", payload)
+        return {"ok": True}
+
+    # Login por código: create_user=False, así un typo no crea cuentas fantasma.
+    _gotrue_post("/otp", {"email": correo, "create_user": False})
     return {"ok": True}
+
+
+@app.post("/provision/signup")
+def signup(req: SignupRequest, request: Request):
+    """Registro con correo + contraseña desde la web.
+
+    Con confirmación de correo (default de Supabase) no hay sesión inmediata:
+    GoTrue manda un código y la UI lo verifica en /provision/otp-verify con
+    tipo "signup". Si el correo ya existe, la respuesta es la misma que la de
+    un registro nuevo (el código simplemente no llega).
+    """
+    correo = req.email.strip()
+    _rate_limit(request, correo)
+    _validar_correo_registro(correo)
+    if len(req.password) < 8:
+        raise HTTPException(
+            status_code=400, detail="La contraseña debe tener mínimo 8 caracteres."
+        )
+    payload: dict = {"email": correo, "password": req.password}
+    nombre = req.nombre.strip()
+    if nombre:
+        payload["data"] = {"full_name": nombre}
+    try:
+        data = _gotrue_post("/signup", payload)
+    except ErrorGotrue as e:
+        if e.codigo in _CODIGOS_CORREO_EXISTE:
+            return {"ok": True, "requiere_confirmacion": True}
+        raise
+    if data.get("access_token"):
+        # Proyecto sin confirmación de correo: la cuenta ya tiene sesión.
+        return {**_aprovisionar(_sesion_de(data)), "requiere_confirmacion": False}
+    return {"ok": True, "requiere_confirmacion": True}
 
 
 @app.post("/provision/otp-verify")
 def otp_verify(req: OtpVerifyRequest, request: Request):
-    _rate_limit(request)
+    correo = req.email.strip()
+    _rate_limit(request, correo)
+    if req.tipo not in ("email", "signup"):
+        raise HTTPException(status_code=400, detail="Tipo de verificación no válido.")
     data = _gotrue_post(
         "/verify",
-        {"type": "email", "email": req.email.strip(), "token": req.token.strip()},
+        {"type": req.tipo, "email": correo, "token": req.token.strip()},
     )
     return _aprovisionar(_sesion_de(data))
 
