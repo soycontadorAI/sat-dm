@@ -6,6 +6,8 @@
 
 _Cambios mergeados a `main` aún no etiquetados; el release de la semana los promueve._
 
+## [2.3.0] - 2026-09-30
+
 ### Feature
 
 - **Ya puedes crear tu cuenta desde la web, también con Google.** En
@@ -26,6 +28,19 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   tope lleno, quien apenas se registra ve un aviso amable con la opción de usar
   la app de escritorio, y el aviso llega por webhook (`ALERTA_WEBHOOK_URL`);
   quien ya tiene su espacio siempre entra. Envs en `deploy/vps/README.md`.
+
+- **Un release sale igual en macOS aunque GitHub cambie de imagen.** El build de
+  macOS corre en `macos-15`, y una plataforma que falló se puede rehacer sin
+  mover el tag.
+- **Una sola versión en todos lados.** `deploy/desplegar.sh ui|agente vX.Y.Z`
+  despliega la UI web, los agentes web y el piloto desde el tag del release, y
+  `deploy/desfase.sh` revisa que todo corra la misma versión.
+
+### Docs
+
+- Especificaciones al día con v2.2.0 y el estado de la migración a `ui/`. Lo que
+  es operación interna o precios salió del repo público.
+- Bump 2.2.0 → 2.3.0 (3 archivos).
 
 ## [2.2.0] - 2026-09-28
 
