@@ -210,6 +210,12 @@ export default function LoginPage() {
     });
   }, [manejarCodigoGoogle]);
 
+  // Los botones "Empieza gratis" de todoconta.com mandan a `?crear`: quien llega
+  // de cero ve "Crea tu cuenta" y no "Bienvenido de vuelta".
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('crear')) setVista('signup');
+  }, []);
+
   // Arranca el OAuth: pide la URL al agente y la abre en el navegador del SO
   // (window.open pasa por setWindowOpenHandler → shell.openExternal).
   const iniciarGoogle = useCallback(async () => {

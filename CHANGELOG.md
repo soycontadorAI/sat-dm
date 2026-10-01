@@ -6,6 +6,16 @@
 
 _Cambios mergeados a `main` aún no etiquetados; el release de la semana los promueve._
 
+### Bug fix
+
+- **Quien llega desde "Empieza gratis" ve "Crea tu cuenta".** `app.todoconta.com/?crear`
+  abre directo el registro en vez de "Bienvenido de vuelta"; los botones de la landing
+  apuntan ahí.
+- **La campana de anuncios carga en la web.** La CSP de app.todoconta.com bloqueaba
+  `todoconta.com/anuncios.json`.
+- **JetBrains Mono se sirve desde la app** (`@fontsource-variable/jetbrains-mono`) en vez de
+  Google Fonts, que la CSP de la web también bloqueaba.
+
 ## [2.3.0] - 2026-09-30
 
 ### Feature
