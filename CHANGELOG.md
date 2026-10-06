@@ -6,6 +6,12 @@
 
 _Cambios mergeados a `main` aún no etiquetados; el release de la semana los promueve._
 
+### Bug fix
+
+- **La campana ya no cuenta como pendientes los anuncios viejos.** Un anuncio con más de
+  90 días de publicado se da por leído: sigue en la lista, pero no suma al contador ni se
+  marca como nuevo. Para quitarlo de la lista sigue estando `expiresAt`.
+
 ### Tooling
 
 - **La app ya lee los planes v3 de la licencia.** `license_client` guarda y expone los topes y

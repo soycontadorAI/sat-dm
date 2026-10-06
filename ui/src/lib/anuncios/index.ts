@@ -8,6 +8,24 @@ import type { Anuncio } from './types';
 
 export type { Anuncio, AnuncioCategoria } from './types';
 
+/**
+ * Un anuncio con más de estos días de publicado cuenta como leído: sigue en la
+ * lista, pero ya no suma a "sin leer" ni se marca como nuevo. Para quitarlo de
+ * la lista, `expiresAt` en el JSON.
+ */
+export const DIAS_PARA_DAR_POR_LEIDO = 90;
+
+/** Ids de los anuncios publicados hace más de DIAS_PARA_DAR_POR_LEIDO días. */
+export function idsViejos(anuncios: Anuncio[], ahora = Date.now()): Set<string> {
+  const limite = ahora - DIAS_PARA_DAR_POR_LEIDO * 86_400_000;
+  const viejos = new Set<string>();
+  for (const a of anuncios) {
+    const t = Date.parse(a.publishedAt);
+    if (Number.isFinite(t) && t < limite) viejos.add(a.id);
+  }
+  return viejos;
+}
+
 interface UseAnunciosState {
   anuncios: Anuncio[];
   unreadCount: number;
@@ -55,12 +73,17 @@ export function useAnuncios(): UseAnunciosState {
     return () => window.removeEventListener('focus', onFocus);
   }, [cargar]);
 
+  const viejos = useMemo(() => idsViejos(anuncios), [anuncios]);
+
   const unreadCount = useMemo(
-    () => anuncios.reduce((n, a) => (readMap[a.id] ? n : n + 1), 0),
-    [anuncios, readMap],
+    () => anuncios.reduce((n, a) => (readMap[a.id] || viejos.has(a.id) ? n : n + 1), 0),
+    [anuncios, readMap, viejos],
   );
 
-  const isRead = useCallback((id: string) => readMap[id] === true, [readMap]);
+  const isRead = useCallback(
+    (id: string) => readMap[id] === true || viejos.has(id),
+    [readMap, viejos],
+  );
 
   const markRead = useCallback((id: string) => {
     setReadMap(storageMarkRead(id));
