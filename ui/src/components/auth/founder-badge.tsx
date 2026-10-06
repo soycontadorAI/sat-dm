@@ -21,18 +21,18 @@ export function FounderBadge() {
     <Tooltip>
       <TooltipTrigger asChild>
         <Badge
-          variant="secondary"
-          className="gap-1 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+          variant="chip"
+          className="gap-1"
           tabIndex={0}
         >
-          <Icon icon="ph:crown-simple-fill" className="size-3 text-amber-600 dark:text-amber-400" />
+          <Icon icon="ph:crown-simple-fill" className="size-3" />
           Fundador
         </Badge>
       </TooltipTrigger>
       {/* Momento celebratorio → tarjeta navy (bg-foreground del primitive). */}
       <TooltipContent side="bottom" align="end" className="w-67 rounded-xl p-3.5 text-left">
         <span className="flex items-center gap-1.5 text-[13.5px] font-extrabold tracking-tight">
-          <Icon icon="ph:crown-simple-fill" className="size-3.5 text-amber-400" />
+          <Icon icon="ph:crown-simple-fill" className="size-3.5" />
           Miembro Fundador
         </span>
         <span className="mt-1.5 block text-xs leading-relaxed text-background/80">
@@ -40,7 +40,7 @@ export function FounderBadge() {
           construir esto con nosotros desde el inicio.
         </span>
         <span className="mt-2 block border-t border-background/20 pt-1.5 text-[11px] font-semibold text-background/70">
-          Uno de los primeros 30 · acceso de por vida
+          Uno de los primeros 30, con acceso de por vida
         </span>
       </TooltipContent>
     </Tooltip>

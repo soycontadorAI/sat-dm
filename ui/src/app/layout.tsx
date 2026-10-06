@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
-// JetBrains Mono servida desde la app: la CSP de la web no deja cargar Google Fonts.
-import '@fontsource-variable/jetbrains-mono';
+// Geist y Geist Mono (marca Señal) servidas desde la app: la CSP de la web no
+// deja cargar Google Fonts y la app de escritorio corre sin red.
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
 import './globals.css';
 import { AuthProvider } from '@/providers/auth-provider';
 import { ServerProvider } from '@/providers/server-provider';

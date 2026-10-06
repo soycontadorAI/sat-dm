@@ -149,6 +149,25 @@ import lockSimple from '@iconify-icons/ph/lock-simple-light';
 import printer from '@iconify-icons/ph/printer-light';
 import scales from '@iconify-icons/ph/scales-light';
 
+// Navegación por espacios (F3): riel, panel, ⌘K con órdenes y destinos Pronto.
+import arrowElbowDownLeft from '@iconify-icons/ph/arrow-elbow-down-left-light';
+import books from '@iconify-icons/ph/books-light';
+import calendarBlank from '@iconify-icons/ph/calendar-blank-light';
+import caretDoubleLeft from '@iconify-icons/ph/caret-double-left-light';
+import caretDoubleRight from '@iconify-icons/ph/caret-double-right-light';
+import certificate from '@iconify-icons/ph/certificate-light';
+import chartLineUp from '@iconify-icons/ph/chart-line-up-light';
+import chartPieSlice from '@iconify-icons/ph/chart-pie-slice-light';
+import fileArrowDown from '@iconify-icons/ph/file-arrow-down-light';
+import fileCode from '@iconify-icons/ph/file-code-light';
+import fingerprint from '@iconify-icons/ph/fingerprint-light';
+import handCoins from '@iconify-icons/ph/hand-coins-light';
+import identificationCard from '@iconify-icons/ph/identification-card-light';
+import paperPlaneTilt from '@iconify-icons/ph/paper-plane-tilt-light';
+import receiptX from '@iconify-icons/ph/receipt-x-light';
+import stamp from '@iconify-icons/ph/stamp-light';
+import toolbox from '@iconify-icons/ph/toolbox-light';
+
 addIcon('ph:arrow-counter-clockwise-light', arrowCounterClockwise);
 addIcon('ph:arrow-down-light', arrowDown);
 addIcon('ph:arrow-left-light', arrowLeft);
@@ -284,3 +303,22 @@ addIcon('ph:heartbeat-light', heartbeat);
 addIcon('ph:lock-simple-light', lockSimple);
 addIcon('ph:printer-light', printer);
 addIcon('ph:scales-light', scales);
+
+// Navegación por espacios (ver bloque de imports arriba).
+addIcon('ph:arrow-elbow-down-left-light', arrowElbowDownLeft);
+addIcon('ph:books-light', books);
+addIcon('ph:calendar-blank-light', calendarBlank);
+addIcon('ph:caret-double-left-light', caretDoubleLeft);
+addIcon('ph:caret-double-right-light', caretDoubleRight);
+addIcon('ph:certificate-light', certificate);
+addIcon('ph:chart-line-up-light', chartLineUp);
+addIcon('ph:chart-pie-slice-light', chartPieSlice);
+addIcon('ph:file-arrow-down-light', fileArrowDown);
+addIcon('ph:file-code-light', fileCode);
+addIcon('ph:fingerprint-light', fingerprint);
+addIcon('ph:hand-coins-light', handCoins);
+addIcon('ph:identification-card-light', identificationCard);
+addIcon('ph:paper-plane-tilt-light', paperPlaneTilt);
+addIcon('ph:receipt-x-light', receiptX);
+addIcon('ph:stamp-light', stamp);
+addIcon('ph:toolbox-light', toolbox);

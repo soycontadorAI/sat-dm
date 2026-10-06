@@ -9,25 +9,13 @@ export function tipoPersona(rfc: string | null | undefined): TipoPersona {
   return (rfc || '').trim().length >= 13 ? 'PF' : 'PM';
 }
 
-// Paleta de identidad por empresa (badge del selector). Es una paleta de DATOS
-// (distinguir empresas entre sí), no tokens de superficie del design system —
-// por eso son hex fijos y no variables CSS. Los tres primeros coinciden con
-// primary/success/warning del DS.
-const PALETA_EMPRESA = [
-  '#0B5FFF', // primary
-  '#059669', // success
-  '#B45309', // warning
-  '#7C3AED', // violeta
-  '#DB2777', // rosa
-  '#0891B2', // cian oscuro
-] as const;
-
-/** Color determinista por RFC (estable entre sesiones y vistas). */
-export function colorEmpresa(rfc: string | null | undefined): string {
-  const s = (rfc || '').trim().toUpperCase();
-  let hash = 0;
-  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
-  return PALETA_EMPRESA[hash % PALETA_EMPRESA.length];
+/**
+ * Fondo del cuadro de identidad de una empresa. Señal no tiene colores de
+ * identidad: todas van en tinta (el texto encima va en `text-background`). Se
+ * queda la firma por RFC para no tocar a quien lo llama.
+ */
+export function colorEmpresa(_rfc?: string | null): string {
+  return 'var(--foreground)';
 }
 
 /** Iniciales para avatares (p. ej. del email de la cuenta o del nombre). */

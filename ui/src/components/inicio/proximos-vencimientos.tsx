@@ -36,7 +36,7 @@ export function ProximosVencimientos({ items }: ProximosVencimientosProps) {
               className="group flex items-center gap-3 border-t border-border/60 py-2.5 first:border-t-0 first:pt-0 last:pb-0"
             >
               <span
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg font-mono text-[11px] font-bold text-white"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg font-mono text-[11px] font-bold text-background"
                 style={{ background: colorEmpresa(empresa.rfc) }}
               >
                 {iniciales(empresa.nombre)}

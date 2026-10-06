@@ -30,7 +30,7 @@ export function EmpresaChip({
   return (
     <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-muted-foreground">
       <span
-        className="flex size-4 shrink-0 items-center justify-center rounded font-mono text-[8px] font-bold text-white"
+        className="flex size-4 shrink-0 items-center justify-center rounded font-mono text-[8px] font-bold text-background"
         style={{ background: colorEmpresa(empresa.rfc) }}
       >
         {iniciales(empresa.nombre)}

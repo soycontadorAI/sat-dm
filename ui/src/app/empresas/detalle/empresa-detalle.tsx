@@ -90,7 +90,7 @@ export function EmpresaDetalle() {
       <div className="space-y-4">
         <div className="flex items-start gap-4">
           <span
-            className="flex size-11.5 shrink-0 items-center justify-center rounded-[11px] font-mono text-[15px] font-bold text-white"
+            className="flex size-11.5 shrink-0 items-center justify-center rounded-[11px] font-mono text-[15px] font-bold text-background"
             style={{ background: colorEmpresa(empresa.rfc) }}
           >
             {tipoPersona(empresa.rfc)}
