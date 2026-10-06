@@ -1518,6 +1518,27 @@ export class SatApiClient {
       empresa_ids: empresaIds,
     });
   }
+
+  // -----------------------------------------------------------------------
+  // Sesión única (F1.1): gana la sesión más reciente
+  // -----------------------------------------------------------------------
+
+  /** (Escritorio) Estado local de la sesión, sin red. Reporta la interacción. */
+  async sesionEstado(interaccionHaceS: number | null): Promise<EstadoSesionUnica> {
+    const qs =
+      interaccionHaceS === null ? '' : `?interaccion_hace_s=${encodeURIComponent(interaccionHaceS)}`;
+    return this.request<EstadoSesionUnica>(`/auth/sesion${qs}`, {}, { reportarFallosDeRed: false });
+  }
+
+  /** Reclama la cuenta para esta instalación (abrir, iniciar sesión, "Continuar aquí"). */
+  async sesionReclamar(body: PeticionSesionUnica = {}): Promise<EstadoSesionUnica> {
+    return this.post<EstadoSesionUnica>('/auth/sesion/reclamar', { ...body });
+  }
+
+  /** Pregunta si otra instalación reclamó la cuenta. */
+  async sesionLatido(body: PeticionSesionUnica = {}): Promise<EstadoSesionUnica> {
+    return this.post<EstadoSesionUnica>('/auth/sesion/latido', { ...body });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1810,4 +1831,35 @@ function _filtrosToQuery(filtros: Record<string, unknown>): string {
     params.set(key, String(value));
   }
   return params.toString();
+}
+
+// ---------------------------------------------------------------------------
+// Sesión única (F1.1)
+// ---------------------------------------------------------------------------
+
+/** Cuerpo de reclamar/latido. En escritorio el agente ignora `instalacion_id`. */
+export interface PeticionSesionUnica {
+  instalacion_id?: string;
+  etiqueta?: string;
+  interaccion_hace_s?: number | null;
+}
+
+/** La instalación que tiene la cuenta ahora. */
+export interface OtraInstalacion {
+  etiqueta: string | null;
+  tipo: 'desktop' | 'web';
+  /** Cuándo reclamó la cuenta (ISO). */
+  desde: string | null;
+}
+
+export interface EstadoSesionUnica {
+  /** Otra instalación reclamó la cuenta y el servicio pidió cerrar esta. */
+  cerrada: boolean;
+  modo: 'apagado' | 'observar' | 'exigir' | null;
+  otra: OtraInstalacion | null;
+  /** La última llamada no llegó al servicio (nunca cierra por eso). */
+  sin_conexion: boolean;
+  instalacion_id: string;
+  etiqueta: string | null;
+  heartbeat_segundos: number;
 }

@@ -303,6 +303,11 @@ def _guardar_sesion(session) -> dict:
 
     lc.save_session(session)
     lc.clear_license_cache()
+    # Sesión única (F1.1): un cierre de la cuenta anterior no aplica a esta. La
+    # UI reclama la cuenta en cuanto ve la sesión iniciada.
+    from .. import sesion_unica
+
+    sesion_unica.reiniciar()
     # Con sesión fresca, jala/empuja el catálogo de empresas y las tareas
     # (best-effort, cada uno en su hilo).
     sincronizar_async("login")
@@ -585,8 +590,10 @@ def auth_transfer_intent(body: dict | None = Body(default=None)):
 def auth_logout():
     """Borra la sesión local (keyring + cache). Idempotente."""
     from .. import license_client as lc
+    from .. import sesion_unica
 
     lc.clear_session()
+    sesion_unica.reiniciar()
     return {"ok": True}
 
 

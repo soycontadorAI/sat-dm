@@ -31,6 +31,16 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   de licencia nunca bloquea. El resumen del mes viaja con la sincronización del catálogo.
 - `app.todoconta.com/planes` lleva a Suscripción con el plan y el intervalo de la liga
   (`?plan=pro&intervalo=mensual`) ya elegidos.
+- **Una sesión activa a la vez (gana la más reciente), en modo observar.** Al abrir la app o
+  iniciar sesión, esta computadora (o este navegador) reclama la cuenta; cada una tiene un
+  id estable y una etiqueta ("macOS · nombre-del-equipo", "Chrome en Windows"). La app
+  pregunta cada 60 segundos y al volver a la ventana si otra la reclamó. Con el servicio en
+  modo exigir, la desplazada muestra "Se cerró esta sesión porque abriste TodoConta en otra
+  computadora (…, hace N min)" con "Continuar aquí" (sin volver a iniciar sesión) y "Cerrar
+  sesión"; mientras tanto se pausan los reenvíos de contabilidad electrónica y la
+  sincronización, y las solicitudes del Web Service ya hechas se terminan de bajar. Sin
+  vencimiento por inactividad y sin internet nunca cierra. Mientras el servicio esté en
+  observar (el default) solo se registra y nadie ve nada.
 
 ### Bug fix
 
