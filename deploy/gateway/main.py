@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import contextvars
 from contextlib import asynccontextmanager
+import functools
 import hashlib
 import hmac
 import json
@@ -33,6 +34,7 @@ from pydantic import BaseModel
 
 import capacidades as caps_srv
 import oauth as oauth_srv
+import uso as uso_srv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("gateway")
@@ -145,6 +147,12 @@ _RATE_VENTANA_S = 300
 # Contexto del request autenticado (lo usan las tools MCP).
 ctx_user: contextvars.ContextVar[Optional[dict]] = contextvars.ContextVar(
     "ctx_user", default=None
+)
+# Uso por acción de la REST: el middleware `_log_uso` pone aquí un dict y
+# `_auth` le escribe el user_id (el endpoint corre en un hilo con una COPIA del
+# contexto, así que un ContextVar nuevo no regresaría; el dict compartido sí).
+ctx_uso: contextvars.ContextVar[Optional[dict]] = contextvars.ContextVar(
+    "ctx_uso", default=None
 )
 
 
@@ -432,6 +440,9 @@ def _auth(x_api_key: Optional[str], authorization: Optional[str]) -> dict:
         key = authorization[7:].strip()
     user = _validar_key(key)
     ctx_user.set(user)
+    holder = ctx_uso.get()
+    if holder is not None:
+        holder["user_id"] = user["user_id"]
     return user
 
 
@@ -828,6 +839,9 @@ def internal_vinculo(whatsapp: str, x_interno_token: str = Header(None)):
         raise HTTPException(status_code=404, detail="Número sin vínculo activo.")
     # Abacus solo con un plan que lo incluya (Completo, legado con IA, a la medida).
     caps_srv.exigir(filas[0]["user_id"], "abacus", via="vinculo")
+    # El plugin resuelve el vínculo por cada mensaje entrante: se cuenta el
+    # mensaje (nunca su contenido, que el gateway ni ve).
+    uso_srv.registrar(filas[0]["user_id"], "abacus_mensaje")
     return {"user_id": filas[0]["user_id"], "api_key_cifrada": filas[0]["api_key_cifrada"]}
 
 
@@ -861,6 +875,26 @@ try:
         if user is None:
             raise RuntimeError("Sesión MCP sin API key válida.")
         return user
+
+    def _tool(**opciones):
+        """`@mcp_srv.tool(...)` que además cuenta la llamada (uso por acción):
+        el nombre de la tool y el tipo de conexión, nunca los argumentos."""
+        registrar_tool = mcp_srv.tool(**opciones)
+
+        def decorador(fn):
+            @functools.wraps(fn)
+            def contada(*args, **kwargs):
+                user = ctx_user.get() or {}
+                uso_srv.registrar(
+                    user.get("user_id"), "mcp_herramienta",
+                    herramienta=uso_srv.herramienta_de(fn.__name__),
+                    conexion=user.get("conexion"),
+                )
+                return fn(*args, **kwargs)
+
+            return registrar_tool(contada)
+
+        return decorador
 
     # Por encima de esto no se adjunta el blob (un ZIP de meses de CFDIs o un
     # Excel grande sí pueden pesarlo) — se entrega solo el enlace firmado.
@@ -989,7 +1023,7 @@ try:
         contenido = _bytes_de_agente(base, headers, ruta)
         return _mcp_pdf(rfc, nombre_doc, esquema, contenido, "generado", uid, ruta)
 
-    @mcp_srv.tool()
+    @_tool()
     def listar_empresas() -> str:
         """Lista las empresas (RFC, nombre, métodos) del espacio del usuario."""
         user = _mcp_user()
@@ -1002,7 +1036,7 @@ try:
         ]
         return "\n".join(filas) or "No hay empresas registradas."
 
-    @mcp_srv.tool(structured_output=False)
+    @_tool(structured_output=False)
     def descargar_csf(rfc: str, forzar_nueva: bool = False) -> list:
         """Constancia de Situación Fiscal de la empresa, adjunta como PDF en esta misma
         respuesta. Si hay una copia de hace 90 días o menos la entrega al instante
@@ -1013,7 +1047,7 @@ try:
                               fallback_archivo=True, forzar_nueva=forzar_nueva,
                               frescura_dias=90, prefijo_archivo="csf")
 
-    @mcp_srv.tool(structured_output=False)
+    @_tool(structured_output=False)
     def descargar_opinion(rfc: str, forzar_nueva: bool = False) -> list:
         """Opinión de Cumplimiento 32-D de la empresa, adjunta como PDF en esta misma
         respuesta. Si hay una copia de hace 30 días o menos (la vigencia típica de la
@@ -1024,7 +1058,7 @@ try:
                               forzar_nueva=forzar_nueva, frescura_dias=30,
                               prefijo_archivo="opinion")
 
-    @mcp_srv.tool()
+    @_tool()
     def solicitar_cfdis(rfc: str, fecha_inicio: str, fecha_fin: str, tipo: str = "E") -> str:
         """Crea una solicitud de descarga masiva de CFDIs (tipo: E emitidos, R recibidos). Fechas YYYY-MM-DD."""
         user = _mcp_user()
@@ -1045,7 +1079,7 @@ try:
             f"solo cuando el SAT la libere (horas); consulta con estado_solicitud."
         )
 
-    @mcp_srv.tool()
+    @_tool()
     def estado_solicitud(rfc: str, id_solicitud: str) -> str:
         """Estado de una solicitud de descarga masiva."""
         user = _mcp_user()
@@ -1058,7 +1092,7 @@ try:
                 return str(s)
         return "Solicitud no encontrada."
 
-    @mcp_srv.tool(structured_output=False)
+    @_tool(structured_output=False)
     def descargar_zip_cfdis(rfc: str, id_solicitud: str) -> list:
         """Adjunta el ZIP de XMLs de una solicitud de descarga masiva ya lista —
         llamar después de que estado_solicitud confirme que terminó."""
@@ -1078,7 +1112,7 @@ try:
             _link_firmado(user["user_id"], ruta, zip_=True),
         )
 
-    @mcp_srv.tool()
+    @_tool()
     def consultar_listas_negras(rfcs: list[str]) -> str:
         """Consulta hasta 200 RFCs contra las listas negras del SAT (Art. 69 y 69-B)."""
         _mcp_user()
@@ -1090,7 +1124,7 @@ try:
         )
         return str(r.json()) if r.status_code == 200 else "No se pudieron consultar las listas."
 
-    @mcp_srv.tool()
+    @_tool()
     def procesar_cfdis(rfc: str, desde: str = "", hasta: str = "", tipo: str = "") -> str:
         """Carga al procesador los XML ya descargados de la empresa (fechas YYYY-MM-DD; tipo E/R o vacío para ambos). Correr después de que una solicitud esté descargada."""
         user = _mcp_user()
@@ -1109,7 +1143,7 @@ try:
             f"{d.get('archivos_encontrados', 0)} archivos encontrados, {len(d.get('errores', []))} con error."
         )
 
-    @mcp_srv.tool()
+    @_tool()
     def resumen_cfdis(rfc: str, desde: str = "", hasta: str = "", direccion: str = "") -> str:
         """KPIs del período procesado (totales, IVA/ISR retenidos y trasladados, conteos). direccion: E emitidos, R recibidos, vacío ambos."""
         user = _mcp_user()
@@ -1122,7 +1156,7 @@ try:
         )
         return str(r.json()) if r.status_code == 200 else f"No se pudo: {_detalle(r) or r.status_code}"
 
-    @mcp_srv.tool()
+    @_tool()
     def reporte_cfdis(rfc: str, nombre: str, desde: str = "", hasta: str = "") -> str:
         """Reporte JSON del período: totales-mes | top-contrapartes | integridad."""
         user = _mcp_user()
@@ -1135,7 +1169,7 @@ try:
         )
         return str(r.json()) if r.status_code == 200 else f"No se pudo: {_detalle(r) or r.status_code}"
 
-    @mcp_srv.tool(structured_output=False)
+    @_tool(structured_output=False)
     def excel_cfdis(rfc: str, desde: str = "", hasta: str = "", direccion: str = "", formato: str = "xlsx") -> list:
         """Genera y adjunta el Excel/CSV con el detalle de impuestos de los CFDIs ya
         procesados del período (correr después de procesar_cfdis). formato: xlsx|csv."""
@@ -1176,7 +1210,7 @@ try:
             return f"Datos inválidos o incompletos — {faltas}"
         return f"No se pudo calcular: {_detalle(r) or r.status_code}"
 
-    @mcp_srv.tool()
+    @_tool()
     def calcular_sbc(
         salario: float,
         tipo_salario: str = "mensual",
@@ -1193,7 +1227,7 @@ try:
             "es_zona_fronteriza": es_zona_fronteriza, "anio": anio,
         })
 
-    @mcp_srv.tool()
+    @_tool()
     def calcular_isr_salarios(
         ingreso_gravado: float,
         periodicidad: str = "mensual",
@@ -1208,7 +1242,7 @@ try:
             "es_asimilado": es_asimilado, "es_zona_fronteriza": es_zona_fronteriza, "anio": anio,
         })
 
-    @mcp_srv.tool()
+    @_tool()
     def calcular_aguinaldo(
         salario: float,
         tipo_salario: str,
@@ -1222,7 +1256,7 @@ try:
             "dias_aguinaldo": dias_aguinaldo, "anio": anio,
         })
 
-    @mcp_srv.tool()
+    @_tool()
     def calcular_finiquito(
         salario: float,
         tipo_salario: str,
@@ -1236,7 +1270,7 @@ try:
             "fecha_baja": fecha_baja, "anio": anio,
         })
 
-    @mcp_srv.tool()
+    @_tool()
     def calcular_carga_patronal(
         salario: float,
         tipo_salario: str = "mensual",
@@ -1251,7 +1285,7 @@ try:
             "clase_riesgo": clase_riesgo, "codigo_estado": codigo_estado, "anio": anio,
         })
 
-    @mcp_srv.tool()
+    @_tool()
     def indicadores_fiscales(anio: int = 2026) -> str:
         """Indicadores vigentes del año: UMA, salarios mínimos (general y ZLFN), etc."""
         user = _mcp_user()
@@ -1280,10 +1314,10 @@ try:
             api_key = request.headers.get("x-api-key") or (bearer if bearer.startswith("tc_") else "")
             try:
                 if api_key:
-                    user = _validar_key(api_key)
+                    user = {**_validar_key(api_key), "conexion": "api_key"}
                     _exigir_scope(user, "mcp")
                 else:
-                    user = oauth_srv.validar_access_token(bearer)
+                    user = {**oauth_srv.validar_access_token(bearer), "conexion": "oauth"}
                     # El token OAuth dura y se renueva solo: el plan se revisa
                     # en cada uso, no solo al autorizar.
                     caps_srv.exigir(user["user_id"], "mcp", via="oauth")
@@ -1315,10 +1349,15 @@ except ImportError:  # pragma: no cover — sin SDK, la REST sigue funcionando
 
 # ---------------------------------------------------------------------------
 # Logging de uso (básico): diagnóstico + insumo para facturación futura.
-# Vive en los logs del contenedor (`docker logs gateway`), no en Supabase
-# todavía — evita persistir de más antes de validar el MVP. Se registra AL
+# Vive en los logs del contenedor (`docker logs gateway`). Se registra AL
 # FINAL (fuera del try/except de MCP) para quedar como middleware más externo
 # y así también capturar los 401 tempranos del auth de /mcp.
+#
+# Además cuenta cada llamada autenticada a la REST v1 por cuenta (uso por
+# acción, `uso.py` → eventos_producto): solo el nombre del endpoint y si llegó
+# de Abacus. Abacus (OpenClaw) es lo único que entra por el puerto local del
+# VPS (127.0.0.1:8795); todo lo público pasa por Traefik, que siempre agrega
+# X-Forwarded-For. Las tools MCP se cuentan en `_tool`.
 # ---------------------------------------------------------------------------
 
 
@@ -1332,9 +1371,20 @@ async def _log_uso(request: Request, call_next):
         request.headers.get("authorization") or ""
     ).removeprefix("Bearer ").strip()
     huella = hashlib.sha256(clave.encode()).hexdigest()[:12] if clave else "-"
-    response = await call_next(request)
+    holder: dict = {}
+    marca = ctx_uso.set(holder)
+    try:
+        response = await call_next(request)
+    finally:
+        ctx_uso.reset(marca)
     dur_ms = int((time.monotonic() - inicio) * 1000)
     logger.info(
         "uso key=%s %s %s -> %s (%sms)", huella, request.method, path, response.status_code, dur_ms
     )
+    if path.startswith("/v1") and holder.get("user_id"):
+        uso_srv.registrar(
+            holder["user_id"], "api_llamada",
+            endpoint=uso_srv.endpoint_de(path),
+            origen="integracion" if request.headers.get("x-forwarded-for") else "abacus",
+        )
     return response
