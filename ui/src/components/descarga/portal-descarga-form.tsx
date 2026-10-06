@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@/components/ui/icon';
 import { useServer } from '@/providers/server-provider';
@@ -21,6 +21,7 @@ import { JobProgress } from '@/components/descarga/job-progress';
 import { NavegadorStatusBanner } from '@/components/shared/navegador-status';
 import { metodoPortalPreferido, etiquetaMetodo } from '@/lib/empresa-metodo';
 import type { Empresa } from '@/lib/types';
+import { usePrefill, type PrefillPortal } from '@/lib/prefill';
 
 type TipoComprobante = 'R' | 'E' | 'RE';
 
@@ -54,6 +55,31 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
   const corriendo = job.estado !== 'idle' && job.estado !== 'done'
     && job.estado !== 'error' && job.estado !== 'cancelled';
 
+  // Orden de ⌘K: el primer Enter llena el formulario y deja el foco en
+  // "Iniciar descarga"; el segundo Enter la arranca (con Contraseña, el
+  // captcha aparece aquí mismo).
+  const prefill = usePrefill('portal');
+  const [deOrden, setDeOrden] = useState<PrefillPortal | null>(null);
+  const [enfocarPendiente, setEnfocarPendiente] = useState(false);
+  const iniciarRef = useRef<HTMLButtonElement>(null);
+  const listoDesde = useRef(0);
+
+  useEffect(() => {
+    if (!prefill) return;
+    setDesde(prefill.desde);
+    setHasta(prefill.hasta);
+    setTipo(prefill.tipo);
+    setDeOrden(prefill);
+    setEnfocarPendiente(true);
+  }, [prefill]);
+
+  useEffect(() => {
+    if (!enfocarPendiente || !metodo || corriendo) return;
+    listoDesde.current = Date.now() + 400;
+    iniciarRef.current?.focus();
+    setEnfocarPendiente(false);
+  }, [enfocarPendiente, metodo, corriendo]);
+
   // Refresca al padre cuando el job pasa a 'done' (p. ej. para actualizar la
   // lista de descargas recientes sin recargar la página).
   useEffect(() => {
@@ -62,6 +88,8 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
 
   function iniciar() {
     if (!metodo) return;
+    if (Date.now() < listoDesde.current) return;
+    setDeOrden(null);
     if (metodo === 'fiel') {
       job.iniciar(
         () =>
@@ -103,6 +131,15 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
+            {deOrden && (
+              <div className="flex items-start gap-2.5 rounded-[10px] border border-border bg-background px-3.5 py-2.5 text-[13px] text-muted-foreground">
+                <Icon icon="ph:arrow-elbow-down-left-light" className="mt-0.5 size-4 shrink-0 text-foreground" />
+                <span>
+                  <span className="font-semibold text-foreground">Lo llenó tu orden:</span>{' '}
+                  {deOrden.etiqueta}. Revisa y confirma con Enter.
+                </span>
+              </div>
+            )}
             {/* Rango de fechas */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -155,7 +192,7 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
                       icon={metodo === 'fiel' ? 'ph:shield-check-light' : 'ph:key-light'}
                       className="size-3.5"
                     />
-                    Usando: {etiquetaMetodo(metodo)}
+                    Usando {etiquetaMetodo(metodo)}
                   </div>
                 </div>
               )}
@@ -163,9 +200,13 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
 
             {/* Submit */}
             <Button
+              ref={iniciarRef}
               onClick={iniciar}
               disabled={!metodo || corriendo}
               className="w-full sm:w-auto"
+              onKeyDown={(e) => {
+                if (e.repeat && e.key === 'Enter') e.preventDefault();
+              }}
             >
               <Icon
                 icon={metodo === 'fiel' ? 'ph:shield-check-light' : 'ph:key-light'}

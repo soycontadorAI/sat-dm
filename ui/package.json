@@ -6,7 +6,8 @@
     "dev": "next dev --port 3001 --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:ordenes": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/ordenes.test.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

@@ -112,6 +112,30 @@ function EmpresasContenido() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, router]);
 
+  // Acceso directo "SAT > Constancia y Opinión 32-D" (navegación por
+  // espacios): /empresas?abrir=1 abre la fila de la empresa activa;
+  // ?rfc=<RFC>&abrir=1 la de esa empresa. Con &bajar=constancia|opinion (orden
+  // de ⌘K para una empresa con Contraseña) arranca la descarga en la fila, con
+  // el captcha dentro de la app. Se limpia el query para que back/reload no lo
+  // repita.
+  const [abrirFila, setAbrirFila] = useState<{ key: string } | null>(null);
+  const [autoBajar, setAutoBajar] = useState<{ rfc: string; doc: 'constancia' | 'opinion' } | null>(null);
+  useEffect(() => {
+    if (searchParams.get('abrir') !== '1') return;
+    const rfc = (searchParams.get('rfc') || activeRfc || '').toUpperCase();
+    // Sin RFC todavía (catálogo cargando): el efecto vuelve a correr al llegar.
+    if (!rfc || !activas.some((e) => e.rfc === rfc)) return;
+    setVista('activas');
+    setQ('');
+    setTipo('todas');
+    setEstadoFiltro('todos');
+    setAbrirFila({ key: rfc });
+    const bajar = searchParams.get('bajar');
+    if (bajar === 'constancia' || bajar === 'opinion') setAutoBajar({ rfc, doc: bajar });
+    router.replace('/empresas');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, activeRfc, activas.length, router]);
+
   async function withBusy(rfc: string, fn: () => Promise<void>) {
     setBusy(rfc);
     setAccionError(null);
@@ -273,6 +297,7 @@ function EmpresasContenido() {
                   : undefined
               }
               columns={columnas}
+              abrirKey={vista === 'activas' ? abrirFila : null}
               actionsHeader="Acciones"
               actions={(e) => (
                 <EmpresaRowActions
@@ -286,7 +311,12 @@ function EmpresasContenido() {
               )}
               expandable={{
                 render: (e) => (
-                  <EmpresaRowExpanded empresa={e} onJobDone={refresh} />
+                  <EmpresaRowExpanded
+                    empresa={e}
+                    onJobDone={refresh}
+                    autoBajar={autoBajar?.rfc === e.rfc ? autoBajar.doc : undefined}
+                    onAutoBajarIniciado={() => setAutoBajar(null)}
+                  />
                 ),
               }}
             />

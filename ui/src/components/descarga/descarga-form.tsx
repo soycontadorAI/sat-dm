@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { usePrefill, type PrefillDescarga } from '@/lib/prefill';
 
 // ---------------------------------------------------------------------------
 // Parámetros que emite el form (la página expande "A" en dos solicitudes E + R).
@@ -67,8 +68,40 @@ export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProp
   const [tipoSolicitud, setTipoSolicitud] = useState<'CFDI' | 'Metadata'>('CFDI');
   const [tipoComprobante, setTipoComprobante] = useState<ComprobanteSeleccion>('E');
 
+  // Orden de ⌘K ("descargar recibidos de septiembre de ..."): el primer Enter
+  // llena el formulario y deja el foco en "Solicitar descarga"; el segundo
+  // Enter la manda. Nada sale al SAT sin ese segundo Enter (el SAT limita las
+  // solicitudes repetidas con el mismo criterio).
+  const prefill = usePrefill('descarga');
+  const [deOrden, setDeOrden] = useState<PrefillDescarga | null>(null);
+  const [enfocarPendiente, setEnfocarPendiente] = useState(false);
+  const submitRef = useRef<HTMLButtonElement>(null);
+  // Un Enter sostenido no debe mandar la solicitud: ignorar el submit en los
+  // primeros instantes después de llenar.
+  const listoDesde = useRef(0);
+
+  useEffect(() => {
+    if (!prefill) return;
+    setFechaInicio(prefill.desde);
+    setFechaFin(prefill.hasta);
+    setTipoSolicitud('CFDI');
+    setTipoComprobante(prefill.comprobante);
+    setDeOrden(prefill);
+    setEnfocarPendiente(true);
+  }, [prefill]);
+
+  const isDisabledPrefill = disabled || isLoading;
+  useEffect(() => {
+    if (!enfocarPendiente || isDisabledPrefill) return;
+    listoDesde.current = Date.now() + 400;
+    submitRef.current?.focus();
+    setEnfocarPendiente(false);
+  }, [enfocarPendiente, isDisabledPrefill]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (Date.now() < listoDesde.current) return;
+    setDeOrden(null);
     onSubmit({
       fecha_inicio: fechaInicio,
       fecha_fin: fechaFin,
@@ -93,6 +126,15 @@ export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProp
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {deOrden && (
+            <div className="flex items-start gap-2.5 rounded-[10px] border border-border bg-background px-3.5 py-2.5 text-[13px] text-muted-foreground">
+              <Icon icon="ph:arrow-elbow-down-left-light" className="mt-0.5 size-4 shrink-0 text-foreground" />
+              <span>
+                <span className="font-semibold text-foreground">Lo llenó tu orden:</span>{' '}
+                {deOrden.etiqueta}. Revisa y confirma con Enter.
+              </span>
+            </div>
+          )}
           {/* Date range — se queda como está, nativo */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -156,7 +198,15 @@ export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProp
           </div>
 
           {/* Submit */}
-          <Button type="submit" disabled={isDisabled} className="w-full sm:w-auto">
+          <Button
+            ref={submitRef}
+            type="submit"
+            disabled={isDisabled}
+            className="w-full sm:w-auto"
+            onKeyDown={(e) => {
+              if (e.repeat && e.key === 'Enter') e.preventDefault();
+            }}
+          >
             {isLoading ? (
               <>
                 <Icon icon="ph:circle-notch-light" className="size-4 animate-spin" />

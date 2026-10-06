@@ -29,6 +29,12 @@ interface Props {
   empresa: Empresa;
   /** Llamado cuando termina un job exitoso, para que el padre refresque el semáforo. */
   onJobDone: () => void;
+  /**
+   * Arranca sola la descarga de este documento al abrir la fila (orden de ⌘K
+   * "constancia de ..." para una empresa con Contraseña: el captcha sale aquí).
+   */
+  autoBajar?: Documento;
+  onAutoBajarIniciado?: () => void;
 }
 
 type Documento = 'constancia' | 'opinion';
@@ -48,7 +54,7 @@ function formatoFecha(iso: string | null | undefined): string | null {
  * línea, Constancia de Situación Fiscal y Opinión 32-D con descarga por el
  * canal preferido) + link al expediente fiscal (próximamente).
  */
-export function EmpresaRowExpanded({ empresa, onJobDone }: Props) {
+export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarIniciado }: Props) {
   const { apiClient } = useServer();
   const job = useJob();
   // Estado FIEL por documento: /constancia/fiel y /opinion/fiel son endpoints
@@ -130,6 +136,16 @@ export function EmpresaRowExpanded({ empresa, onJobDone }: Props) {
       { rfc: empresa.rfc },
     );
   }
+
+  // Orden de ⌘K: una sola vez por pedido. Con e.firma solo si es la empresa
+  // activa (los endpoints de e.firma usan la que está en sesión).
+  useEffect(() => {
+    if (!autoBajar) return;
+    onAutoBajarIniciado?.();
+    if (metodo === 'fiel' && !empresa.default) return;
+    void bajar(autoBajar);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoBajar]);
 
   async function abrir(kind: Documento, modo: ModoAbrir) {
     const ruta = kind === 'constancia' ? empresa.csf_path : empresa.opinion_path;
