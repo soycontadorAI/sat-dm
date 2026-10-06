@@ -372,7 +372,7 @@ function EmptyFiltro({ vista, q }: { vista: Vista; q: string }) {
       <p className="text-[13.5px]">
         {sinArchivadas
           ? 'No tienes empresas archivadas.'
-          : `Ninguna empresa coincide con «${q || 'los filtros'}».`}
+          : q ? `Ninguna empresa coincide con "${q}".` : 'Ninguna empresa coincide con los filtros.'}
       </p>
     </div>
   );

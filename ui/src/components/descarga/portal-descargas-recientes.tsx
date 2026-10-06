@@ -154,7 +154,7 @@ function DescargaPortalRow({ d, busy, onAbrirCarpeta }: RowProps) {
           </span>
         </div>
       </TableCell>
-      <TableCell className="text-right font-mono text-sm">{d.total ?? '—'}</TableCell>
+      <TableCell className="text-right font-mono text-sm">{d.total ?? '–'}</TableCell>
       <TableCell className="text-right">
         {d.ruta && (
           <Button

@@ -44,7 +44,7 @@ export function tituloOpinion(status: OpinionStatus | null | undefined): string 
     case 'positiva':
       return 'Opinión 32-D: positiva (al corriente)';
     case 'negativa':
-      return 'Opinión 32-D: negativa — revisa el detalle de la empresa';
+      return 'Opinión 32-D negativa: revisa el detalle de la empresa';
     case 'otro':
       return 'Opinión 32-D: sentido sin determinar';
     default:

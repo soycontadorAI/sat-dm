@@ -78,7 +78,7 @@ function badgeListaNegra(etiqueta: string | null, rfc: string) {
   if (!etiqueta) {
     return (
       <span className="text-xs text-muted-foreground" title={`${rfc} sin validar contra listas negras`}>
-        —
+        –
       </span>
     );
   }
@@ -220,7 +220,7 @@ export function CfdiTable({
                   </TableCell>
                   <TableCell>
                     <div className="font-medium leading-tight">
-                      {c.emisor_nombre || '—'}
+                      {c.emisor_nombre || '–'}
                     </div>
                     <div className="font-mono text-xs text-muted-foreground">
                       {c.emisor_rfc}
@@ -228,7 +228,7 @@ export function CfdiTable({
                   </TableCell>
                   <TableCell>
                     <div className="font-medium leading-tight">
-                      {c.receptor_nombre || '—'}
+                      {c.receptor_nombre || '–'}
                     </div>
                     <div className="font-mono text-xs text-muted-foreground">
                       {c.receptor_rfc}
@@ -319,7 +319,7 @@ export function CfdiTable({
                         <div>
                           <div className="text-muted-foreground">Serie / Folio</div>
                           <div className="font-mono">
-                            {c.serie || '—'} / {c.folio || '—'}
+                            {c.serie || '–'} / {c.folio || '–'}
                           </div>
                         </div>
                         <div>
@@ -340,19 +340,19 @@ export function CfdiTable({
                         </div>
                         <div>
                           <div className="text-muted-foreground">Método pago</div>
-                          <div>{c.metodo_pago || '—'}</div>
+                          <div>{c.metodo_pago || '–'}</div>
                         </div>
                         <div>
                           <div className="text-muted-foreground">Forma pago</div>
-                          <div>{c.forma_pago || '—'}</div>
+                          <div>{c.forma_pago || '–'}</div>
                         </div>
                         <div>
                           <div className="text-muted-foreground">Uso CFDI</div>
-                          <div>{c.receptor_uso_cfdi || '—'}</div>
+                          <div>{c.receptor_uso_cfdi || '–'}</div>
                         </div>
                         <div>
                           <div className="text-muted-foreground">Lugar expedición</div>
-                          <div>{c.lugar_expedicion || '—'}</div>
+                          <div>{c.lugar_expedicion || '–'}</div>
                         </div>
                       </div>
                       {hayWarnings && (

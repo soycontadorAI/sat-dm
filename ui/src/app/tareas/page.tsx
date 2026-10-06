@@ -188,7 +188,7 @@ export default function TareasPage() {
     <div className="space-y-5">
       <PageHeading
         title="Tareas"
-        description="Tu centro de mando: pendientes fiscales, recordatorios y lo que tengas en mente — con o sin empresa."
+        description="Tu centro de mando: pendientes fiscales, recordatorios y lo que tengas en mente, con o sin empresa."
         action={
           <Button onClick={() => setNuevaAbierta(true)}>
             <Icon icon="ph:plus-light" className="size-4" />

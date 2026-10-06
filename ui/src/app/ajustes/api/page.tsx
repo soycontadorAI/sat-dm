@@ -96,7 +96,7 @@ export default function AjustesApiPage() {
   async function revocar(k: ApiKey) {
     if (
       !window.confirm(
-        `¿Revocar «${k.nombre}»? Los sistemas o asistentes que la usen dejarán de funcionar.`,
+        `¿Revocar "${k.nombre}"? Los sistemas o asistentes que la usen dejarán de funcionar.`,
       )
     ) {
       return;
@@ -177,7 +177,7 @@ export default function AjustesApiPage() {
           <Icon icon="ph:key-light" />
           <AlertDescription>
             <p className="font-semibold text-foreground">
-              Tu nueva key — cópiala ahora, no se puede volver a ver:
+              Tu nueva key. Cópiala ahora, no se puede volver a ver:
             </p>
             <div className="flex w-full items-center gap-2">
               <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-3 py-2 font-mono text-xs">
@@ -211,7 +211,7 @@ export default function AjustesApiPage() {
             Nueva API key
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Una key por integración (p. ej. «Claude», «Mi sistema de facturación») —
+            Una key por integración (por ejemplo, "Claude" o "Mi sistema de facturación"),
             así puedes revocarlas por separado.
           </p>
         </div>
@@ -300,7 +300,7 @@ export default function AjustesApiPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             Conecta Claude, ChatGPT u otro asistente compatible con MCP a tus
             servicios de TodoConta (empresas, Constancia, Opinión 32-D, CFDIs,
-            listas negras). Agrégalo como «conector personalizado» con esta
+            listas negras). Agrégalo como "conector personalizado" con esta
             dirección y autentícate con una de tus API keys.
           </p>
         </div>

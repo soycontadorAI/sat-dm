@@ -84,7 +84,7 @@ function VersionRow({ version }: { version: string | undefined }) {
       control={
         <div className="flex items-center gap-3">
           <span className="font-mono text-[13px] text-foreground/80">
-            {version || '—'}
+            {version || '–'}
           </span>
           {conUpdater &&
             (updates?.estado === 'lista' ? (
@@ -219,7 +219,7 @@ export default function AjustesPage() {
 
   const web = esWeb();
   const version = process.env.NEXT_PUBLIC_APP_VERSION;
-  const sistema = mounted ? (web ? 'Web' : esWindows ? 'Windows' : 'macOS') : '—';
+  const sistema = mounted ? (web ? 'Web' : esWindows ? 'Windows' : 'macOS') : '–';
 
   return (
     <div className="max-w-260 space-y-6">
@@ -239,7 +239,7 @@ export default function AjustesPage() {
                 // nube; se bajan a su equipo con el botón Descargar.
                 'Viven en tu espacio seguro en la nube. Bájalas a tu equipo con el botón Descargar del Historial.'
               ) : (
-                <span className="block truncate font-mono">{dir || '—'}</span>
+                <span className="block truncate font-mono">{dir || '–'}</span>
               )
             }
             control={
@@ -276,7 +276,7 @@ export default function AjustesPage() {
           {!web && (
             <AjRow
               label="Sincronizar credenciales con mi espacio en línea"
-              sub="Tu e.firma y Contraseña del SAT viajan cifradas directo a tu espacio privado — nunca a bases de datos compartidas — para que puedas seguir trabajando desde el navegador, y lo que captures en la web aparezca aquí."
+              sub="Tu e.firma y Contraseña del SAT viajan cifradas directo a tu espacio privado (nunca a bases de datos compartidas) para que puedas seguir trabajando desde el navegador, y lo que captures en la web aparezca aquí."
               control={
                 <Switch
                   checked={syncCreds ?? true}
@@ -292,7 +292,7 @@ export default function AjustesPage() {
         <AjCard icon="ph:sun-light" title="Apariencia">
           <AjRow
             label="Tema"
-            sub="«Sistema» sigue lo que use tu computadora."
+            sub='"Sistema" sigue lo que use tu computadora.'
             col
             control={
               <div className="flex gap-2">

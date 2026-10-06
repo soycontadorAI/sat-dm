@@ -33,7 +33,7 @@ function traducirError(raw: string | null): string {
     return 'El SAT no respondió a tiempo. Esto pasa cuando su Web Service está saturado o caído. Inténtalo de nuevo en unos minutos.';
   }
   if (/SSL|certificate/i.test(raw)) {
-    return 'Falló la conexión segura con el SAT. Suele ser intermitente — inténtalo de nuevo.';
+    return 'Falló la conexión segura con el SAT. Suele ser intermitente. Inténtalo de nuevo.';
   }
   return raw;
 }
@@ -262,7 +262,7 @@ export default function DescargaPage() {
           <AlertDescription>
             {/* Un solo <p>: AlertDescription es grid y apilaría texto y Link. */}
             <p>
-              Agrega tu <strong>e.firma</strong> (recomendado — desbloquea descarga masiva por Web
+              Agrega tu <strong>e.firma</strong> (recomendado: desbloquea la descarga masiva por Web
               Service y elimina el captcha) o tu <strong>Contraseña del SAT</strong> (descarga directa con captcha)
               en{' '}
               <Link href="/empresas" className="font-medium underline underline-offset-2">

@@ -8,7 +8,7 @@ const formateadorNumero = new Intl.NumberFormat('es-MX', {
 /** Números en es-MX (hasta 4 decimales); strings/fechas tal cual. */
 function formatearValor(valor: unknown): string {
   if (typeof valor === 'number') return formateadorNumero.format(valor);
-  if (valor == null) return '—';
+  if (valor == null) return '–';
   return String(valor);
 }
 

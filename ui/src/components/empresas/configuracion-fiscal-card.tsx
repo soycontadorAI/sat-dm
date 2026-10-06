@@ -43,9 +43,9 @@ function diotHint(regimenes: RegimenFiscalConfig[]): string {
   }
   const obliga = regimenes.find((r) => regimenPresentaDiot(r.clave));
   if (obliga) {
-    return `Sugerido en «Sí» porque el régimen ${obliga.descripcion} está obligado a presentarla.`;
+    return `Sugerido en "Sí" porque el régimen ${obliga.descripcion} está obligado a presentarla.`;
   }
-  return `Sugerido en «No»: ${regimenes[0].descripcion} no está obligado por regla general. Actívalo si un supuesto lo obliga —por ejemplo, rebasar el límite de ingresos.`;
+  return `Sugerido en "No": ${regimenes[0].descripcion} no está obligado por regla general. Actívalo si un supuesto lo obliga (por ejemplo, rebasar el límite de ingresos).`;
 }
 
 export function ConfiguracionFiscalCard({ empresa, onGuardar, onDatosAplicados }: Props) {
@@ -345,7 +345,7 @@ export function ConfiguracionFiscalCard({ empresa, onGuardar, onDatosAplicados }
             />
             <span>
               {diotTocado && presentaDiot !== regimenesPresentanDiot(regimenes)
-                ? `Lo ajustaste a mano; por el régimen se sugiere «${regimenesPresentanDiot(regimenes) ? 'Sí' : 'No'}».`
+                ? `Lo ajustaste a mano; por el régimen se sugiere "${regimenesPresentanDiot(regimenes) ? 'Sí' : 'No'}".`
                 : diotHint(regimenes)}
             </span>
           </p>

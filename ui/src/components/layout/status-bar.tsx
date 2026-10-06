@@ -89,7 +89,7 @@ function chipDeVersion(
   version: string | undefined,
   conUpdater: boolean,
 ): VersionChip {
-  const v = version ? `v${version}` : '—';
+  const v = version ? `v${version}` : '–';
 
   // Sin updater (navegador/dev): solo la versión, sin acción.
   if (!conUpdater) {

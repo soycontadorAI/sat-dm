@@ -43,10 +43,10 @@ export function CfdiValidarButton({ rfc, onValidado }: Props) {
       const r = estatusRes.value;
       if (r.validados > 0) {
         huboCambios = true;
-        let resumen = `Estatus SAT: ${r.validados} validados — ${r.vigentes} vigentes, ${r.cancelados} cancelados`;
+        let resumen = `Estatus SAT: ${r.validados} validados (${r.vigentes} vigentes, ${r.cancelados} cancelados`;
         if (r.no_encontrados > 0) resumen += `, ${r.no_encontrados} no encontrados`;
         if (r.errores > 0) resumen += `, ${r.errores} con error`;
-        partes.push(resumen);
+        partes.push(`${resumen})`);
       } else {
         partes.push('Estatus SAT: sin CFDIs pendientes.');
       }
@@ -60,10 +60,10 @@ export function CfdiValidarButton({ rfc, onValidado }: Props) {
       if (r.validados > 0) {
         huboCambios = true;
         partes.push(
-          `Listas 69/69-B: ${r.validados} RFCs — EFOS ${r.efos}, aclarados ${r.aclarados}, en 69 ${r.lista_69}, limpios ${r.limpios}`,
+          `Listas 69 y 69-B: ${r.validados} RFCs (EFOS ${r.efos}, aclarados ${r.aclarados}, en 69 ${r.lista_69}, limpios ${r.limpios})`,
         );
       } else {
-        partes.push('Listas 69/69-B: RFCs verificados (válidos por 30 días).');
+        partes.push('Listas 69 y 69-B: RFCs verificados (válidos por 30 días).');
       }
     } else {
       const msg = mensajeDeError(listasRes.reason);
@@ -77,7 +77,7 @@ export function CfdiValidarButton({ rfc, onValidado }: Props) {
     }
 
     if (partes.length > 0) {
-      toast.success(partes.join(' · '));
+      toast.success(partes.map((p) => p.replace(/\.$/, '')).join('. ') + '.');
     }
     if (huboCambios) {
       onValidado();
@@ -90,9 +90,10 @@ export function CfdiValidarButton({ rfc, onValidado }: Props) {
     <Button variant="outline" size="sm" onClick={validar} disabled={busy}>
       <Icon
         icon={busy ? 'ph:circle-notch-light' : 'ph:shield-check-light'}
-        className={busy ? 'size-4 animate-spin' : 'size-4'}
+        // Lo automático corriendo va en cian (Señal).
+        className={busy ? 'size-4 animate-spin text-auto' : 'size-4'}
       />
-      Validar contra SAT
+      {busy ? 'Validando…' : 'Validar contra SAT'}
     </Button>
   );
 }

@@ -24,7 +24,7 @@ interface Props {
 }
 
 function formatoFecha(iso: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return '–';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -92,12 +92,12 @@ export function PagosIncidenciasPue({ rfc, filtros }: Props) {
           <TableBody>
             {data.items.map((i, idx) => (
               <TableRow key={`${i.complemento_uuid}-${idx}`}>
-                <TableCell className="font-mono text-xs">{i.factura_uuid || '—'}</TableCell>
+                <TableCell className="font-mono text-xs">{i.factura_uuid || '–'}</TableCell>
                 <TableCell className="text-xs">{formatoFecha(i.factura_fecha)}</TableCell>
                 <TableCell className="text-xs">
-                  <div className="font-medium">{i.emisor_nombre || '—'}</div>
+                  <div className="font-medium">{i.emisor_nombre || '–'}</div>
                   <div className="font-mono text-[10px] text-muted-foreground">
-                    {i.emisor_rfc || '—'}
+                    {i.emisor_rfc || '–'}
                   </div>
                 </TableCell>
                 <TableCell className="text-right font-mono text-xs">

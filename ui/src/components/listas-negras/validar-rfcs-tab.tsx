@@ -200,15 +200,15 @@ export function ValidarRfcsTab() {
                       <MatchBadge etiqueta={etiquetaDeMatch(m)} />
                     </TableCell>
                     <TableCell className="text-sm">
-                      {m.situacion_69b ?? <span className="text-muted-foreground">—</span>}
+                      {m.situacion_69b ?? <span className="text-muted-foreground">–</span>}
                     </TableCell>
                     <TableCell className="text-sm">
                       {m.supuestos_69.length > 0
                         ? m.supuestos_69.join(', ')
-                        : <span className="text-muted-foreground">—</span>}
+                        : <span className="text-muted-foreground">–</span>}
                     </TableCell>
                     <TableCell className="text-sm tabular-nums">
-                      {m.fecha_publicacion_69b ?? <span className="text-muted-foreground">—</span>}
+                      {m.fecha_publicacion_69b ?? <span className="text-muted-foreground">–</span>}
                     </TableCell>
                   </TableRow>
                 ))}

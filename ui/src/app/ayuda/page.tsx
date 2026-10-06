@@ -31,7 +31,7 @@ const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: '¿Cómo agrego una empresa?',
-        a: 'Ve a Empresas y toca «Agregar empresa». Solo necesitas el RFC y un acceso: tu e.firma (con su contraseña) o tu Contraseña del SAT (antes CIEC). Puedes registrar todas las empresas que manejes y cambiar entre ellas desde la parte superior del menú.',
+        a: 'Ve a Empresas y toca "Agregar empresa". Solo necesitas el RFC y un acceso: tu e.firma (con su contraseña) o tu Contraseña del SAT (antes CIEC). Puedes registrar todas las empresas que manejes y cambiar entre ellas desde la parte superior del menú.',
       },
       {
         q: '¿Necesito e.firma o me basta con la Contraseña del SAT?',
@@ -45,7 +45,7 @@ const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: '¿Cómo descargo mis CFDIs?',
-        a: 'Entra a Descargar CFDIs, elige el periodo y si quieres las emitidas, las recibidas o ambas, y toca «Solicitar descarga». Cuando estén listas las verás en el Historial y en Comprobantes.',
+        a: 'Entra a Descargar CFDIs, elige el periodo y si quieres las emitidas, las recibidas o ambas, y toca "Solicitar descarga". Cuando estén listas las verás en el Historial y en Comprobantes.',
       },
       {
         q: '¿Cuál es la diferencia entre descarga masiva y descarga rápida?',
@@ -153,7 +153,7 @@ export default function AyudaPage() {
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground">
                 <div className="mb-1 font-semibold text-foreground">
-                  Sin resultados para «{query}»
+                  Sin resultados para "{query}"
                 </div>
                 <div className="text-sm">
                   Prueba con otra palabra o escríbenos directamente.

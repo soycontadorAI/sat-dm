@@ -118,7 +118,7 @@ function SuscripcionActual() {
       const { url } = await apiClient.authSubscribe('anual');
       window.open(url, '_blank', 'noopener,noreferrer');
       toast.info(
-        'Te abrimos el navegador para pagar. Cuando termines, vuelve y toca "Ya pagué — actualizar estado".',
+        'Te abrimos el navegador para pagar. Cuando termines, vuelve y toca "Ya pagué, actualizar estado".',
       );
     } catch (e) {
       toast.error(mensajeDeError(e));
@@ -134,7 +134,7 @@ function SuscripcionActual() {
       const { url } = await apiClient.authSubscribe('anual_ia');
       window.open(url, '_blank', 'noopener,noreferrer');
       toast.info(
-        'Te abrimos el navegador para pagar. Cuando termines, vuelve y toca "Ya pagué — actualizar estado".',
+        'Te abrimos el navegador para pagar. Cuando termines, vuelve y toca "Ya pagué, actualizar estado".',
       );
     } catch (e) {
       toast.error(mensajeDeError(e));
@@ -245,7 +245,7 @@ function SuscripcionActual() {
                 <div className="flex flex-col">
                   <InfoRow
                     label={cancela ? 'Termina el' : 'Próxima renovación'}
-                    value={license.expires_at ? formatDate(license.expires_at) : '—'}
+                    value={license.expires_at ? formatDate(license.expires_at) : '–'}
                   />
                   <InfoRow label="Acceso premium en línea" value="Incluido" />
                   {tieneIa && <InfoRow label="Asistente con IA (Abacus + MCP)" value="Incluido" />}
@@ -431,7 +431,7 @@ function SuscripcionActual() {
                 className="inline-flex items-center gap-1.5 self-start text-xs font-semibold text-muted-foreground transition-colors hover:text-primary"
               >
                 <Icon icon="ph:arrows-clockwise-light" className="size-3.5" />
-                Ya pagué — actualizar estado
+                Ya pagué, actualizar estado
               </button>
             </PlanCard>
             <IaUpsellCard

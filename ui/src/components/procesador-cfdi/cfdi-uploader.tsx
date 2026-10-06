@@ -143,7 +143,7 @@ export function CfdiUploader({ bareback = false, onCargado }: Props) {
       <Icon icon="ph:warning-light" className="size-4" />
       <AlertDescription>
         No hay empresa activa. Activa una empresa en la sección Empresas para
-        cargar comprobantes — el procesador guarda los XMLs por empresa.
+        cargar comprobantes: el procesador guarda los XMLs por empresa.
       </AlertDescription>
     </Alert>
   ) : (

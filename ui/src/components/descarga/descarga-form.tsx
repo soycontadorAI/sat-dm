@@ -87,7 +87,7 @@ export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProp
           Solicitar descarga
         </CardTitle>
         <CardDescription>
-          Elige el periodo, el tipo de descarga y de qué facturas. «Ambas» pide
+          Elige el periodo, el tipo de descarga y de qué facturas. "Ambas" pide
           las emitidas y las recibidas al mismo tiempo.
         </CardDescription>
       </CardHeader>

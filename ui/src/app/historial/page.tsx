@@ -214,7 +214,7 @@ function DescargaRow({
         </div>
       </TableCell>
       <TableCell className="text-right font-mono text-sm">
-        {d.total ?? '—'}
+        {d.total ?? '–'}
       </TableCell>
       <TableCell className="text-right">
         {d.ruta && (

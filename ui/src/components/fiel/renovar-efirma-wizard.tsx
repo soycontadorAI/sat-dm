@@ -180,8 +180,8 @@ export function RenovarEfirmaWizard({
                 <AlertDescription>
                   Ya enviaste la renovación (operación{' '}
                   <span className="font-mono">{pendiente.numero_operacion}</span>). Solo
-                  falta descargar el certificado que emitió el SAT — suele tardar unos
-                  minutos.
+                  falta descargar el certificado que emitió el SAT (suele tardar unos
+                  minutos).
                 </AlertDescription>
               </Alert>
             ) : pendienteGenerada ? (
@@ -364,7 +364,7 @@ export function RenovarEfirmaWizard({
                       Nada se envió al SAT:{' '}
                       <strong className="text-foreground">tu e.firma actual sigue intacta</strong>.
                       La solicitud quedó guardada; reintenta ahora o cierra y
-                      retómala después desde Empresas — se reenviará la misma.
+                      retómala después desde Empresas y se reenviará la misma.
                     </>
                   )}
                 </p>

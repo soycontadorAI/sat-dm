@@ -236,7 +236,7 @@ export function MisCfdisTab() {
                   const etiqueta = (emisor.emisor_en_lista_negra ?? 'Limpio') as EtiquetaLista;
                   return (
                     <TableRow key={emisor.emisor_rfc}>
-                      <TableCell className="text-sm">{emisor.emisor_nombre || '—'}</TableCell>
+                      <TableCell className="text-sm">{emisor.emisor_nombre || '–'}</TableCell>
                       <TableCell className="font-mono text-xs">{emisor.emisor_rfc}</TableCell>
                       <TableCell>
                         {emisor.emisor_en_lista_negra ? (

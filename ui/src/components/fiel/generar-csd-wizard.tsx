@@ -167,7 +167,7 @@ export function GenerarCsdWizard({ empresa, open, onOpenChange, onDone }: Genera
                 <AlertTitle>Tienes un CSD pendiente de descargar</AlertTitle>
                 <AlertDescription className="space-y-2">
                   <span>
-                    «{csdPendiente.uso}» ya se envió (operación{' '}
+                    "{csdPendiente.uso}" ya se envió (operación{' '}
                     <span className="font-mono">{csdPendiente.numero_operacion}</span>);
                     solo falta bajar el certificado emitido.
                   </span>
@@ -349,8 +349,8 @@ export function GenerarCsdWizard({ empresa, open, onOpenChange, onDone }: Genera
                 ) : (
                   <>
                     Tu Certificado de Sello Digital quedó activo y se guardó en este
-                    equipo, junto con su contraseña. Ya puedes timbrar CFDI con «
-                    {resultado.uso ?? uso}».
+                    equipo, junto con su contraseña. Ya puedes timbrar CFDI con &quot;
+                    {resultado.uso ?? uso}&quot;.
                   </>
                 )}
               </p>

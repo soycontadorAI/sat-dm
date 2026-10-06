@@ -244,8 +244,8 @@ export default function PtuPage() {
                     tooltip={`Persona ${tipoDerivado === 'Moral' ? 'moral' : 'física'}${
                       sinEmpresa
                         ? ' (sin empresa activa; se asume moral)'
-                        : ' — según el RFC de la empresa activa'
-                    } · fecha límite legal de pago: ${formatDate(fechaLimite)}.`}
+                        : ' según el RFC de la empresa activa'
+                    }. Fecha límite legal de pago: ${formatDate(fechaLimite)}.`}
                   />
                 </div>
                 <Select
