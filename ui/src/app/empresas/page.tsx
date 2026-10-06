@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import { useEmpresas } from '@/hooks/use-empresas';
+import { usePlanesV3, usePlanLicencia } from '@/providers/auth-provider';
 import { PageHeading } from '@/components/layout/page-heading';
 import { EmpresaAddDialog } from '@/components/empresas/empresa-add-dialog';
+import { TopeEmpresasBarra, TopeEmpresasDialog } from '@/components/planes/tope-empresas';
 import { EmpresaStatusGroup } from '@/components/empresas/empresa-status-group';
 import { EmpresaRowExpanded } from '@/components/empresas/empresa-row-expanded';
 import { EmpresaTipoBadge } from '@/components/empresas/empresa-tipo-badge';
@@ -37,6 +39,8 @@ import {
 } from '@/lib/empresas-filtro';
 import type { Empresa } from '@/lib/types';
 import { mensajeDeError } from '@/lib/errores';
+import { topeEmpresasDeError, type TopeEmpresas } from '@/lib/api-client';
+import { estadoTope, topeLleno } from '@/lib/planes-v3';
 
 type Confirmacion = 'archive' | 'unarchive' | 'delete';
 type Vista = 'activas' | 'archivadas';
@@ -68,6 +72,10 @@ function EmpresasContenido() {
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [accionError, setAccionError] = useState<string | null>(null);
+  // Diálogo del tope de empresas (Archivar / Cambiar de plan); null = cerrado.
+  const [topeDialog, setTopeDialog] = useState<TopeEmpresas | null>(null);
+  const planesV3 = usePlanesV3();
+  const planLicencia = usePlanLicencia();
 
   // Vista + filtros de la lista (todo client-side).
   const [vista, setVista] = useState<Vista>('activas');
@@ -79,14 +87,29 @@ function EmpresasContenido() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const activas = empresas.filter((e) => !e.archived_at);
+  const archivadas = empresas.filter((e) => !!e.archived_at);
+  const activeRfc = activas.find((e) => e.default)?.rfc ?? null;
+
+  // Tope del plan (planes v3): contador, aviso al 80% y diálogo al 100%. Con
+  // el interruptor apagado o sin datos del plan es null y nada cambia.
+  const tope = estadoTope(planLicencia, activas.length, planesV3);
+
+  // Alta: con el plan lleno se abre el diálogo del tope en vez del modal.
+  function abrirAlta() {
+    if (tope && topeLleno(tope)) setTopeDialog(tope);
+    else setAddOpen(true);
+  }
+
   // ⌘N (GlobalShortcuts) y "Agregar empresa…" del palette llegan como
   // /empresas?alta=1: abre el alta y limpia el query para que back/reload
   // no lo re-dispare.
   useEffect(() => {
     if (searchParams.get('alta') === '1') {
-      setAddOpen(true);
+      abrirAlta();
       router.replace('/empresas');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, router]);
 
   async function withBusy(rfc: string, fn: () => Promise<void>) {
@@ -95,20 +118,27 @@ function EmpresasContenido() {
     try {
       await fn();
     } catch (e) {
-      setAccionError(mensajeDeError(e));
+      // 402 del agente (tope del plan): diálogo de Archivar / Cambiar de plan.
+      const t = topeEmpresasDeError(e);
+      if (t) setTopeDialog(t);
+      else setAccionError(mensajeDeError(e));
     } finally {
       setBusy(null);
     }
+  }
+
+  function desarchivar(rfc: string) {
+    if (tope && topeLleno(tope)) {
+      setTopeDialog(tope);
+      return;
+    }
+    void withBusy(rfc, () => unarchive(rfc));
   }
 
   function cambiarVista(v: Vista) {
     setVista(v);
     setTipo('todas');
   }
-
-  const activas = empresas.filter((e) => !e.archived_at);
-  const archivadas = empresas.filter((e) => !!e.archived_at);
-  const activeRfc = activas.find((e) => e.default)?.rfc ?? null;
 
   const enVista = vista === 'activas' ? activas : archivadas;
   const filtradas = useMemo(
@@ -162,11 +192,13 @@ function EmpresasContenido() {
         title="Empresas"
         description="Gestiona las empresas y sus RFCs"
         action={
-          <Button onClick={() => setAddOpen(true)}>
+          <Button onClick={abrirAlta}>
             <Icon icon="ph:plus-light" className="size-4" /> Agregar empresa
           </Button>
         }
       />
+
+      {tope && <TopeEmpresasBarra tope={tope} />}
 
       {(error || accionError) && (
         <Alert variant="destructive">
@@ -179,7 +211,7 @@ function EmpresasContenido() {
           <Icon icon="ph:circle-notch-light" className="size-4 animate-spin" /> Cargando empresas…
         </div>
       ) : empresas.length === 0 ? (
-        <EmptyState onAdd={() => setAddOpen(true)} />
+        <EmptyState onAdd={abrirAlta} />
       ) : (
         <>
           {/* Vista: activas / archivadas */}
@@ -248,7 +280,7 @@ function EmpresasContenido() {
                   archived={vista === 'archivadas'}
                   busy={busy === e.rfc}
                   onArchive={() => withBusy(e.rfc, () => archive(e.rfc))}
-                  onUnarchive={() => withBusy(e.rfc, () => unarchive(e.rfc))}
+                  onUnarchive={() => desarchivar(e.rfc)}
                   onDelete={() => withBusy(e.rfc, () => remove(e.rfc))}
                 />
               )}
@@ -278,6 +310,14 @@ function EmpresasContenido() {
         onOpenChange={setAddOpen}
         addFiel={addFiel}
         addCiec={addCiec}
+        onTope={setTopeDialog}
+      />
+
+      <TopeEmpresasDialog
+        tope={topeDialog}
+        onOpenChange={(o) => !o && setTopeDialog(null)}
+        activas={activas}
+        onArchivar={archive}
       />
     </div>
   );

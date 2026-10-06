@@ -94,10 +94,32 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     public readonly detail: string,
+    /** Cuerpo JSON completo de la respuesta (p. ej. `tope_empresas` del 402). */
+    public readonly body?: unknown,
   ) {
     super(`[${status}] ${detail}`);
     this.name = 'ApiError';
   }
+}
+
+/**
+ * Datos del 402 del agente cuando el plan no tiene lugar para otra empresa
+ * activa (alta o desarchivar). `null` si el error es de otro tipo.
+ */
+export function topeEmpresasDeError(e: unknown): TopeEmpresas | null {
+  if (!(e instanceof ApiError) || e.status !== 402) return null;
+  const body = e.body as { codigo?: unknown; tope_empresas?: unknown } | undefined;
+  if (body?.codigo !== 'tope_empresas' || !body.tope_empresas) return null;
+  const t = body.tope_empresas as Partial<TopeEmpresas>;
+  if (typeof t.tope !== 'number' || typeof t.activas !== 'number') return null;
+  return {
+    plan_codigo: t.plan_codigo ?? null,
+    plan_nombre: t.plan_nombre ?? null,
+    tope: t.tope,
+    activas: t.activas,
+    sobran: typeof t.sobran === 'number' ? t.sobran : 0,
+    siguiente_plan: t.siguiente_plan ?? null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -164,13 +186,15 @@ export class SatApiClient {
 
     if (!res.ok) {
       let detail: string;
+      let cuerpo: unknown;
       try {
-        const body = await res.json();
+        cuerpo = await res.json();
+        const body = cuerpo as { detail?: string };
         detail = body.detail ?? JSON.stringify(body);
       } catch {
         detail = await res.text().catch(() => res.statusText);
       }
-      const error = new ApiError(res.status, detail);
+      const error = new ApiError(res.status, detail, cuerpo);
       // Solo capturamos 5xx (fallo real del agente). Los 4xx son esperados
       // (409 job concurrente, 400/422 validación, 401 token) y harían ruido.
       // El 503 tampoco se reporta: por convención del agente significa
@@ -1165,14 +1189,30 @@ export class SatApiClient {
     return this.post<AuthSubscribeResponse>('/auth/subscribe', { plan });
   }
 
+  /**
+   * Planes v3: contratar o cambiar de plan (`{plan, intervalo}`). Sin
+   * suscripción v3 el servicio responde la `url` del Checkout de Stripe; con
+   * una activa puede cambiar el plan con prorrateo y responder sin `url`.
+   * Solo se llama con el interruptor de planes v3 encendido.
+   */
+  async authSubscribePlan(
+    plan: PlanV3Venta,
+    intervalo: IntervaloPlan,
+  ): Promise<SubscribePlanResponse> {
+    return this.post<SubscribePlanResponse>('/auth/subscribe', { plan, intervalo });
+  }
+
   /** Cancela la suscripción al fin del periodo. */
   async authCancelSubscription(): Promise<CancelSubscriptionResponse> {
     return this.post<CancelSubscriptionResponse>('/auth/cancel-subscription', {});
   }
 
-  /** Registra intención de pago por transferencia; devuelve datos bancarios. */
-  async authTransferIntent(): Promise<TransferIntentResponse> {
-    return this.post<TransferIntentResponse>('/auth/transfer-intent', {});
+  /**
+   * Registra intención de pago por transferencia; devuelve datos bancarios.
+   * Sin `plan`, el cuerpo vacío de siempre; con un plan v3 (solo anual), `{plan}`.
+   */
+  async authTransferIntent(plan?: PlanV3Venta): Promise<TransferIntentResponse> {
+    return this.post<TransferIntentResponse>('/auth/transfer-intent', plan ? { plan } : {});
   }
 
   /** Cierra sesión local (borra keyring + cache). */
@@ -1552,11 +1592,42 @@ export interface LicenseStatus {
   uso?: { empresas_activas: number | null };
   legado?: boolean;
   precio_asegurado_mxn?: number | null;
+  // Planes v3, F1 (aditivos; faltan = apagado / sin datos).
+  /** Interruptor del Día C: el backend ya cobra y aplica los planes v3. */
+  planes_v3_activo?: boolean;
+  /** Intervalo de la suscripción v3 vigente; null en legado y sin suscripción. */
+  intervalo?: IntervaloPlan | null;
   // Flags del cache local del agente.
   from_cache?: boolean;
   stale?: boolean;
   offline?: boolean;
   reason?: string;
+}
+
+/** Planes v3 que se contratan desde la app (A la medida se cotiza aparte). */
+export type PlanV3Venta = 'esencial' | 'pro' | 'completo';
+export type IntervaloPlan = 'anual' | 'mensual';
+
+export interface SubscribePlanResponse {
+  /** Checkout de Stripe para abrir en el navegador (alta nueva). */
+  url?: string;
+  session_id?: string;
+  /** Cambio aplicado sin checkout (suscripción v3 existente, con prorrateo). */
+  ok?: boolean;
+  plan?: string;
+  intervalo?: IntervaloPlan;
+  message?: string;
+}
+
+/** Cuerpo `tope_empresas` del 402 del agente (ver `topeEmpresasDeError`). */
+export interface TopeEmpresas {
+  plan_codigo: PlanCodigo | null;
+  plan_nombre: string | null;
+  tope: number;
+  activas: number;
+  /** Cuántas exceden el tope (altas en dos equipos sin internet). */
+  sobran: number;
+  siguiente_plan: { codigo: string; nombre: string; empresas: number | null } | null;
 }
 
 export interface AuthSubscribeResponse {

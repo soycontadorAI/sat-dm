@@ -12,7 +12,7 @@ import { StatusBar } from '@/components/layout/status-bar';
 import { Titlebar } from '@/components/layout/titlebar';
 import { useEfirmaReminder } from '@/hooks/use-efirma-reminder';
 import { useSolicitudesWatcher } from '@/hooks/use-solicitudes-watcher';
-import { useAuth } from '@/providers/auth-provider';
+import { useAuth, usePlanesV3 } from '@/providers/auth-provider';
 import LoginPage from '@/app/login/page';
 
 interface AppShellProps {
@@ -29,6 +29,7 @@ export function AppShell({ children }: AppShellProps) {
   useSolicitudesWatcher();
 
   const { license, loading } = useAuth();
+  const planesV3 = usePlanesV3();
   // (Versión web) /conectar debe ser alcanzable SIN sesión: es la puerta de
   // entrada manual al agente (piloto/soporte) cuando aún no hay conexión.
   const pathname = usePathname();
@@ -64,8 +65,10 @@ export function AppShell({ children }: AppShellProps) {
     <div className="flex h-screen flex-col overflow-hidden">
       <Titlebar />
       {/* La ventana de fundadores cerró y no vuelve: el FounderBanner se
-          eliminó (2026-07). PromoBanner es la campaña activa. */}
-      <PromoBanner />
+          eliminó (2026-07). PromoBanner (50% en el anual) se retira con los
+          planes v3: con el interruptor encendido ya no se muestra (el archivo
+          se queda para el banner de F5). */}
+      {!planesV3 && <PromoBanner />}
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto p-6 md:p-8">{children}</main>

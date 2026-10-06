@@ -6,7 +6,8 @@ import Link from 'next/link';
 
 import { cn } from '@/lib/utils';
 import { useServer } from '@/providers/server-provider';
-import { useAuth } from '@/providers/auth-provider';
+import { useAuth, usePlanesV3, usePlanLicencia } from '@/providers/auth-provider';
+import { PlanRequerido } from '@/components/planes/candado-plan';
 import { PageHeading } from '@/components/layout/page-heading';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -146,6 +147,10 @@ function AjRow({
 export default function AjustesPage() {
   const { apiClient } = useServer();
   const { license, logout } = useAuth();
+  // Planes v3: el plan no incluye la MCP (ni la API) → etiqueta "Pro" en la fila.
+  const planesV3 = usePlanesV3();
+  const planLicencia = usePlanLicencia();
+  const sinMcp = planesV3 && planLicencia !== null && !planLicencia.capacidades.mcp;
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [esWindows, setEsWindows] = useState(false);
@@ -353,11 +358,14 @@ export default function AjustesPage() {
         <AjCard icon="ph:plugs-connected-light" title="API y conexiones (MCP)">
           <AjRow
             label="API keys y conexión con IA"
-            sub="Emite y revoca las keys para conectar tus sistemas —o tu asistente de IA vía MCP— a TodoConta."
+            sub="Emite y revoca las keys para conectar tus sistemas (o tu asistente de IA vía MCP) a TodoConta."
             control={
-              <Button asChild variant="outline" size="sm">
-                <Link href="/ajustes/api">Administrar</Link>
-              </Button>
+              <div className="flex items-center gap-2">
+                {sinMcp && <PlanRequerido plan="Pro" />}
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/ajustes/api">{sinMcp ? 'Ver' : 'Administrar'}</Link>
+                </Button>
+              </div>
             }
           />
         </AjCard>
