@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import List, Optional
 
+from .. import demo
 from ..core.http_client import _build_session, make_request
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,12 @@ def validar_cfdi(
     Returns:
         EstadoCFDI con el resultado.
     """
+    # Modo de grabación: un CFDI de una empresa de demo (como emisora o
+    # receptora) nunca va al SAT; los demás de la misma tanda sí.
+    if demo.aplica(emisor_rfc) or demo.aplica(receptor_rfc):
+        from ..demo import sat as sat_demo
+        return sat_demo.estatus(uuid, emisor_rfc, receptor_rfc, total)
+
     body = _build_soap_envelope(uuid, emisor_rfc, receptor_rfc, total)
     headers = {
         "Content-Type": "text/xml;charset=UTF-8",

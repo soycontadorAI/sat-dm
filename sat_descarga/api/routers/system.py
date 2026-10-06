@@ -17,6 +17,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
+from ... import demo
 from ...core.config import es_modo_hosted
 from ..state import _session
 
@@ -65,6 +66,9 @@ def health():
         "efirma_vencimiento": fiel.not_valid_after.date().isoformat() if fiel else None,
         "efirma_vigente": fiel.vigente if fiel else None,
         "navegador": navegador,
+        # Modo de grabación (empresas de demo sin SAT). La UI puede mostrar una
+        # marca discreta solo en dev/labs; nunca un banner (sale en cuadro).
+        "modo_grabacion": demo.activo(),
     }
 
 

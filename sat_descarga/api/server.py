@@ -91,6 +91,12 @@ async def lifespan(app: "FastAPI"):
     # que necesite FIEL la carga on-demand. Ver memoria
     # `feedback-keyring-macos-unsigned-hang`.
 
+    # Modo de grabación (SAT_DM_MODO_GRABACION=1): una línea en el log para
+    # quien opera. Sin banner en pantalla: saldría en la grabación.
+    from .. import demo
+
+    demo.anunciar()
+
     # Warm-up del navegador del portal en un hilo daemon: descarga/actualiza
     # Chromium en background (primera vez o tras actualizar la app, cuando
     # Playwright pide una revisión nueva). No toca keyring ni bloquea el

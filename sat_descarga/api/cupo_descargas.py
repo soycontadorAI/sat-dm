@@ -120,9 +120,20 @@ def usadas_del_mes() -> int:
     return _leer()["usadas"]
 
 
-def registrar(tipo: str) -> None:
+def _es_demo(rfc: Optional[str]) -> bool:
+    """Modo de grabación: lo de una empresa de demo no sale al SAT, así que ni
+    gasta ni cuenta descargas del mes (la cuenta de grabación no se agota)."""
+    from .. import demo
+
+    return demo.aplica(rfc)
+
+
+def registrar(tipo: str, rfc: Optional[str] = None) -> None:
     """Suma una descarga al mes en curso. Best-effort: nunca lanza (contar no
-    debe romper una descarga que ya salió bien)."""
+    debe romper una descarga que ya salió bien). `rfc`: la empresa de la
+    descarga (no cuenta si es de demo en modo de grabación)."""
+    if _es_demo(rfc):
+        return
     try:
         with _lock:
             datos = _leer()
@@ -191,10 +202,13 @@ def error_de_tope(cupo: CupoDescargas) -> TopeDescargasAlcanzado:
     return TopeDescargasAlcanzado(mensaje, datos)
 
 
-def exigir() -> None:
+def exigir(rfc: Optional[str] = None) -> None:
     """Lanza `TopeDescargasAlcanzado` si el plan ya usó sus descargas del mes.
     Antes de rechazar confirma con la licencia del servicio (pudo cambiar de
-    plan hace un momento)."""
+    plan hace un momento). Una empresa de demo en modo de grabación no pasa
+    por el tope (no toca al SAT)."""
+    if _es_demo(rfc):
+        return
     cupo = estado()
     if not cupo.agotado:
         return

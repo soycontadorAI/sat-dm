@@ -34,7 +34,13 @@ _envios_lock = threading.RLock()
 # agente atiende requests concurrentes y los mutadores hacen read-modify-write.
 _catalogo_lock = threading.RLock()
 
-CONFIG_DIR = Path.home() / ".sat-descarga"
+# `SAT_DM_CONFIG_DIR` permite un perfil aparte (p. ej. la cuenta de grabación de
+# los tutoriales) sin tocar el catálogo del equipo. Sin la env, lo de siempre.
+CONFIG_DIR = (
+    Path(os.environ["SAT_DM_CONFIG_DIR"]).expanduser()
+    if os.environ.get("SAT_DM_CONFIG_DIR", "").strip()
+    else Path.home() / ".sat-descarga"
+)
 # Copia de trabajo de los certificados, ANCLADA a una ruta absoluta y siempre
 # escribible. Antes era `Path("efirma")` (relativa): bajo Electron empaquetado el
 # agente arranca con cwd en el directorio de la app (solo-lectura en Windows por
@@ -394,6 +400,11 @@ def add_empresa(nombre: str, cer_path: str, key_path: str, password: str,
     fiel = FIEL(str(cer_src), str(key_src), password)
     rfc = fiel.rfc
 
+    # Las e.firmas de ejemplo del modo de grabación solo entran con el modo
+    # prendido (el SAT nunca las aceptaría).
+    from sat_descarga.demo.efirma import exigir_permitida
+    exigir_permitida(fiel)
+
     if rfc_esperado and rfc != rfc_esperado.strip().upper():
         raise ValueError(
             f"La e.firma corresponde al RFC {rfc}, no a {rfc_esperado.strip().upper()}. "
@@ -651,14 +662,20 @@ def unarchive_empresa(rfc: str):
         save_empresas(data)
 
 
-def set_csf_descargada(rfc: str, path: str):
+def _marca_de_tiempo(cuando: Optional[datetime]) -> str:
+    """Marca ISO de los registros. `cuando` solo lo usa la siembra del modo de
+    grabación (historial con fechas pasadas); en operación normal es ahora."""
+    return (cuando or datetime.now()).isoformat(timespec="seconds")
+
+
+def set_csf_descargada(rfc: str, path: str, *, cuando: Optional[datetime] = None):
     """Best-effort: persiste path + timestamp de la última CSF descargada."""
     with _catalogo_lock:
         data = load_empresas()
         if rfc not in data["empresas"]:
             return
         data["empresas"][rfc]["csf_path"] = path
-        data["empresas"][rfc]["csf_descargada_en"] = datetime.now().isoformat(timespec="seconds")
+        data["empresas"][rfc]["csf_descargada_en"] = _marca_de_tiempo(cuando)
         _stamp_sync(data["empresas"][rfc])
         save_empresas(data)
 
@@ -704,14 +721,14 @@ def aplicar_datos_csf(rfc: str, *, nombre: str,
         return True
 
 
-def set_opinion_descargada(rfc: str, path: str):
+def set_opinion_descargada(rfc: str, path: str, *, cuando: Optional[datetime] = None):
     """Best-effort: persiste path + timestamp de la última opinión 32-D descargada."""
     with _catalogo_lock:
         data = load_empresas()
         if rfc not in data["empresas"]:
             return
         data["empresas"][rfc]["opinion_path"] = path
-        data["empresas"][rfc]["opinion_descargada_en"] = datetime.now().isoformat(timespec="seconds")
+        data["empresas"][rfc]["opinion_descargada_en"] = _marca_de_tiempo(cuando)
         _stamp_sync(data["empresas"][rfc])
         save_empresas(data)
 
@@ -1114,6 +1131,7 @@ def save_solicitud(
     estado: str = "solicitada",
     *,
     tipo_comprobante: Optional[str] = None,  # "E" (emitidos) / "R" (recibidos)
+    cuando: Optional[datetime] = None,
 ):
     """Guarda una solicitud WS. `tipo_comprobante` se conserva para luego ubicar la
     descarga en la carpeta correcta (`{RFC}/{emitidos|recibidos}/{rango}/`)."""
@@ -1125,7 +1143,7 @@ def save_solicitud(
             "fecha_fin": fecha_fin,
             "tipo": tipo,
             "estado": estado,
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "timestamp": _marca_de_tiempo(cuando),
         }
         if tipo_comprobante:
             registro["tipo_comprobante"] = tipo_comprobante.strip().upper()
@@ -1257,12 +1275,14 @@ def registrar_descarga(
     ruta: str = "",
     total: Optional[int] = None,  # nº de XML (CFDIs) cuando aplica
     estado: str = "completada",
+    *,
+    cuando: Optional[datetime] = None,
 ) -> dict:
     """Registra una descarga completada en el historial de la empresa. Devuelve el registro."""
     rfc = rfc.strip().upper()
     path = _historial_path(rfc)
     registro = {
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "timestamp": _marca_de_tiempo(cuando),
         "canal": canal,
         "tipo": tipo,
         "descripcion": descripcion,
