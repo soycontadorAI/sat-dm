@@ -278,6 +278,7 @@ def test_capacidad_desconocida_es_error():
 
 def test_auth_license_expone_campos_nuevos(entorno, monkeypatch):
     """El router /auth/license devuelve el payload sin recortar los campos nuevos."""
+    pytest.importorskip("fastapi")
     from sat_descarga.api.routers import system
 
     _backend(monkeypatch, {**PAYLOAD_ESENCIAL, "email": None})
