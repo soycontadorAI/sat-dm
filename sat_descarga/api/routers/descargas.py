@@ -102,4 +102,3 @@ def descargas_cupo():
     from .. import cupo_descargas
 
     return cupo_descargas.estado().como_dict()
-
