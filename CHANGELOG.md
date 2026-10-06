@@ -6,6 +6,13 @@
 
 _Cambios mergeados a `main` aún no etiquetados; el release de la semana los promueve._
 
+### Tooling
+
+- **La app ya lee los planes v3 de la licencia.** `license_client` guarda y expone los topes y
+  capacidades por plan (`limites_de`, `capacidad`) con defaults que nunca bloquean (licencia
+  vieja u offline sin cache = sin tope); la UI los tipa como opcionales y trae los flags
+  `PLANES_V3` y `NAV_ESPACIOS`, apagados. No cambia nada visible.
+
 ## [2.3.1] - 2026-10-05
 
 ### Bug fix

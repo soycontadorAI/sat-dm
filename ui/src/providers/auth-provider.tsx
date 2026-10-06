@@ -13,7 +13,12 @@ import {
 
 import { useServer } from '@/providers/server-provider';
 import { identificarUsuario } from '@/lib/telemetria';
-import type { LicenseStatus } from '@/lib/api-client';
+import type {
+  CapacidadesPlan,
+  LicenseStatus,
+  LimitesPlan,
+  PlanCodigo,
+} from '@/lib/api-client';
 
 // ---------------------------------------------------------------------------
 // Context shape
@@ -172,4 +177,46 @@ export function useRequireAuth(): {
     authenticated: license.authenticated === true,
     license,
   };
+}
+
+/** Plan v3 de la licencia (F0). Ver `usePlanLicencia`. */
+export interface PlanLicencia {
+  codigo: PlanCodigo;
+  nombre: string;
+  limites: LimitesPlan;
+  capacidades: CapacidadesPlan;
+  empresasActivas: number | null;
+  legado: boolean;
+  precioAseguradoMxn: number | null;
+}
+
+/**
+ * Plan, topes y capacidades de la licencia (campos aditivos desde F0).
+ *
+ * Devuelve `null` mientras no hay licencia o cuando el backend/cache no los
+ * trae (versión vieja, offline sin cache). Quien gatee algo con esto debe
+ * tratar `null` como "sin datos" y NO poner candado; lo de hoy sigue saliendo
+ * de `premium_features_unlocked` y `ai_features_unlocked`.
+ */
+export function usePlanLicencia(): PlanLicencia | null {
+  const { license } = useAuth();
+  return useMemo(() => {
+    if (
+      !license?.authenticated ||
+      !license.plan_codigo ||
+      !license.limites ||
+      !license.capacidades
+    ) {
+      return null;
+    }
+    return {
+      codigo: license.plan_codigo,
+      nombre: license.plan_nombre ?? license.plan_codigo,
+      limites: license.limites,
+      capacidades: license.capacidades,
+      empresasActivas: license.uso?.empresas_activas ?? null,
+      legado: license.legado === true,
+      precioAseguradoMxn: license.precio_asegurado_mxn ?? null,
+    };
+  }, [license]);
 }
