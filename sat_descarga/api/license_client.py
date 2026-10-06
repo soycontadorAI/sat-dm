@@ -12,6 +12,9 @@ Responsabilidades:
 - Cachear el estado de licencia en `~/.sat-descarga/license-cache.json` con
   TTL de 24h y un "grace period" de 30 días offline (la app NO se bloquea si
   el backend está caído; solo se desactualiza el badge de fundador).
+- Leer los campos de planes v3 (`plan_codigo`, `plan_nombre`, `limites`,
+  `capacidades`, `uso`, `legado`, `precio_asegurado_mxn`) con defaults que
+  nunca bloquean: `limites_de()` y `capacidad()`.
 """
 
 from __future__ import annotations
@@ -365,7 +368,9 @@ def get_license_status(force_refresh: bool = False) -> dict:
                 "offline": True,
             }
         # Sin cache utilizable → mostrar mínimo "authenticated" para no
-        # bloquear features actuales (v1.0 no tiene features gateadas).
+        # bloquear features actuales (v1.0 no tiene features gateadas). Sin
+        # `limites` ni `capacidades` a propósito: `limites_de()` lo lee como
+        # "sin tope", así que el fallback nunca bloquea altas de empresas.
         return {
             "authenticated": True,
             "is_founder": False,
@@ -376,6 +381,93 @@ def get_license_status(force_refresh: bool = False) -> dict:
 
     _cache_write({"cached_at": now, "payload": payload})
     return payload
+
+
+# ---------------------------------------------------------------------------
+# Planes v3: límites y capacidades (campos ADITIVOS de /api/desktop/license)
+# ---------------------------------------------------------------------------
+#
+# Desde F0 (todoconta-apps, migración 038) la licencia trae:
+#   plan_codigo, plan_nombre, limites {empresas, usuarios} (None = sin tope),
+#   capacidades {web, exportar, mcp, abacus, api, piloto,
+#                vigilancia {app_correo, whatsapp}, reporte_cliente},
+#   uso {empresas_activas}, legado, precio_asegurado_mxn.
+# Se guardan tal cual en el cache (el payload se cachea completo). Un backend
+# viejo, un cache de antes de F0 o el fallback offline sin cache NO los traen:
+# estos helpers responden con defaults que nunca bloquean al usuario.
+
+CAPACIDADES = (
+    "web",
+    "exportar",
+    "mcp",
+    "abacus",
+    "api",
+    "piloto",
+    "vigilancia.app_correo",
+    "vigilancia.whatsapp",
+    "reporte_cliente",
+)
+
+# Sin `capacidades` en la licencia: se derivan de los campos de antes. La web
+# usa el mismo criterio que el provisioner (plan trial, premium o founder).
+_PLANES_CON_WEB = ("trial", "premium", "founder")
+_CAPACIDAD_LEGADA = {
+    "exportar": "premium_features_unlocked",
+    "piloto": "premium_features_unlocked",
+    "vigilancia.app_correo": "premium_features_unlocked",
+    "mcp": "ai_features_unlocked",
+    "abacus": "ai_features_unlocked",
+    "api": "ai_features_unlocked",
+    "vigilancia.whatsapp": "ai_features_unlocked",
+    "reporte_cliente": "ai_features_unlocked",
+}
+
+
+def _tope(valor: Any) -> Optional[int]:
+    """Entero positivo o None (sin tope). Cualquier otra cosa = sin tope."""
+    if isinstance(valor, bool) or not isinstance(valor, int) or valor <= 0:
+        return None
+    return valor
+
+
+def limites_de(licencia: Optional[dict]) -> dict:
+    """
+    `{"empresas": int | None, "usuarios": int | None}`; None = sin tope.
+
+    Sin el campo `limites` (backend viejo, cache de antes de F0, fallback
+    offline sin cache) devuelve sin tope: la falta de datos nunca bloquea
+    (mismo criterio de hoy).
+    """
+    limites = (licencia or {}).get("limites")
+    if not isinstance(limites, dict):
+        return {"empresas": None, "usuarios": None}
+    return {
+        "empresas": _tope(limites.get("empresas")),
+        "usuarios": _tope(limites.get("usuarios")),
+    }
+
+
+def capacidad(licencia: Optional[dict], nombre: str) -> bool:
+    """
+    True si la licencia trae la capacidad `nombre` (ver `CAPACIDADES`; las de
+    vigilancia van con punto: `"vigilancia.whatsapp"`).
+
+    Sin el campo `capacidades` se deriva de los campos de antes
+    (`premium_features_unlocked` / `ai_features_unlocked`), así que una
+    licencia vieja se comporta igual que hoy.
+    """
+    if nombre not in CAPACIDADES:
+        raise ValueError(f"Capacidad desconocida: {nombre!r}")
+    lic = licencia or {}
+    caps = lic.get("capacidades")
+    if isinstance(caps, dict):
+        valor: Any = caps
+        for parte in nombre.split("."):
+            valor = valor.get(parte) if isinstance(valor, dict) else None
+        return valor is True
+    if nombre == "web":
+        return lic.get("plan") in _PLANES_CON_WEB or lic.get("is_founder") is True
+    return lic.get(_CAPACIDAD_LEGADA[nombre]) is True
 
 
 # ---------------------------------------------------------------------------
