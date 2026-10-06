@@ -13,9 +13,9 @@ Reglas:
   licencia (`capacidadesDePlan()` en todoconta-apps), no este archivo.
 
 El gateway NO calcula planes: pide la licencia calculada del dueño a la API de
-servicios por user_id (`GET /api/admin/license?user_id=`, solo lectura) con un
-secreto de servidor a servidor, y la guarda 5 minutos. Así hay una sola fuente
-de verdad para el mapeo de planes y legados.
+servicios por user_id (`GET /api/admin/license?user_id=`, solo lectura) con su
+secreto propio `LICENCIA_GATEWAY_SECRET` (nunca CRON_SECRET), y la guarda 5
+minutos. Así hay una sola fuente de verdad para el mapeo de planes y legados.
 
 Modo (env `CAPACIDADES_MODO`):
 - `observar` (default): calcula y deja en el log lo que se rechazaría, pero
@@ -44,7 +44,7 @@ logger = logging.getLogger("gateway")
 LICENCIA_ADMIN_URL = os.environ.get(
     "LICENCIA_ADMIN_URL", "https://api.todoconta.com/api/admin/license"
 )
-LICENCIA_ADMIN_TOKEN = os.environ.get("LICENCIA_ADMIN_TOKEN", "")
+LICENCIA_GATEWAY_SECRET = os.environ.get("LICENCIA_GATEWAY_SECRET", "")
 
 MODOS = ("observar", "exigir", "apagado")
 MODO = os.environ.get("CAPACIDADES_MODO", "observar").strip().lower()
@@ -99,11 +99,11 @@ def licencia_de(user_id: str) -> Optional[dict]:
     global _sin_token_avisado
     if not user_id:
         return None
-    if not LICENCIA_ADMIN_TOKEN:
+    if not LICENCIA_GATEWAY_SECRET:
         if not _sin_token_avisado:
             _sin_token_avisado = True
             logger.warning(
-                "LICENCIA_ADMIN_TOKEN sin configurar: las capacidades del plan no se consultan"
+                "LICENCIA_GATEWAY_SECRET sin configurar: las capacidades del plan no se consultan"
             )
         return None
     ahora = time.monotonic()
@@ -117,7 +117,7 @@ def licencia_de(user_id: str) -> Optional[dict]:
         resp = requests.get(
             LICENCIA_ADMIN_URL,
             params={"user_id": user_id},
-            headers={"Authorization": f"Bearer {LICENCIA_ADMIN_TOKEN}"},
+            headers={"Authorization": f"Bearer {LICENCIA_GATEWAY_SECRET}"},
             timeout=_TIMEOUT,
         )
         if resp.status_code == 200:

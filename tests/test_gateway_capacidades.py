@@ -95,7 +95,7 @@ def servicio(gw, monkeypatch):
     """Simula GET /api/admin/license y cuenta las llamadas."""
     _, _, caps = gw
     caps.limpiar_cache()
-    monkeypatch.setattr(caps, "LICENCIA_ADMIN_TOKEN", "secreto-de-prueba")
+    monkeypatch.setattr(caps, "LICENCIA_GATEWAY_SECRET", "secreto-de-prueba")
     llamadas = []
 
     def fake_get(url, params=None, headers=None, timeout=None):
@@ -206,7 +206,7 @@ def test_modo_apagado_ni_consulta(gw, monkeypatch, servicio):
 def test_sin_token_no_consulta_ni_bloquea(gw, monkeypatch, servicio):
     main_mod, _, caps = gw
     _modo(gw, monkeypatch, "exigir")
-    monkeypatch.setattr(caps, "LICENCIA_ADMIN_TOKEN", "")
+    monkeypatch.setattr(caps, "LICENCIA_GATEWAY_SECRET", "")
     main_mod._exigir_scope(_usuario("u-esencial"), "mcp")
     assert servicio == []
 

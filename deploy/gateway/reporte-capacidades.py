@@ -18,7 +18,7 @@ La licencia de cada dueño sale de GET /api/admin/license?user_id= (todoconta-ap
 solo lectura: no arranca pruebas ni toca el CRM).
 
 Env: TODOCONTA_SUPABASE_URL, SUPABASE_SERVICE_KEY (lectura de api_keys y
-asistente_vinculos), LICENCIA_ADMIN_TOKEN (Bearer del endpoint de admin) y,
+asistente_vinculos), LICENCIA_GATEWAY_SECRET (secreto propio del gateway) y,
 opcional, LICENCIA_ADMIN_URL (default https://api.todoconta.com/api/admin/license).
 """
 
@@ -124,7 +124,7 @@ def main() -> int:
 
     url = _env("TODOCONTA_SUPABASE_URL").rstrip("/")
     svc = _env("SUPABASE_SERVICE_KEY")
-    token = _env("LICENCIA_ADMIN_TOKEN")
+    token = _env("LICENCIA_GATEWAY_SECRET")
     admin_url = os.environ.get(
         "LICENCIA_ADMIN_URL", "https://api.todoconta.com/api/admin/license"
     ).strip()

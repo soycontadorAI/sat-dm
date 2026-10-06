@@ -17,7 +17,7 @@ Env requeridas: TODOCONTA_SUPABASE_URL, SUPABASE_SERVICE_KEY.
 Con --whatsapp: ASISTENTE_VINCULOS_KEY (32 bytes en base64; la misma que
 descifra el plugin en el VPS) y el paquete `cryptography`.
 
-Plan del dueño (F1): con LICENCIA_ADMIN_TOKEN (Bearer de GET /api/admin/license
+Plan del dueño (F1): con LICENCIA_GATEWAY_SECRET (secreto del gateway para GET /api/admin/license
 en todoconta-apps) revisa las capacidades antes de emitir. Vincular Abacus exige
 `capacidades.abacus` (se puede saltar con --forzar); un scope que el plan no
 incluye solo avisa, porque el gateway lo rechaza con CAPACIDADES_MODO=exigir.
@@ -43,9 +43,9 @@ SCOPES_REST = {"documentos:leer", "cfdi:solicitar", "listas-negras:consultar"}
 
 def _capacidades(user_id: str):
     """Capacidades del plan del usuario según la API de servicios, o None."""
-    token = os.environ.get("LICENCIA_ADMIN_TOKEN", "")
+    token = os.environ.get("LICENCIA_GATEWAY_SECRET", "")
     if not token:
-        print("Aviso: sin LICENCIA_ADMIN_TOKEN no se revisa el plan del usuario.", file=sys.stderr)
+        print("Aviso: sin LICENCIA_GATEWAY_SECRET no se revisa el plan del usuario.", file=sys.stderr)
         return None
     url = os.environ.get("LICENCIA_ADMIN_URL", "https://api.todoconta.com/api/admin/license")
     try:
