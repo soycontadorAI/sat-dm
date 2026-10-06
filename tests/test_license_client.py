@@ -43,7 +43,8 @@ PAYLOAD_VIEJO = {
     "ia_founder_price_mxn": 2490,
 }
 
-# Mismo usuario con los campos aditivos de F0 (legado anual 'desktop').
+# Mismo usuario con los campos aditivos de F0 (legado anual 'desktop', que
+# conserva la MCP: decidido por Israel 2026-10-05).
 PAYLOAD_NUEVO = {
     **PAYLOAD_VIEJO,
     "plan_codigo": "desktop",
@@ -52,7 +53,7 @@ PAYLOAD_NUEVO = {
     "capacidades": {
         "web": True,
         "exportar": True,
-        "mcp": False,
+        "mcp": True,
         "abacus": False,
         "api": False,
         "piloto": True,
@@ -152,7 +153,8 @@ def test_payload_viejo_sigue_funcionando(entorno, monkeypatch):
     assert lc.limites_de(lic) == {"empresas": None, "usuarios": None}
     assert lc.capacidad(lic, "exportar") is True
     assert lc.capacidad(lic, "web") is True
-    assert lc.capacidad(lic, "mcp") is False
+    assert lc.capacidad(lic, "mcp") is True  # premium de antes: el gateway ya le da MCP
+    assert lc.capacidad(lic, "abacus") is False
 
 
 def test_cache_viejo_en_gracia_offline_se_respeta(entorno, monkeypatch):
@@ -235,7 +237,8 @@ def test_capacidad_payload_nuevo():
     assert lc.capacidad(PAYLOAD_NUEVO, "piloto") is True
     assert lc.capacidad(PAYLOAD_NUEVO, "vigilancia.app_correo") is True
     assert lc.capacidad(PAYLOAD_NUEVO, "vigilancia.whatsapp") is False
-    assert lc.capacidad(PAYLOAD_NUEVO, "mcp") is False
+    assert lc.capacidad(PAYLOAD_NUEVO, "mcp") is True
+    assert lc.capacidad(PAYLOAD_NUEVO, "abacus") is False
     assert lc.capacidad(PAYLOAD_ESENCIAL, "piloto") is False
 
 
@@ -249,11 +252,12 @@ def test_capacidades_mandan_sobre_los_campos_de_antes():
     "plan, premium, ia, esperado",
     [
         # (plan, premium_features_unlocked, ai_features_unlocked) → exportar, mcp, web
-        ("trial", False, False, (False, False, True)),
+        # MCP como el gateway de hoy: trial, premium o founder (legado con MCP).
+        ("trial", False, False, (False, True, True)),
         ("free", False, False, (False, False, False)),
-        ("premium", True, False, (True, False, True)),
+        ("premium", True, False, (True, True, True)),
         ("premium", True, True, (True, True, True)),
-        ("founder", True, False, (True, False, True)),
+        ("founder", True, False, (True, True, True)),
     ],
 )
 def test_capacidad_derivada_de_payload_viejo(plan, premium, ia, esperado):

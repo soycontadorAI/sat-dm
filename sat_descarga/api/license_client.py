@@ -408,14 +408,15 @@ CAPACIDADES = (
     "reporte_cliente",
 )
 
-# Sin `capacidades` en la licencia: se derivan de los campos de antes. La web
-# usa el mismo criterio que el provisioner (plan trial, premium o founder).
-_PLANES_CON_WEB = ("trial", "premium", "founder")
+# Sin `capacidades` en la licencia: se derivan de los campos de antes. La web y
+# la MCP usan el mismo criterio que el provisioner y el gateway (plan trial,
+# premium o founder); el legado conserva la MCP (decidido 2026-10-05).
+_PLANES_CON_ACCESO = ("trial", "premium", "founder")
+_CAPACIDADES_POR_PLAN = ("web", "mcp")
 _CAPACIDAD_LEGADA = {
     "exportar": "premium_features_unlocked",
     "piloto": "premium_features_unlocked",
     "vigilancia.app_correo": "premium_features_unlocked",
-    "mcp": "ai_features_unlocked",
     "abacus": "ai_features_unlocked",
     "api": "ai_features_unlocked",
     "vigilancia.whatsapp": "ai_features_unlocked",
@@ -452,9 +453,9 @@ def capacidad(licencia: Optional[dict], nombre: str) -> bool:
     True si la licencia trae la capacidad `nombre` (ver `CAPACIDADES`; las de
     vigilancia van con punto: `"vigilancia.whatsapp"`).
 
-    Sin el campo `capacidades` se deriva de los campos de antes
-    (`premium_features_unlocked` / `ai_features_unlocked`), así que una
-    licencia vieja se comporta igual que hoy.
+    Sin el campo `capacidades` se deriva de los campos de antes (`plan` para
+    web y MCP, `premium_features_unlocked` / `ai_features_unlocked` para lo
+    demás), así que una licencia vieja se comporta igual que hoy.
     """
     if nombre not in CAPACIDADES:
         raise ValueError(f"Capacidad desconocida: {nombre!r}")
@@ -465,8 +466,8 @@ def capacidad(licencia: Optional[dict], nombre: str) -> bool:
         for parte in nombre.split("."):
             valor = valor.get(parte) if isinstance(valor, dict) else None
         return valor is True
-    if nombre == "web":
-        return lic.get("plan") in _PLANES_CON_WEB or lic.get("is_founder") is True
+    if nombre in _CAPACIDADES_POR_PLAN:
+        return lic.get("plan") in _PLANES_CON_ACCESO or lic.get("is_founder") is True
     return lic.get(_CAPACIDAD_LEGADA[nombre]) is True
 
 
