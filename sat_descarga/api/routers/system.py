@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from ...core.config import es_modo_hosted
 from ..state import _session
+from ..uso import sistema, track
 
 router = APIRouter()
 
@@ -282,6 +283,7 @@ def auth_poll(req: AuthPollRequest):
         # Invalidamos el cache de license para que la próxima lectura
         # refleje al usuario recién logueado.
         lc.clear_license_cache()
+        track("sesion_iniciada", metodo="dispositivo")
         return {"status": "ok", "user": {"id": session.user_id, "email": session.email}}
 
     return {"status": result}
@@ -296,13 +298,14 @@ def auth_poll(req: AuthPollRequest):
 # web sigue viva), pero la UI ya no los usa.
 
 
-def _guardar_sesion(session) -> dict:
+def _guardar_sesion(session, metodo: str) -> dict:
     from .. import license_client as lc
     from ..sync_empresas import sincronizar_async
     from ..sync_tareas import sincronizar_async as sincronizar_tareas_async
 
     lc.save_session(session)
     lc.clear_license_cache()
+    track("sesion_iniciada", metodo=metodo)
     # Con sesión fresca, jala/empuja el catálogo de empresas y las tareas
     # (best-effort, cada uno en su hilo).
     sincronizar_async("login")
@@ -326,7 +329,7 @@ def auth_login_password(req: LoginPasswordRequest):
         session = sa.login_password(req.email.strip(), req.password)
     except sa.SupabaseAuthError as e:
         raise _http_de_auth_error(e)
-    return _guardar_sesion(session)
+    return _guardar_sesion(session, "contrasena")
 
 
 @router.post("/auth/otp-send")
@@ -357,7 +360,7 @@ def auth_otp_verify(req: OtpVerifyRequest):
         session = sa.otp_verify(req.email.strip(), req.token.strip(), tipo=req.tipo)
     except sa.SupabaseAuthError as e:
         raise _http_de_auth_error(e)
-    return _guardar_sesion(session)
+    return _guardar_sesion(session, "codigo")
 
 
 @router.post("/auth/signup")
@@ -376,7 +379,7 @@ def auth_signup(req: SignupRequest):
     except sa.SupabaseAuthError as e:
         raise _http_de_auth_error(e)
     if session is not None:
-        return {**_guardar_sesion(session), "requiere_confirmacion": False}
+        return {**_guardar_sesion(session, "contrasena"), "requiere_confirmacion": False}
     return {"ok": True, "requiere_confirmacion": True}
 
 
@@ -433,7 +436,7 @@ def auth_oauth_callback(req: OauthCallbackRequest):
         raise _http_de_auth_error(e)
     finally:
         _pkce_verifier = None
-    return _guardar_sesion(session)
+    return _guardar_sesion(session, "google")
 
 
 # --- Adopción de sesión (solo modo hosted) -----------------------------------
@@ -465,7 +468,7 @@ def auth_adopt_session(req: AdoptSessionRequest):
         user_id=req.user_id,
         email=req.email,
     )
-    return _guardar_sesion(session)
+    return _guardar_sesion(session, "web")
 
 
 @router.get("/auth/license")
@@ -478,6 +481,10 @@ def auth_license(refresh: bool = False):
     from .. import license_client as lc
 
     status = lc.get_license_status(force_refresh=refresh)
+    if not refresh and status.get("authenticated"):
+        # El renderer pide la licencia sin `refresh` solo al cargar (desktop y
+        # web por igual); el intervalo de 6 h y el botón usan refresh=true.
+        track("app_abierta", sistema=sistema())
     # El payload remoto/cacheado puede no traer email; la sesión local sí lo
     # tiene (el renderer lo muestra en el menú de cuenta del sidebar).
     if status.get("authenticated") and not status.get("email"):
@@ -585,7 +592,9 @@ def auth_transfer_intent(body: dict | None = Body(default=None)):
 def auth_logout():
     """Borra la sesión local (keyring + cache). Idempotente."""
     from .. import license_client as lc
+    from .. import uso
 
+    uso.al_cerrar_sesion()  # lo pendiente sale con esta cuenta; nada pasa a la siguiente
     lc.clear_session()
     return {"ok": True}
 

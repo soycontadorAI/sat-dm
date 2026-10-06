@@ -49,6 +49,7 @@ from .state import (
     _salida_descarga_ws,
     _terminar_descarga_ws,
 )
+from .uso import rango, tipo_de_solicitud, track
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +207,8 @@ def _descargar_lista(rfc: str, fiel: FIEL, sol: dict) -> None:
                 rfc, id_sol, "descargada",
                 mensaje="Sin CFDIs para el periodo.", numero_cfdis=numero_cfdis or 0,
             )
+            track("descarga_completada", canal="web_service", credencial="efirma",
+                  tipo=tipo_de_solicitud(sol), tamano="0", segundo_plano=True)
             return
         salida = _salida_descarga_ws(rfc, id_sol)
         descargar_todos(
@@ -224,6 +227,8 @@ def _descargar_lista(rfc: str, fiel: FIEL, sol: dict) -> None:
         config_store.update_solicitud(
             rfc, id_sol, "descargada", package_ids=package_ids,
         )
+        track("descarga_completada", canal="web_service", credencial="efirma",
+              tipo=tipo_de_solicitud(sol), tamano=rango(numero_cfdis), segundo_plano=True)
         logger.info("[poller] %s: solicitud %s descargada en %s", rfc, id_sol, salida)
     except Exception as e:  # noqa: BLE001 — reintenta en la siguiente pasada (sigue en 3)
         logger.warning("[poller] %s: descarga de %s falló: %s", rfc, id_sol, e)

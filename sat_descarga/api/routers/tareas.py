@@ -19,6 +19,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..sync_tareas import sincronizar_async
+from ..uso import track
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ def crear_tarea(req: TareaCrearRequest) -> dict:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     sincronizar_async("crear")
+    track("tarea_creada", tipo=req.tipo, desde_sugerencia=bool(req.sugerencia_id))
     return tarea
 
 
