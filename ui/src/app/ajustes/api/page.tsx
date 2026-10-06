@@ -13,7 +13,9 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 
 import { useServer } from '@/providers/server-provider';
+import { usePlanesV3, usePlanLicencia } from '@/providers/auth-provider';
 import { PageHeading } from '@/components/layout/page-heading';
+import { CandadoPlan } from '@/components/planes/candado-plan';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +44,14 @@ async function copiar(texto: string, ok: string): Promise<void> {
 
 export default function AjustesApiPage() {
   const { apiClient } = useServer();
+  // Candados por plan (planes v3). Sin interruptor o sin datos del plan, todo
+  // se ve como hoy: la falta de datos nunca pone candado.
+  const planesV3 = usePlanesV3();
+  const planLicencia = usePlanLicencia();
+  const caps = planesV3 ? planLicencia?.capacidades ?? null : null;
+  const conMcp = !caps || caps.mcp;
+  const conApi = !caps || caps.api;
+  const puedeEmitir = conMcp || conApi;
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [cargando, setCargando] = useState(true);
   const [nombre, setNombre] = useState('');
@@ -157,7 +167,7 @@ export default function AjustesApiPage() {
         </Link>
         <PageHeading
           title="API y conexiones (MCP)"
-          description="Emite y revoca las keys con las que tus sistemas — o tu asistente de IA vía MCP — se conectan a TodoConta."
+          description="Emite y revoca las keys con las que tus sistemas (o tu asistente de IA vía MCP) se conectan a TodoConta."
         />
       </div>
 
@@ -192,7 +202,8 @@ export default function AjustesApiPage() {
         </Alert>
       )}
 
-      {/* Crear */}
+      {/* Crear (sin MCP ni API en el plan, las keys no sirven para nada) */}
+      {puedeEmitir && (
       <Card className="gap-4 p-5">
         <div>
           <div className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
@@ -224,8 +235,10 @@ export default function AjustesApiPage() {
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
       </Card>
+      )}
 
-      {/* Listado */}
+      {/* Listado (sin poder emitir, solo si quedan keys de antes para revocar) */}
+      {(puedeEmitir || keys.length > 0) && (
       <Card className="gap-4 p-5">
         <div>
           <div className="text-[15px] font-bold tracking-tight">Tus keys</div>
@@ -269,8 +282,15 @@ export default function AjustesApiPage() {
           />
         )}
       </Card>
+      )}
 
       {/* Conexión MCP */}
+      {!conMcp ? (
+        <CandadoPlan titulo="Conexión con IA (MCP)" plan="Pro">
+          Conecta Claude o ChatGPT a tus empresas para pedir constancias, CFDIs y
+          reportes desde el chat. Viene en los planes Pro y Completo.
+        </CandadoPlan>
+      ) : (
       <Card className="gap-4 p-5">
         <div>
           <div className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
@@ -309,6 +329,39 @@ export default function AjustesApiPage() {
           .
         </p>
       </Card>
+      )}
+
+      {/* API REST y Abacus: solo con planes v3 y datos del plan */}
+      {caps && !caps.api && (
+        <CandadoPlan titulo="API para tus sistemas" plan="Completo">
+          Conecta tu sistema de facturación o tus propios scripts a TodoConta.
+          Viene en el plan Completo.
+        </CandadoPlan>
+      )}
+      {caps &&
+        (caps.abacus ? (
+          <Card className="gap-2 p-5">
+            <div className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
+              <Icon icon="ph:chat-circle-light" className="size-4.5 text-foreground/70" />
+              Abacus por WhatsApp
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Viene en tu plan. Para vincular tu número de WhatsApp, escríbenos a{' '}
+              <a
+                href="mailto:soporte@todoconta.com?subject=Vincular Abacus"
+                className="font-semibold text-foreground underline"
+              >
+                soporte@todoconta.com
+              </a>
+              .
+            </p>
+          </Card>
+        ) : (
+          <CandadoPlan titulo="Abacus por WhatsApp" plan="Completo">
+            Tu asistente fiscal por WhatsApp: pide constancias, opiniones y CFDIs
+            desde el chat. Viene en el plan Completo.
+          </CandadoPlan>
+        ))}
     </div>
   );
 }

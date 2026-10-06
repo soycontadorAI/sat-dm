@@ -11,6 +11,11 @@
 #   ASISTENTE_VINCULOS_KEY=       # AES-256-GCM de emitir-key.py --whatsapp (32 bytes b64)
 # Opcionales del OAuth 2.1 (oauth.py; defaults iguales al provisioner):
 #   LICENCIA_URL= EXIGIR_LICENCIA= ALLOWLIST_EMAILS= TODOCONTA_SUPABASE_ANON_KEY=
+# Capacidades del plan (F1, capacidades.py): MCP, API y Abacus según el plan.
+#   CAPACIDADES_MODO=observar    # observar (default, solo log) | exigir | apagado
+#   LICENCIA_GATEWAY_SECRET=     # secreto propio del gateway para GET /api/admin/license
+#                                # (el mismo valor en Vercel de todoconta-apps; nunca CRON_SECRET)
+#   LICENCIA_ADMIN_URL=          # default https://api.todoconta.com/api/admin/license
 #
 # Despliegue: docker compose up -d --build
 

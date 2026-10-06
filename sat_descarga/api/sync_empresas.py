@@ -43,7 +43,14 @@ def sincronizar_catalogo() -> int | None:
         return None
 
     try:
-        payload = {"empresas": config_store.catalogo_para_sync()}
+        from . import cupo_descargas
+
+        # `descargas_mes` (F1): descargas al SAT del mes en esta instalación,
+        # para el tope del plan gratis. Campo aditivo: un backend viejo lo ignora.
+        payload = {
+            "empresas": config_store.catalogo_para_sync(),
+            "descargas_mes": cupo_descargas.resumen(),
+        }
         resp = requests.put(
             f"{lc.API_BASE_URL}/api/desktop/empresas-sync",
             json=payload,

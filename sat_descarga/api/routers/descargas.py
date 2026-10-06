@@ -87,3 +87,18 @@ def descargar_zip(ruta: str):
         # El temporal se borra cuando termina de servirse (cleanup en background).
         background=BackgroundTask(os.unlink, tmp.name),
     )
+
+
+# ---------------------------------------------------------------------------
+# Descargas al SAT del mes (plan gratis, F1): lo consulta la UI para el aviso
+# ---------------------------------------------------------------------------
+
+
+@router.get("/descargas/cupo")
+def descargas_cupo():
+    """Descargas al SAT de este mes y, si aplica, el tope del plan:
+    `{aplica, tope, usadas, mes, reinicia, plan_codigo, plan_nombre,
+    siguiente_plan}`. Sin red: usa la licencia en cache (sin ella, no aplica)."""
+    from .. import cupo_descargas
+
+    return cupo_descargas.estado().como_dict()

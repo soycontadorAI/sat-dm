@@ -16,6 +16,12 @@ Formato guardado: base64( nonce(12) || ciphertext || tag(16) ).
 Env requeridas: TODOCONTA_SUPABASE_URL, SUPABASE_SERVICE_KEY.
 Con --whatsapp: ASISTENTE_VINCULOS_KEY (32 bytes en base64; la misma que
 descifra el plugin en el VPS) y el paquete `cryptography`.
+
+Plan del dueño (F1): con LICENCIA_GATEWAY_SECRET (secreto del gateway para GET /api/admin/license
+en todoconta-apps) revisa las capacidades antes de emitir. Vincular Abacus exige
+`capacidades.abacus` (se puede saltar con --forzar); un scope que el plan no
+incluye solo avisa, porque el gateway lo rechaza con CAPACIDADES_MODO=exigir.
+Sin el token, avisa y sigue como antes.
 """
 
 import argparse
@@ -32,6 +38,27 @@ SCOPES_DEFAULT = "documentos:leer,cfdi:solicitar,listas-negras:consultar,mcp"
 # Scopes que necesita Abacus (sin `mcp`: el plugin usa REST, no el conector).
 SCOPES_ABACUS = "documentos:leer,cfdi:solicitar,listas-negras:consultar"
 WHATSAPP_RE = re.compile(r"^\+[1-9][0-9]{7,14}$")
+SCOPES_REST = {"documentos:leer", "cfdi:solicitar", "listas-negras:consultar"}
+
+
+def _capacidades(user_id: str):
+    """Capacidades del plan del usuario según la API de servicios, o None."""
+    token = os.environ.get("LICENCIA_GATEWAY_SECRET", "")
+    if not token:
+        print("Aviso: sin LICENCIA_GATEWAY_SECRET no se revisa el plan del usuario.", file=sys.stderr)
+        return None
+    url = os.environ.get("LICENCIA_ADMIN_URL", "https://api.todoconta.com/api/admin/license")
+    try:
+        r = requests.get(url, params={"user_id": user_id},
+                         headers={"Authorization": f"Bearer {token}"}, timeout=20)
+    except requests.RequestException as e:
+        print(f"Aviso: no se pudo leer el plan ({e}); se sigue sin revisarlo.", file=sys.stderr)
+        return None
+    lic = (r.json() or {}).get("license") if r.status_code == 200 else None
+    if not isinstance(lic, dict) or not isinstance(lic.get("capacidades"), dict):
+        print(f"Aviso: la licencia no trae capacidades (HTTP {r.status_code}); se sigue.", file=sys.stderr)
+        return None
+    return lic
 
 
 def _cifrar_key(key: str) -> str:
@@ -67,6 +94,11 @@ def main() -> int:
         metavar="+52...",
         help="Número E.164 a vincular en asistente_vinculos (para Abacus).",
     )
+    ap.add_argument(
+        "--forzar",
+        action="store_true",
+        help="Vincula Abacus aunque el plan del usuario no lo incluya.",
+    )
     args = ap.parse_args()
 
     if args.whatsapp and not WHATSAPP_RE.match(args.whatsapp):
@@ -85,6 +117,23 @@ def main() -> int:
     if not user:
         print(f"No existe usuario con email {args.email}", file=sys.stderr)
         return 1
+
+    # Plan del dueño (F1): Abacus solo con un plan que lo incluya.
+    lic = _capacidades(user["id"])
+    if lic is not None:
+        caps = lic["capacidades"]
+        lista = {s.strip() for s in scopes.split(",") if s.strip()}
+        plan = lic.get("plan_codigo") or "?"
+        if args.whatsapp and caps.get("abacus") is not True and not args.forzar:
+            print(f"El plan del usuario ({plan}) no incluye Abacus. Usa --forzar si es a propósito.",
+                  file=sys.stderr)
+            return 1
+        if "mcp" in lista and caps.get("mcp") is not True:
+            print(f"Aviso: el plan ({plan}) no incluye MCP; el scope `mcp` se rechazará con "
+                  "CAPACIDADES_MODO=exigir.", file=sys.stderr)
+        if lista & SCOPES_REST and caps.get("api") is not True and caps.get("abacus") is not True:
+            print(f"Aviso: el plan ({plan}) no incluye la API; los scopes REST se rechazarán con "
+                  "CAPACIDADES_MODO=exigir.", file=sys.stderr)
 
     # Con --whatsapp, cifrar ANTES de insertar nada (si falta la llave, no dejamos key huérfana).
     key = f"tc_live_{secrets.token_urlsafe(32)}"

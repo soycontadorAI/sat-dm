@@ -22,12 +22,19 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { mensajeDeError } from '@/lib/errores';
+import { topeEmpresasDeError, type TopeEmpresas } from '@/lib/api-client';
 
 interface EmpresaAddDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   addFiel: (cer: File, key: File, password: string) => Promise<void>;
   addCiec: (rfc: string, ciec: string) => Promise<void>;
+  /**
+   * El agente respondió 402: el plan no tiene lugar para otra empresa. Si se
+   * pasa, el modal se cierra y el padre muestra el diálogo del tope (Archivar /
+   * Cambiar de plan); si no, el mensaje sale como cualquier error.
+   */
+  onTope?: (tope: TopeEmpresas) => void;
 }
 
 /**
@@ -40,6 +47,7 @@ export function EmpresaAddDialog({
   onOpenChange,
   addFiel,
   addCiec,
+  onTope,
 }: EmpresaAddDialogProps) {
   // e.firma
   const [cer, setCer] = useState<File | null>(null);
@@ -73,6 +81,12 @@ export function EmpresaAddDialog({
       await fn();
       handleOpenChange(false);
     } catch (err) {
+      const tope = topeEmpresasDeError(err);
+      if (tope && onTope) {
+        handleOpenChange(false);
+        onTope(tope);
+        return;
+      }
       setError(mensajeDeError(err));
     } finally {
       setLoading(false);

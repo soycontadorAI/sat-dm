@@ -290,3 +290,75 @@ def test_auth_license_expone_campos_nuevos(entorno, monkeypatch):
     assert lic["limites"] == {"empresas": 10, "usuarios": 1}
     assert lic["uso"] == {"empresas_activas": 8}
     assert lic["email"] == "cuenta@ejemplo.test"  # completado desde la sesión local
+
+
+# ---------------------------------------------------------------------------
+# F1: interruptor del Día C y payloads de checkout de los planes v3
+# ---------------------------------------------------------------------------
+
+
+def test_planes_v3_activos_solo_con_true_explicito():
+    assert lc.planes_v3_activos({**PAYLOAD_ESENCIAL, "planes_v3_activo": True}) is True
+    assert lc.planes_v3_activos(PAYLOAD_ESENCIAL) is False
+    assert lc.planes_v3_activos({"planes_v3_activo": "true"}) is False
+    assert lc.planes_v3_activos(None) is False
+
+
+def _captura_post(monkeypatch, respuesta: dict):
+    enviados = []
+
+    def fake_post(url, **kwargs):
+        enviados.append((url, kwargs.get("json")))
+        return _respuesta(respuesta)
+
+    monkeypatch.setattr(lc.requests, "post", fake_post)
+    return enviados
+
+
+@pytest.mark.parametrize(
+    "plan, intervalo, esperado",
+    [
+        ("anual", None, {"plan": "anual"}),
+        ("anual_ia", None, {"plan": "anual_ia"}),
+        ("cualquier-cosa", None, {"plan": "anual"}),
+        ("pro", "mensual", {"plan": "pro", "intervalo": "mensual"}),
+        ("esencial", None, {"plan": "esencial", "intervalo": "anual"}),
+        ("completo", "semanal", {"plan": "completo", "intervalo": "anual"}),
+    ],
+)
+def test_subscribe_payloads(monkeypatch, plan, intervalo, esperado):
+    enviados = _captura_post(monkeypatch, {"url": "https://checkout"})
+    sesion = Session(access_token="t", refresh_token=None, user_id="u", email=None)
+    lc.init_subscribe_checkout(sesion, plan, intervalo)
+    assert enviados[0][0].endswith("/api/desktop/subscribe")
+    assert enviados[0][1] == esperado
+
+
+@pytest.mark.parametrize(
+    "plan, esperado", [(None, None), ("pro", {"plan": "pro"}), ("anual", None)]
+)
+def test_transfer_intent_payloads(monkeypatch, plan, esperado):
+    enviados = _captura_post(monkeypatch, {"ok": True, "amount_mxn": 6990})
+    sesion = Session(access_token="t", refresh_token=None, user_id="u", email=None)
+    lc.create_transfer_intent(sesion, plan)
+    assert enviados[0][0].endswith("/api/desktop/transfer-intent")
+    assert enviados[0][1] == esperado
+
+
+def test_router_subscribe_y_transfer_pasan_el_plan_v3(entorno, monkeypatch):
+    pytest.importorskip("fastapi")
+    from sat_descarga.api.routers import system
+
+    enviados = _captura_post(monkeypatch, {"url": "https://checkout", "ok": True})
+    system.auth_subscribe({"plan": "pro", "intervalo": "mensual"})
+    system.auth_subscribe({"plan": "anual_ia"})
+    system.auth_subscribe(None)
+    system.auth_transfer_intent({"plan": "completo"})
+    system.auth_transfer_intent(None)
+    assert [b for _, b in enviados] == [
+        {"plan": "pro", "intervalo": "mensual"},
+        {"plan": "anual_ia"},
+        {"plan": "anual"},
+        {"plan": "completo"},
+        None,
+    ]

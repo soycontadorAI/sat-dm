@@ -2,7 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 
-import { useAuth } from '@/providers/auth-provider';
+import { useAuth, usePlanesV3, usePlanLicencia, type PlanLicencia } from '@/providers/auth-provider';
+import type { LicenseStatus } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/components/ui/icon';
 import {
@@ -24,12 +25,28 @@ import { formatDate } from '@/lib/formatting';
  *
  * Premium/trial/free son clickeables y llevan a `/suscripcion`. Viven dentro del
  * contenedor `no-drag` del titlebar.
+ *
+ * Con el interruptor de planes v3 encendido y datos del plan, el badge usa los
+ * nombres nuevos (`PlanBadgeV3`): Esencial, Pro, Completo, Prueba, Gratis y los
+ * del legado (Anual, Anual con IA, Fundador...).
  */
 export function PlanBadge() {
   const { license } = useAuth();
   const router = useRouter();
+  const planesV3 = usePlanesV3();
+  const planLicencia = usePlanLicencia();
 
   if (!license?.authenticated) return null;
+
+  if (planesV3 && planLicencia) {
+    return (
+      <PlanBadgeV3
+        plan={planLicencia}
+        license={license}
+        onClick={() => router.push('/suscripcion')}
+      />
+    );
+  }
 
   // Founder tiene prioridad y su propio badge celebratorio.
   if (license.plan === 'founder' || license.is_founder) {
@@ -123,6 +140,76 @@ export function PlanBadge() {
           La app sigue funcional. Suscríbete para apoyar el proyecto y asegurar
           el mejor precio. Toca para ver opciones.
         </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Planes v3
+// ---------------------------------------------------------------------------
+
+const PLANES_V3_PAGO: readonly string[] = ['esencial', 'pro', 'completo', 'medida'];
+
+function PlanBadgeV3({
+  plan,
+  license,
+  onClick,
+}: {
+  plan: PlanLicencia;
+  license: LicenseStatus;
+  onClick: () => void;
+}) {
+  if (plan.codigo === 'fundador') return <FounderBadge />;
+
+  const dias = license.days_remaining ?? null;
+  const cancela = license.subscription_cancel_at_period_end === true;
+  const vence = license.expires_at ? formatDate(license.expires_at) : null;
+
+  let etiqueta = plan.nombre;
+  let clase = 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300';
+  let icono: string | null = 'ph:crown-simple-fill';
+  let titulo = `Plan ${plan.nombre}`;
+  let texto: string;
+
+  if (plan.codigo === 'trial') {
+    etiqueta = dias === null ? 'Prueba' : `Prueba: ${dias === 1 ? '1 día' : `${dias} días`}`;
+    clase = 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
+    icono = 'ph:hourglass-medium-light';
+    titulo = 'Periodo de prueba';
+    texto =
+      'Tienes lo del plan Pro mientras dura la prueba: hasta 50 empresas, exportaciones y la conexión con tu IA (MCP). Toca para ver los planes.';
+  } else if (plan.codigo === 'gratis') {
+    clase = '';
+    icono = null;
+    titulo = 'Plan Gratis';
+    texto =
+      'La app sigue funcionando con lo básico: hasta 5 empresas y 10 descargas al SAT al mes. Toca para ver los planes.';
+  } else if (PLANES_V3_PAGO.includes(plan.codigo)) {
+    texto = cancela
+      ? `Tu suscripción termina${vence ? ` el ${vence}` : ''} y no se renovará. Puedes reactivarla cuando quieras.`
+      : `Tu plan está activo${vence ? ` hasta el ${vence}` : ''}. Toca para ver tu suscripción.`;
+  } else {
+    // Legado: Anual, Anual con IA, planes web viejos y suscripciones manuales.
+    titulo = `${plan.nombre}: tu precio asegurado`;
+    texto = cancela
+      ? `Tu suscripción termina${vence ? ` el ${vence}` : ''} y no se renovará. Si regresas después, entras con los precios nuevos.`
+      : 'Conservas tu precio y tus condiciones mientras sigas suscrito.';
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" onClick={onClick} className="appearance-none bg-transparent p-0">
+          <Badge variant="secondary" className={`gap-1 ${clase}`} tabIndex={0}>
+            {icono && <Icon icon={icono} className="size-3" />}
+            {etiqueta}
+          </Badge>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="end" className="w-64 rounded-xl p-3.5 text-left">
+        <span className="block text-[13.5px] font-extrabold tracking-tight">{titulo}</span>
+        <span className="mt-1.5 block text-xs leading-relaxed text-background/80">{texto}</span>
       </TooltipContent>
     </Tooltip>
   );

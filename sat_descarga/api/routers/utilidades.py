@@ -46,8 +46,10 @@ def descargar_metadata_endpoint(req: SolicitudRequest):
     """
     from ...webservice.client import descargar_metadata
     from ...utils.metadata import metadata_to_dicts
+    from .. import cupo_descargas
 
     fiel = _get_fiel()
+    cupo_descargas.exigir()  # cuenta como descarga del mes (plan gratis)
 
     try:
         records = descargar_metadata(
@@ -60,6 +62,7 @@ def descargar_metadata_endpoint(req: SolicitudRequest):
             rfc_emisor=req.rfc_emisor,
             rfc_receptor=req.rfc_receptor,
         )
+        cupo_descargas.registrar("metadata")
         return {
             "ok": True,
             "total": len(records),

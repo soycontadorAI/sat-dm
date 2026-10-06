@@ -16,7 +16,7 @@ import shutil
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from sat_descarga.core.fiel import FIEL
 from sat_descarga.core import secretos
@@ -368,7 +368,8 @@ def _metodos(info: dict) -> list[str]:
 
 
 def add_empresa(nombre: str, cer_path: str, key_path: str, password: str,
-                rfc_esperado: Optional[str] = None) -> str:
+                rfc_esperado: Optional[str] = None,
+                antes_de_guardar: Optional[Callable[[str], None]] = None) -> str:
     """
     Registra una empresa por e.firma (FIEL) — o le AGREGA el método e.firma si el RFC
     ya existía (p. ej. con CIEC), sin quitar el otro método. Valida la FIEL, copia
@@ -382,6 +383,10 @@ def add_empresa(nombre: str, cer_path: str, key_path: str, password: str,
     Si se pasa `rfc_esperado` (al agregar e.firma a una empresa existente), se valida
     que el RFC del certificado coincida; si no, se rechaza (evita subir la e.firma de
     otro contribuyente).
+
+    `antes_de_guardar(rfc)` (opcional) corre con el RFC ya validado y ANTES de copiar
+    o guardar nada; si lanza, no queda rastro del alta. Lo usa el router para el tope
+    de empresas del plan (el RFC solo se conoce al leer el certificado).
     """
     cer_src = Path(cer_path).expanduser().resolve()
     key_src = Path(key_path).expanduser().resolve()
@@ -394,6 +399,8 @@ def add_empresa(nombre: str, cer_path: str, key_path: str, password: str,
             f"La e.firma corresponde al RFC {rfc}, no a {rfc_esperado.strip().upper()}. "
             "Sube la e.firma de este contribuyente."
         )
+    if antes_de_guardar is not None:
+        antes_de_guardar(rfc)
 
     dest = _efirma_dir(rfc)
     cer_dest = dest / "fiel.cer"

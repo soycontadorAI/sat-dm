@@ -35,6 +35,8 @@ import requests
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
+import capacidades as caps_srv
+
 logger = logging.getLogger("gateway")
 
 # ---------------------------------------------------------------------------
@@ -225,7 +227,9 @@ def _plan_da_acceso(lic: dict) -> bool:
 
 
 def _validar_licencia(access_token: str, email: Optional[str]) -> None:
-    """Mismo criterio que el provisioner: sin plan vigente no se abre espacio."""
+    """Mismo criterio que el provisioner: sin plan vigente no se abre espacio.
+    Además (F1), el plan debe traer la MCP (`capacidades.mcp`) según
+    CAPACIDADES_MODO; una licencia sin `capacidades` pasa como antes."""
     if email and email.lower() in ALLOWLIST_EMAILS:
         return
     if not EXIGIR_LICENCIA:
@@ -242,7 +246,8 @@ def _validar_licencia(access_token: str, email: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="La sesión no es válida. Vuelve a iniciar sesión.")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="No pudimos validar tu plan. Intenta más tarde.")
-    if not _plan_da_acceso(resp.json()):
+    lic = resp.json()
+    if not _plan_da_acceso(lic):
         raise HTTPException(
             status_code=403,
             detail=(
@@ -250,6 +255,7 @@ def _validar_licencia(access_token: str, email: Optional[str]) -> None:
                 "Actívalo en todoconta.com/planes y vuelve a intentar."
             ),
         )
+    caps_srv.exigir_en_licencia(lic, "mcp", via="oauth-authorize")
 
 
 def _autenticar(email: str, password: str, otp: str) -> dict:

@@ -25,8 +25,10 @@ export const RENOVACION_EFIRMA_HABILITADA: boolean = false;
  * Planes v3 (F1 de docs/operacion/plan-app-v3.md en todoconta-apps): los tres
  * planes con selector anual o mensual en /suscripcion, el contador "8 de 10
  * empresas", los candados de MCP, API y Abacus según `license.capacidades` y el
- * tope de empresas. APAGADO hasta el Día C: con `false` la app se ve igual que
- * hoy aunque la licencia ya traiga los campos nuevos (F0).
+ * tope de empresas. APAGADO: con `false` la app se ve igual que hoy aunque la
+ * licencia ya traiga los campos nuevos (F0). El Día C se encienden solos con
+ * `license.planes_v3_activo` (ver `usePlanesV3()`); este flag solo sirve para
+ * verlos antes de tiempo en desarrollo.
  */
 export const PLANES_V3: boolean = false;
 

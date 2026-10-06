@@ -13,6 +13,7 @@ import {
 
 import { useServer } from '@/providers/server-provider';
 import { identificarUsuario } from '@/lib/telemetria';
+import { PLANES_V3 } from '@/lib/features';
 import type {
   CapacidadesPlan,
   LicenseStatus,
@@ -219,4 +220,14 @@ export function usePlanLicencia(): PlanLicencia | null {
       precioAseguradoMxn: license.precio_asegurado_mxn ?? null,
     };
   }, [license]);
+}
+
+/**
+ * Interruptor de los planes v3 (F1): el flag `PLANES_V3` (para probar antes de
+ * tiempo) O la licencia diciendo que el backend ya los activó
+ * (`planes_v3_activo`, Día C). Sin el campo = apagado: la app se ve como hoy.
+ */
+export function usePlanesV3(): boolean {
+  const { license } = useAuth();
+  return PLANES_V3 || license?.planes_v3_activo === true;
 }

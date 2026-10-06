@@ -44,6 +44,22 @@ def keyring_en_memoria():
 
 
 @pytest.fixture(autouse=True)
+def licencia_en_tmp(tmp_path, monkeypatch):
+    """
+    El cache de licencia (`~/.sat-descarga/license-cache.json`) nunca es el
+    real: con el tope de empresas (F1) la licencia del equipo de quien corre
+    las pruebas podría bloquear altas en los tests del catálogo.
+    """
+    from sat_descarga.api import cupo_descargas, license_client
+
+    monkeypatch.setattr(
+        license_client, "LICENSE_CACHE_PATH", tmp_path / "license-cache-aislado.json"
+    )
+    # Igual con el contador de descargas del mes: nunca el del equipo real.
+    monkeypatch.setattr(cupo_descargas, "_ruta", lambda: tmp_path / "descargas-mes-aislado.json")
+
+
+@pytest.fixture(autouse=True)
 def sin_instalacion_de_navegador(monkeypatch):
     """
     Los tests nunca deben descargar Chromium: se desactiva el warm-up del
