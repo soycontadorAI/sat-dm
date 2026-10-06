@@ -50,6 +50,8 @@ interface UseJob {
   /** Última fase emitida por los trámites de Certifica (renovación/CSD):
    * generando | firmando | enviando | numero_operacion | acuse | recuperando | guardando. */
   fase: string | null;
+  /** Avance "N de M XML" si el job lo reporta (evento opcional `progreso`). */
+  progreso: { actual: number; total: number } | null;
   resultado: unknown;
   error: string | null;
   /** Arranca un job: `starter` llama al endpoint (ciecCfdi/renovarEfirma/…) y devuelve { job_id }. */
@@ -75,6 +77,7 @@ export function useJob(): UseJob {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [captcha, setCaptcha] = useState<CaptchaState | null>(null);
   const [fase, setFase] = useState<string | null>(null);
+  const [progreso, setProgreso] = useState<{ actual: number; total: number } | null>(null);
   const [resultado, setResultado] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,6 +106,7 @@ export function useJob(): UseJob {
     setLog([]);
     setCaptcha(null);
     setFase(null);
+    setProgreso(null);
     setResultado(null);
     setError(null);
   }, [cerrarStream]);
@@ -135,6 +139,14 @@ export function useJob(): UseJob {
           if (ev.fase) {
             setFase(ev.fase);
             addLog(`fase: ${ev.fase}`);
+          }
+          break;
+        case 'progreso':
+          // Opcional: el scraper real no lo manda; si llega, la UI muestra
+          // "N de M XML".
+          if (typeof ev.actual === 'number' && typeof ev.total === 'number') {
+            setEstado('corriendo');
+            setProgreso({ actual: ev.actual, total: ev.total });
           }
           break;
         case 'log':
@@ -227,5 +239,5 @@ export function useJob(): UseJob {
     [apiClient],
   );
 
-  return { estado, log, captcha, fase, resultado, error, iniciar, responderCaptcha, reset };
+  return { estado, log, captcha, fase, progreso, resultado, error, iniciar, responderCaptcha, reset };
 }

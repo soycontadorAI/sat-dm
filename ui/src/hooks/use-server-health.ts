@@ -21,6 +21,8 @@ interface ServerHealthState {
   efirmaVencimiento: string | null;
   /** Estado del navegador del portal (instalando/listo/error) o null. */
   navegador: NavegadorStatus | null;
+  /** El agente corre en modo de grabación (ver HealthResponse.modo_grabacion). */
+  modoGrabacion: boolean;
   /** Manually trigger an immediate health check. */
   refresh: () => void;
 }
@@ -53,6 +55,7 @@ export function useServerHealth(
   const [efirmaLista, setEfirmaLista] = useState(false);
   const [efirmaVencimiento, setEfirmaVencimiento] = useState<string | null>(null);
   const [navegador, setNavegador] = useState<NavegadorStatus | null>(null);
+  const [modoGrabacion, setModoGrabacion] = useState(false);
 
   // Ref to track whether we should still process the result (component mounted).
   const mountedRef = useRef(true);
@@ -76,6 +79,7 @@ export function useServerHealth(
       setEfirmaLista(data.efirma_lista);
       setEfirmaVencimiento(data.efirma_vencimiento ?? null);
       setNavegador(data.navegador ?? null);
+      setModoGrabacion(data.modo_grabacion === true);
     } catch {
       if (!mountedRef.current) return;
 
@@ -122,5 +126,13 @@ export function useServerHealth(
     setRefreshCounter((c) => c + 1);
   }, []);
 
-  return { isConnected, rfcCargado, efirmaLista, efirmaVencimiento, navegador, refresh };
+  return {
+    isConnected,
+    rfcCargado,
+    efirmaLista,
+    efirmaVencimiento,
+    navegador,
+    modoGrabacion,
+    refresh,
+  };
 }

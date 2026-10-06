@@ -49,6 +49,13 @@ interface ServerContextValue {
   navegador: NavegadorStatus | null;
 
   /**
+   * El agente corre en modo de grabación (tutoriales con datos de demo): sin
+   * banners de venta, sin cuenta regresiva de la prueba ni recordatorios. No
+   * se anuncia en pantalla.
+   */
+  modoGrabacion: boolean;
+
+  /**
    * (Versión web) True mientras el navegador NO conoce su agente: aún no hay
    * conexión guardada (primer uso o desconexión). En desktop siempre false.
    */
@@ -123,6 +130,7 @@ export function ServerProvider({ children, baseUrl }: ServerProviderProps) {
     efirmaLista,
     efirmaVencimiento,
     navegador,
+    modoGrabacion,
     refresh: refreshHealth,
   } = useServerHealth(apiClient, undefined, { enabled: !webSinConexion });
 
@@ -163,6 +171,7 @@ export function ServerProvider({ children, baseUrl }: ServerProviderProps) {
       isConnected,
       fielStatus,
       navegador,
+      modoGrabacion,
       webSinConexion,
       conectar,
       desconectar,
@@ -175,6 +184,7 @@ export function ServerProvider({ children, baseUrl }: ServerProviderProps) {
       isConnected,
       fielStatus,
       navegador,
+      modoGrabacion,
       webSinConexion,
       conectar,
       desconectar,

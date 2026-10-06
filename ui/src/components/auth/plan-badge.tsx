@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 
 import { useAuth, usePlanesV3, usePlanLicencia, type PlanLicencia } from '@/providers/auth-provider';
+import { useServer } from '@/providers/server-provider';
 import type { LicenseStatus } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/components/ui/icon';
@@ -32,6 +33,7 @@ import { formatDate } from '@/lib/formatting';
  */
 export function PlanBadge() {
   const { license } = useAuth();
+  const { modoGrabacion } = useServer();
   const router = useRouter();
   const planesV3 = usePlanesV3();
   const planLicencia = usePlanLicencia();
@@ -43,6 +45,7 @@ export function PlanBadge() {
       <PlanBadgeV3
         plan={planLicencia}
         license={license}
+        sinDias={modoGrabacion}
         onClick={() => router.push('/suscripcion')}
       />
     );
@@ -53,7 +56,8 @@ export function PlanBadge() {
     return <FounderBadge />;
   }
 
-  const dias = license.days_remaining ?? null;
+  // En modo de grabación, sin días: "Tu prueba termina en 3 días" envejece el video.
+  const dias = modoGrabacion ? null : (license.days_remaining ?? null);
   const diasLabel = dias === null ? '' : dias === 1 ? '1 día' : `${dias} días`;
   const ir = () => router.push('/suscripcion');
 
@@ -154,15 +158,18 @@ const PLANES_V3_PAGO: readonly string[] = ['esencial', 'pro', 'completo', 'medid
 function PlanBadgeV3({
   plan,
   license,
+  sinDias = false,
   onClick,
 }: {
   plan: PlanLicencia;
   license: LicenseStatus;
+  /** Modo de grabación: el plan sin cuenta regresiva. */
+  sinDias?: boolean;
   onClick: () => void;
 }) {
   if (plan.codigo === 'fundador') return <FounderBadge />;
 
-  const dias = license.days_remaining ?? null;
+  const dias = sinDias ? null : (license.days_remaining ?? null);
   const cancela = license.subscription_cancel_at_period_end === true;
   const vence = license.expires_at ? formatDate(license.expires_at) : null;
 

@@ -13,6 +13,12 @@ export interface HealthResponse {
   efirma_vigente?: boolean | null;
   /** Estado del navegador del portal (Chromium): el warm-up lo descarga al arrancar. */
   navegador?: NavegadorStatus;
+  /**
+   * Modo de grabación del agente (datos de demo para los tutoriales). La UI
+   * calla lo que envejece un video (banners de venta, cuenta regresiva de la
+   * prueba, recordatorios); nunca muestra un aviso de que está activo.
+   */
+  modo_grabacion?: boolean;
 }
 
 /** Estado del navegador de descargas (Playwright/Chromium) reportado por /health. */
@@ -243,6 +249,10 @@ export interface JobEvent {
   fase?: string;
   numero?: string; // fase=numero_operacion
   acuse_pdf?: string; // fase=acuse
+  /** event=progreso (opcional; hoy solo lo manda el modo de grabación): XML
+   * descargados contra el total esperado. */
+  actual?: number;
+  total?: number;
 }
 
 // ---------------------------------------------------------------------------

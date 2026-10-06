@@ -142,15 +142,19 @@ export function PanelEspacio() {
                     )}
                   />
                   <span className="min-w-0 flex-1">
-                    <span
-                      className={cn(
-                        'block text-[13.5px] font-semibold leading-snug tracking-[-0.01em]',
-                        d.estado === 'pronto' ? 'text-muted-foreground' : 'text-foreground',
-                      )}
-                    >
-                      {d.label}
+                    {/* El nombre se parte en dos renglones si no cabe; la etiqueta
+                        se queda a su lado, en el primero. */}
+                    <span className="flex items-start gap-1.5">
+                      <span
+                        className={cn(
+                          'min-w-0 text-[13.5px] font-semibold leading-snug tracking-[-0.01em]',
+                          d.estado === 'pronto' ? 'text-muted-foreground' : 'text-foreground',
+                        )}
+                      >
+                        {d.label}
+                      </span>
                       {(d.estado || (d.soloEscritorio && web)) && (
-                        <span className="ml-1.5 inline-flex translate-y-[-1px] gap-1 align-middle">
+                        <span className="flex shrink-0 gap-1 pt-px">
                           <EtiquetaDestino destino={d} web={web} />
                         </span>
                       )}

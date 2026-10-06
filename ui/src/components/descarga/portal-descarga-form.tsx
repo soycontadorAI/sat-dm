@@ -243,6 +243,7 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
         log={job.log}
         resultado={job.resultado}
         error={job.error}
+        progreso={job.progreso}
       />
 
       <CaptchaModal captcha={job.captcha} onResolver={job.responderCaptcha} />

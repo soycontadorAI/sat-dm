@@ -386,6 +386,45 @@
     outline: 2px solid var(--ring);
     outline-offset: 3px;
   }
+  /* Toasts (sonner) con los estados de Señal: tarjeta blanca y los colores
+   * ok / warn / bad de DESIGN.md en vez de la paleta propia de sonner. El
+   * `html` sube la especificidad sobre la hoja que sonner inyecta. */
+  html [data-sonner-toaster][data-sonner-theme='light'] {
+    --normal-bg: #ffffff;
+    --normal-border: #dde1e7;
+    --normal-text: #10141b;
+    --success-bg: #e7f2ed;
+    --success-border: #c9e2d6;
+    --success-text: #0e7a4e;
+    --info-bg: #ffffff;
+    --info-border: #dde1e7;
+    --info-text: #10141b;
+    --warning-bg: #f5eee5;
+    --warning-border: #e8dac7;
+    --warning-text: #9a5700;
+    --error-bg: #f9e9ea;
+    --error-border: #efcfd2;
+    --error-text: #be2530;
+  }
+  html [data-sonner-toaster][data-sonner-theme='dark'] {
+    --normal-bg: #1a1f28;
+    --normal-bg-hover: #232934;
+    --normal-border: rgba(238, 241, 245, 0.12);
+    --normal-border-hover: rgba(238, 241, 245, 0.2);
+    --normal-text: #eef1f5;
+    --success-bg: #17291f;
+    --success-border: rgba(91, 194, 148, 0.28);
+    --success-text: #5bc294;
+    --info-bg: #1a1f28;
+    --info-border: rgba(238, 241, 245, 0.12);
+    --info-text: #eef1f5;
+    --warning-bg: #2a2317;
+    --warning-border: rgba(224, 163, 74, 0.28);
+    --warning-text: #e0a34a;
+    --error-bg: #2c1b1f;
+    --error-border: rgba(240, 122, 130, 0.28);
+    --error-text: #f07a82;
+  }
   /* En Electron la Titlebar tiene -webkit-app-region:drag y captura los
    * clicks de cualquier elemento encima (incluso con z-index alto). Los
    * toasts de sonner (top-right) y los popovers caen sobre esa franja, así

@@ -10,6 +10,8 @@ interface JobProgressProps {
   log: LogEntry[];
   resultado: unknown;
   error: string | null;
+  /** "N de M XML" si el job lo reporta (evento opcional `progreso`). */
+  progreso?: { actual: number; total: number } | null;
 }
 
 const ESTADO_LABEL: Record<JobUiEstado, string> = {
@@ -26,16 +28,39 @@ function EstadoIcon({ estado }: { estado: JobUiEstado }) {
   if (estado === 'done') return <Icon icon="ph:check-circle-light" className="size-4 text-success" />;
   if (estado === 'error') return <Icon icon="ph:x-circle-light" className="size-4 text-destructive" />;
   if (estado === 'cancelled') return <Icon icon="ph:prohibit-light" className="size-4 text-muted-foreground" />;
-  if (estado === 'captcha') return <Icon icon="ph:key-light" className="size-4 text-primary" />;
-  return <Icon icon="ph:circle-notch-light" className="size-4 animate-spin text-primary" />;
+  if (estado === 'captcha') return <Icon icon="ph:key-light" className="size-4 text-foreground" />;
+  // Corriendo solo: la señal cian (DESIGN.md, lo automático).
+  return <Icon icon="ph:circle-notch-light" className="size-4 animate-spin text-auto" />;
 }
 
+// Log sobre tinta (Señal): texto on-dark y los estados en su tono sobre tinta.
 const LEVEL_COLOR: Record<NonNullable<LogEntry['level']>, string> = {
-  info: 'text-slate-300',
-  ok: 'text-emerald-400',
-  warn: 'text-amber-400',
-  error: 'text-red-400',
+  info: 'text-[#AEB6C2]',
+  ok: 'text-[#5BC294]',
+  warn: 'text-[#E0A34A]',
+  error: 'text-[#F07A82]',
 };
+
+/** "N de M XML" con una barra que avanza en cian (trabajo automático). */
+function Avance({ actual, total }: { actual: number; total: number }) {
+  const pct = total > 0 ? Math.min(100, Math.round((actual / total) * 100)) : 0;
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm text-auto-text">
+        <span className="font-mono font-medium tabular-nums">
+          {actual.toLocaleString('es-MX')} de {total.toLocaleString('es-MX')}
+        </span>{' '}
+        XML
+      </p>
+      <div className="h-1 overflow-hidden rounded-full bg-muted" aria-hidden>
+        <div
+          className="h-full rounded-full bg-auto transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 function Resumen({ resultado }: { resultado: unknown }) {
   if (!resultado || typeof resultado !== 'object') return null;
@@ -55,15 +80,26 @@ function Resumen({ resultado }: { resultado: unknown }) {
   return null;
 }
 
-export function JobProgress({ estado, log, resultado, error }: JobProgressProps) {
+export function JobProgress({ estado, log, resultado, error, progreso }: JobProgressProps) {
   if (estado === 'idle') return null;
 
   return (
     <Card className="space-y-3 p-4">
       <div className="flex items-center gap-2">
         <EstadoIcon estado={estado} />
-        <span className="text-sm font-medium">{ESTADO_LABEL[estado]}</span>
+        <span
+          className={cn(
+            'text-sm font-medium',
+            (estado === 'iniciando' || estado === 'corriendo') && 'text-auto-text',
+          )}
+        >
+          {ESTADO_LABEL[estado]}
+        </span>
       </div>
+
+      {progreso && (estado === 'corriendo' || estado === 'captcha') && (
+        <Avance actual={progreso.actual} total={progreso.total} />
+      )}
 
       {estado === 'done' && <Resumen resultado={resultado} />}
       {estado === 'error' && error && (
@@ -71,13 +107,13 @@ export function JobProgress({ estado, log, resultado, error }: JobProgressProps)
       )}
 
       {/* Log estilo terminal */}
-      <div className="max-h-56 overflow-y-auto rounded-md bg-[#0A1628] p-3 font-mono text-[11px] leading-relaxed">
+      <div className="max-h-56 overflow-y-auto rounded-md bg-[#10141B] p-3 font-mono text-[11px] leading-relaxed">
         {log.length === 0 ? (
-          <span className="text-slate-500">Sin eventos todavía…</span>
+          <span className="text-[#8B94A3]">Sin eventos todavía…</span>
         ) : (
           log.map((l, i) => (
             <div key={i} className="whitespace-pre-wrap">
-              <span className="text-slate-500">{l.t}</span>{' '}
+              <span className="text-[#8B94A3]">{l.t}</span>{' '}
               <span className={cn(LEVEL_COLOR[l.level ?? 'info'])}>{l.msg}</span>
             </div>
           ))

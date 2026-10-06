@@ -19,6 +19,7 @@ import { useEfirmaReminder } from '@/hooks/use-efirma-reminder';
 import { useSolicitudesWatcher } from '@/hooks/use-solicitudes-watcher';
 import { useAuth, usePlanesV3 } from '@/providers/auth-provider';
 import { useNavegacion } from '@/providers/navegacion-provider';
+import { useServer } from '@/providers/server-provider';
 import LoginPage from '@/app/login/page';
 
 interface AppShellProps {
@@ -36,6 +37,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const { license, loading } = useAuth();
   const { modo } = useNavegacion();
+  const { modoGrabacion } = useServer();
   const planesV3 = usePlanesV3();
   // (Versión web) /conectar debe ser alcanzable SIN sesión: es la puerta de
   // entrada manual al agente (piloto/soporte) cuando aún no hay conexión.
@@ -68,8 +70,9 @@ export function AppShell({ children }: AppShellProps) {
     );
   }
 
-  // Banners de cuenta: iguales en las dos navegaciones.
-  const banners = (
+  // Banners de cuenta: iguales en las dos navegaciones. En modo de grabación
+  // (tutoriales) no salen: envejecen el video.
+  const banners = modoGrabacion ? null : (
     <>
       {/* La ventana de fundadores cerró y no vuelve: el FounderBanner se
           eliminó (2026-07). PromoBanner (50% en el anual) se retira con los

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 
 import { useEmpresas } from '@/hooks/use-empresas';
+import { useServer } from '@/providers/server-provider';
 import { notifyEfirmaVencimiento } from '@/lib/notify';
 import { semaforoVencimiento } from '@/lib/vencimiento';
 
@@ -22,11 +23,20 @@ export function useEfirmaReminder(): void {
   const { empresas } = useEmpresas();
   const empresasRef = useRef(empresas);
   empresasRef.current = empresas;
+  // Modo de grabación (tutoriales): las empresas de demo traen e.firmas por
+  // vencer a propósito; el recordatorio saldría en cuadro.
+  const { modoGrabacion, isConnected } = useServer();
+  const grabandoRef = useRef(modoGrabacion);
+  grabandoRef.current = modoGrabacion;
 
   useEffect(() => {
+    // Hasta que el agente responda (su /health dice si está en modo de
+    // grabación) no se avisa nada.
+    if (!isConnected) return;
+
     function comprobar() {
       const lista = empresasRef.current;
-      if (lista.length === 0) return;
+      if (lista.length === 0 || grabandoRef.current) return;
 
       const hoy = new Date().toISOString().slice(0, 10);
       const flagKey = `${STORAGE_KEY_PREFIX}${hoy}`;
@@ -63,5 +73,5 @@ export function useEfirmaReminder(): void {
     // No depende de `empresas` directamente — usa ref para no recrear
     // el listener cada vez que cambia el catálogo (que sucede mucho).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isConnected]);
 }

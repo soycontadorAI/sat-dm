@@ -306,10 +306,7 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
       tipo === 'constancia'
         ? `Descargando la Constancia de ${corto}…`
         : `Solicitando la Opinión 32-D de ${corto}…`,
-      {
-        description: 'Con su e.firma, sin captcha. Puede tardar un par de minutos.',
-        icon: <Icon icon="ph:circle-notch-light" className="size-4 animate-spin text-auto" />,
-      },
+      { description: 'Con su e.firma, sin captcha. Puede tardar un par de minutos.' },
     );
     try {
       const r = tipo === 'constancia' ? await apiClient.constanciaFiel() : await apiClient.opinionFiel();
@@ -327,7 +324,6 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
         {
           id,
           description: tipo === 'opinion' ? 'El semáforo de la empresa ya está al día.' : undefined,
-          icon: undefined,
           action: r.archivo
             ? {
                 label: web ? 'Descargar' : 'Abrir',
@@ -337,7 +333,7 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
         },
       );
     } catch (err) {
-      toast.error(mensajeDeError(err), { id, icon: undefined, description: undefined });
+      toast.error(mensajeDeError(err), { id, description: undefined });
     }
   }
 
