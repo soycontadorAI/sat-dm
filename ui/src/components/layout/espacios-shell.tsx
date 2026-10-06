@@ -42,8 +42,14 @@ const LLAVE_ULTIMO = 'tc:espacio-ultimo';
 export type ViaNav = 'riel' | 'panel' | 'recientes' | 'buscador' | 'atajo' | 'enlace';
 
 interface EspaciosShellValue {
-  /** Espacio del riel y del panel. */
+  /** Espacio del panel (el de la pantalla, o el último que abriste). */
   espacioActivo: EspacioId;
+  /**
+   * Espacio que se marca en el riel: el de la pantalla (o del "Pronto"
+   * abierto). null en Ayuda, Ajustes, Suscripción y Planes, que no viven en
+   * ningún espacio.
+   */
+  espacioMarcado: EspacioId | null;
   /** Destino de la ruta actual (o el Pronto abierto). */
   destinoActivo: DestinoUbicado | null;
   /** Destino Próximamente abierto (sin ruta); null si se ve una pantalla real. */
@@ -146,13 +152,17 @@ export function EspaciosShellProvider({ children }: { children: ReactNode }) {
     const base = u.padre && u.padre.href === u.destino.href ? u.padre : u.destino;
     const empresa = activaRef.current;
     const porEmpresa = esPorEmpresa(u) && !!empresa;
-    registrarReciente(esp, {
-      id: base.id,
-      href: ruta,
-      label: porEmpresa ? `${base.label}, ${nombreCortoEmpresa(empresa!.nombre)}` : base.label,
-      icon: base.icon,
-      rfc: porEmpresa ? empresa!.rfc : null,
-    });
+    registrarReciente(
+      esp,
+      {
+        id: base.id,
+        href: ruta,
+        label: porEmpresa ? `${base.label}, ${nombreCortoEmpresa(empresa!.nombre)}` : base.label,
+        icon: base.icon,
+        rfc: porEmpresa ? empresa!.rfc : null,
+      },
+      { generico: true },
+    );
   }, [pathname]);
 
   const togglePanel = useCallback(() => {
@@ -171,8 +181,14 @@ export function EspaciosShellProvider({ children }: { children: ReactNode }) {
   }, [togglePanel]);
 
   const pronto = prontoId ? destinoPorId(prontoId) : null;
-  const espacioActivo: EspacioId =
-    pronto?.espacio?.id ?? destinoRuta?.espacio?.id ?? ultimoEspacio;
+  const espacioDeRuta = destinoRuta?.espacio?.id ?? null;
+  const espacioMarcado: EspacioId | null = pronto?.espacio?.id ?? espacioDeRuta;
+  const espacioActivo: EspacioId = espacioMarcado ?? ultimoEspacio;
+
+  const abrirPanel = useCallback(() => {
+    setPanelAbierto(true);
+    escribir(LLAVE_PANEL, '1');
+  }, []);
 
   const navegar = useCallback(
     (href: string, via: ViaNav) => {
@@ -185,17 +201,18 @@ export function EspaciosShellProvider({ children }: { children: ReactNode }) {
 
   const irAEspacio = useCallback(
     (id: EspacioId, via: ViaNav) => {
-      // Un clic en el espacio donde ya estás esconde o muestra el panel.
-      if (id === espacioActivo && !pronto) {
-        togglePanel();
+      if (!pronto && espacioDeRuta === id) {
+        // Ya estás ahí. Un clic en el riel esconde o muestra el panel; el
+        // atajo (⌘1..⌘5) o el buscador solo lo vuelven a mostrar.
+        if (via === 'riel') togglePanel();
+        else abrirPanel();
         return;
       }
       agregarBreadcrumb({ category: 'nav', message: `nav_espacio: ${id}`, data: { via } });
-      setPanelAbierto(true);
-      escribir(LLAVE_PANEL, '1');
+      abrirPanel();
       navegar(ultimas[id] ?? primerDestinoConRuta(id), via);
     },
-    [espacioActivo, pronto, togglePanel, navegar, ultimas],
+    [espacioDeRuta, pronto, togglePanel, abrirPanel, navegar, ultimas],
   );
 
   const abrirDestino = useCallback(
@@ -213,6 +230,7 @@ export function EspaciosShellProvider({ children }: { children: ReactNode }) {
   const value = useMemo<EspaciosShellValue>(
     () => ({
       espacioActivo,
+      espacioMarcado,
       destinoActivo: pronto ?? destinoRuta,
       pronto,
       panelAbierto,
@@ -221,7 +239,17 @@ export function EspaciosShellProvider({ children }: { children: ReactNode }) {
       navegar,
       abrirDestino,
     }),
-    [espacioActivo, pronto, destinoRuta, panelAbierto, togglePanel, irAEspacio, navegar, abrirDestino],
+    [
+      espacioActivo,
+      espacioMarcado,
+      pronto,
+      destinoRuta,
+      panelAbierto,
+      togglePanel,
+      irAEspacio,
+      navegar,
+      abrirDestino,
+    ],
   );
 
   return <EspaciosShellContext.Provider value={value}>{children}</EspaciosShellContext.Provider>;

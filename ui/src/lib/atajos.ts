@@ -66,9 +66,10 @@ export function formatearAtajo(
   return `Ctrl+${atajo.shift ? 'Shift+' : ''}${atajo.tecla}`;
 }
 
-// Tabla de referencia (card "Atajos de teclado" en /ayuda). Los ⌘1..⌘9 se
-// asignan por el ORDEN de NAV_ITEMS en lib/navegacion.ts — ver nota ahí
-// (a partir de la 10.ª página ya no hay dígito; se llega por ⌘K).
+// Tabla de referencia (card "Atajos de teclado" en /ayuda) de la navegación
+// clásica. Los ⌘1..⌘9 se asignan por el ORDEN de NAV_ITEMS en
+// lib/navegacion.ts — ver nota ahí (a partir de la 10.ª página ya no hay
+// dígito; se llega por ⌘K).
 export const ATAJOS: readonly Atajo[] = [
   { id: 'palette', tecla: 'K', descripcion: 'Buscar página o acción', grupo: 'Navegación' },
   { id: 'empresas', tecla: 'E', descripcion: 'Cambiar de empresa activa', grupo: 'Navegación' },
@@ -80,3 +81,23 @@ export const ATAJOS: readonly Atajo[] = [
   { id: 'tema', tecla: 'L', shift: true, descripcion: 'Alternar tema claro/oscuro', grupo: 'Vista' },
   { id: 'sidebar', tecla: 'B', descripcion: 'Colapsar o expandir el menú lateral', grupo: 'Vista' },
 ] as const;
+
+// Navegación por espacios (F3): ⌘1..⌘5 son los 5 espacios, en el orden del
+// riel (ESPACIOS en lib/navegacion.ts), y ⌘B esconde el panel del espacio.
+// Los demás atajos no cambian.
+export const ATAJOS_ESPACIOS: readonly Atajo[] = [
+  { id: 'palette', tecla: 'K', descripcion: 'Busca o pide algo: pantallas, empresas y órdenes', grupo: 'Navegación' },
+  { id: 'espacios', tecla: '1…5', descripcion: 'Ir a Despacho, SAT, Revisar, Cumplimiento o Herramientas', grupo: 'Navegación' },
+  { id: 'empresas', tecla: 'E', descripcion: 'Cambiar de empresa activa', grupo: 'Navegación' },
+  { id: 'descarga-rapida', tecla: 'D', shift: true, descripcion: 'Ir a Descarga rápida', grupo: 'Navegación' },
+  { id: 'ajustes', tecla: ',', descripcion: 'Abrir Ajustes', grupo: 'Navegación' },
+  { id: 'ayuda', tecla: 'F1', mod: false, descripcion: 'Abrir Ayuda', grupo: 'Navegación' },
+  { id: 'alta-empresa', tecla: 'N', descripcion: 'Agregar empresa', grupo: 'Acciones' },
+  { id: 'tema', tecla: 'L', shift: true, descripcion: 'Alternar tema claro/oscuro', grupo: 'Vista' },
+  { id: 'panel', tecla: 'B', descripcion: 'Mostrar u ocultar el panel del espacio', grupo: 'Vista' },
+] as const;
+
+/** La tabla de atajos que aplica a la navegación que ve esta instalación. */
+export function atajosDe(modo: 'clasica' | 'espacios'): readonly Atajo[] {
+  return modo === 'espacios' ? ATAJOS_ESPACIOS : ATAJOS;
+}

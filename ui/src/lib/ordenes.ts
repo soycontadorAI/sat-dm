@@ -330,13 +330,17 @@ export function interpretar(
       });
     }
 
+    // Constancia y opinión: la app las baja con e.firma si la empresa la tiene
+    // (sin captcha) y si no con Contraseña (captcha dentro de la app). La
+    // etiqueta de canal dice cuál va a usar; "con contraseña" no lo cambia.
+    const canalDocumento: CanalOrden | undefined = tieneFiel ? 'fiel' : tieneCiec ? 'ciec' : undefined;
+
     if (esConstancia) {
       out.push({
         ...base,
         tipo: 'constancia',
         titulo: 'Descargar Constancia de Situación Fiscal',
-        canal: forzado === 'ciec' && tieneCiec ? 'ciec' : tieneFiel ? 'fiel' : tieneCiec ? 'ciec' : undefined,
-        canalForzado: !!forzado,
+        canal: canalDocumento,
         confirmar: false,
         problema: sinEmpresa ?? sinAccesos,
       });
@@ -347,8 +351,7 @@ export function interpretar(
         ...base,
         tipo: 'opinion',
         titulo: 'Descargar Opinión de Cumplimiento 32-D',
-        canal: forzado === 'ciec' && tieneCiec ? 'ciec' : tieneFiel ? 'fiel' : tieneCiec ? 'ciec' : undefined,
-        canalForzado: !!forzado,
+        canal: canalDocumento,
         confirmar: false,
         problema: sinEmpresa ?? sinAccesos,
       });

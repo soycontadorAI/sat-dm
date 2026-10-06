@@ -128,6 +128,12 @@ test('constancia y opinión se ejecutan sin segundo Enter', () => {
   assert.equal(una('32-D de Norma Reyes').empresa?.rfc, 'REAN741122K85');
 });
 
+test('constancia: el canal es el que la app va a usar (e.firma si la hay)', () => {
+  const c = una('constancia de roble con contraseña');
+  assert.equal(c.canal, 'fiel');
+  assert.equal(c.canalForzado, undefined);
+});
+
 test('constancia no se confunde con descarga de CFDIs', () => {
   const r = interpretar('descargar constancia de panaderia', EMPRESAS, ACTIVA, HOY);
   assert.deepEqual(r.map((o) => o.tipo), ['constancia']);

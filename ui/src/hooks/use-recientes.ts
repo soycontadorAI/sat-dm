@@ -46,24 +46,37 @@ function guardar(a: Almacen) {
   }
 }
 
-/** Agrega (o sube al primer lugar) un reciente del espacio. */
-export function registrarReciente(espacio: EspacioId, r: Omit<Reciente, 'ts'>) {
-  const a = leer();
-  const lista = (a[espacio] ?? []).filter(
-    (x) => !(x.href === r.href && (x.rfc ?? null) === (r.rfc ?? null)),
-  );
-  a[espacio] = [{ ...r, ts: Date.now() }, ...lista].slice(0, POR_ESPACIO);
-  guardar(a);
-  window.dispatchEvent(new Event(EVENTO_RECIENTE));
-}
+/** Ventana en la que un reciente con etiqueta propia no se pisa con la genérica. */
+const VENTANA_ETIQUETA_MS = 5_000;
 
 /**
- * Para que una pantalla ponga una etiqueta más rica que el nombre del destino
- * (p. ej. Descargar CFDIs después de una orden: "Recibidos sep 2026, El
- * Roble"). Reemplaza el reciente de esa ruta y empresa.
+ * Agrega (o sube al primer lugar) un reciente del espacio.
+ *
+ * `generico`: lo registra el shell al cambiar de ruta, con el nombre del
+ * destino. Si esa misma pantalla acaba de entrar con una etiqueta propia (una
+ * orden de ⌘K: "Recibidos sep 2026, El Roble"), se respeta la propia.
  */
-export function enriquecerReciente(espacio: EspacioId, r: Omit<Reciente, 'ts'>) {
-  registrarReciente(espacio, r);
+export function registrarReciente(
+  espacio: EspacioId,
+  r: Omit<Reciente, 'ts'>,
+  opciones: { generico?: boolean } = {},
+) {
+  const a = leer();
+  const previa = a[espacio] ?? [];
+  const mismo = (x: Reciente) => x.href === r.href && (x.rfc ?? null) === (r.rfc ?? null);
+  const primero = previa[0];
+  if (
+    opciones.generico &&
+    primero &&
+    mismo(primero) &&
+    primero.label !== r.label &&
+    Date.now() - primero.ts < VENTANA_ETIQUETA_MS
+  ) {
+    return;
+  }
+  a[espacio] = [{ ...r, ts: Date.now() }, ...previa.filter((x) => !mismo(x))].slice(0, POR_ESPACIO);
+  guardar(a);
+  window.dispatchEvent(new Event(EVENTO_RECIENTE));
 }
 
 export function useRecientes(espacio: EspacioId | null): Reciente[] {

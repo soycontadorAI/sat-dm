@@ -11,6 +11,8 @@ import {
   formatearAtajo,
 } from '@/lib/atajos';
 import { NAV_ITEMS, NAV_SECUNDARIO, PAGINAS_EXTRA } from '@/lib/navegacion';
+import { NAV_ESPACIOS } from '@/lib/features';
+import { useNavegacion } from '@/providers/navegacion-provider';
 import { mensajeDeError } from '@/lib/errores';
 import { useEmpresas } from '@/hooks/use-empresas';
 import { EmpresaBadge } from '@/components/empresas/empresa-badge';
@@ -50,6 +52,7 @@ export function CommandPalette({
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const { empresas, seleccionar } = useEmpresas();
+  const navegacion = useNavegacion();
 
   const [busqueda, setBusqueda] = useState('');
   // RFC de la empresa cuyo cambio está en curso (spinner + bloqueo).
@@ -67,6 +70,9 @@ export function CommandPalette({
   }, [open, vista]);
 
   const oscuro = resolvedTheme === 'dark';
+  // Labs de la navegación por espacios (F3): solo aparece si escribes "labs".
+  // En el escritorio no hay barra de direcciones para `?labs=espacios`.
+  const pideLabs = NAV_ESPACIOS && vista === 'root' && busqueda.trim().toLowerCase().startsWith('labs');
   const activas = empresas.filter((e) => !e.archived_at);
   const activa = activas.find((e) => e.default) ?? activas[0] ?? null;
 
@@ -174,6 +180,23 @@ export function CommandPalette({
                     </CommandItem>
                   ))}
                 </CommandGroup>
+                {pideLabs && (
+                  <CommandGroup heading="Labs">
+                    <CommandItem
+                      value="labs navegacion por espacios"
+                      onSelect={() => {
+                        navegacion.activarLabs();
+                        onOpenChange(false);
+                        toast.success('Navegación por espacios encendida en este equipo', {
+                          description: 'Para volver a la clásica: Ajustes, Apariencia, Navegación.',
+                        });
+                      }}
+                    >
+                      <Icon icon="ph:flask-light" className="size-4.5 shrink-0 text-muted-foreground" />
+                      Probar la navegación por espacios
+                    </CommandItem>
+                  </CommandGroup>
+                )}
                 <CommandGroup heading="Acciones">
                   <CommandItem
                     value="Cambiar de empresa"

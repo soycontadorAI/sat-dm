@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { usePrefill, type PrefillDescarga } from '@/lib/prefill';
+import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Parámetros que emite el form (la página expande "A" en dos solicitudes E + R).
@@ -63,32 +64,36 @@ interface DescargaFormProps {
 // ---------------------------------------------------------------------------
 
 export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProps) {
-  const [fechaInicio, setFechaInicio] = useState(firstDayOfMonth);
-  const [fechaFin, setFechaFin] = useState(lastDayOfMonth);
-  const [tipoSolicitud, setTipoSolicitud] = useState<'CFDI' | 'Metadata'>('CFDI');
-  const [tipoComprobante, setTipoComprobante] = useState<ComprobanteSeleccion>('E');
-
   // Orden de ⌘K ("descargar recibidos de septiembre de ..."): el primer Enter
   // llena el formulario y deja el foco en "Solicitar descarga"; el segundo
   // Enter la manda. Nada sale al SAT sin ese segundo Enter (el SAT limita las
   // solicitudes repetidas con el mismo criterio).
-  const prefill = usePrefill('descarga');
-  const [deOrden, setDeOrden] = useState<PrefillDescarga | null>(null);
-  const [enfocarPendiente, setEnfocarPendiente] = useState(false);
+  const { inicial, nuevo } = usePrefill('descarga');
+
+  const [fechaInicio, setFechaInicio] = useState(() => inicial?.desde ?? firstDayOfMonth());
+  const [fechaFin, setFechaFin] = useState(() => inicial?.hasta ?? lastDayOfMonth());
+  const [tipoSolicitud, setTipoSolicitud] = useState<'CFDI' | 'Metadata'>('CFDI');
+  const [tipoComprobante, setTipoComprobante] = useState<ComprobanteSeleccion>(
+    () => inicial?.comprobante ?? 'E',
+  );
+
+  const [deOrden, setDeOrden] = useState<PrefillDescarga | null>(inicial);
+  const [enfocarPendiente, setEnfocarPendiente] = useState(!!inicial);
   const submitRef = useRef<HTMLButtonElement>(null);
   // Un Enter sostenido no debe mandar la solicitud: ignorar el submit en los
   // primeros instantes después de llenar.
   const listoDesde = useRef(0);
 
+  // Otra orden con la pantalla ya abierta.
   useEffect(() => {
-    if (!prefill) return;
-    setFechaInicio(prefill.desde);
-    setFechaFin(prefill.hasta);
+    if (!nuevo) return;
+    setFechaInicio(nuevo.desde);
+    setFechaFin(nuevo.hasta);
     setTipoSolicitud('CFDI');
-    setTipoComprobante(prefill.comprobante);
-    setDeOrden(prefill);
+    setTipoComprobante(nuevo.comprobante);
+    setDeOrden(nuevo);
     setEnfocarPendiente(true);
-  }, [prefill]);
+  }, [nuevo]);
 
   const isDisabledPrefill = disabled || isLoading;
   useEffect(() => {
@@ -202,7 +207,11 @@ export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProp
             ref={submitRef}
             type="submit"
             disabled={isDisabled}
-            className="w-full sm:w-auto"
+            // Después de una orden, el contorno marca dónde cae el segundo Enter.
+            className={cn(
+              'w-full sm:w-auto',
+              deOrden && 'focus:outline-2 focus:outline-offset-3 focus:outline-ring',
+            )}
             onKeyDown={(e) => {
               if (e.repeat && e.key === 'Enter') e.preventDefault();
             }}

@@ -40,6 +40,12 @@ interface NavegacionContextValue {
   preferencia: ModoNavegacion | null;
   /** Fija la preferencia de la instalación; null la borra (vuelve al default). */
   setPreferencia: (m: ModoNavegacion | null) => void;
+  /**
+   * Labs desde la app (lo mismo que `?labs=espacios`, para el escritorio, donde
+   * no hay barra de direcciones): enciende espacios en esta instalación y deja
+   * visible el selector de Ajustes para volver a la clásica.
+   */
+  activarLabs: () => void;
   /** El selector de Ajustes > Apariencia > Navegación se muestra. */
   selectorVisible: boolean;
 }
@@ -145,6 +151,13 @@ export function NavegacionProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new Event(EVENTO_CAMBIO));
   }, []);
 
+  const activarLabs = useCallback(() => {
+    escribir(LLAVE_LABS, '1');
+    setLabs(true);
+    agregarBreadcrumb({ category: 'nav', message: 'labs: espacios (buscador)' });
+    setPreferencia('espacios');
+  }, [setPreferencia]);
+
   const selectorVisible =
     NAV_ESPACIOS && (labs || preferencia !== null || Date.now() >= desde.getTime());
 
@@ -155,9 +168,10 @@ export function NavegacionProvider({ children }: { children: ReactNode }) {
       listo,
       preferencia,
       setPreferencia,
+      activarLabs,
       selectorVisible,
     }),
-    [modoFinal, origen, listo, preferencia, setPreferencia, selectorVisible],
+    [modoFinal, origen, listo, preferencia, setPreferencia, activarLabs, selectorVisible],
   );
 
   return <NavegacionContext.Provider value={value}>{children}</NavegacionContext.Provider>;
@@ -173,6 +187,7 @@ export function useNavegacion(): NavegacionContextValue {
       listo: false,
       preferencia: null,
       setPreferencia: () => {},
+      activarLabs: () => {},
       selectorVisible: false,
     };
   }

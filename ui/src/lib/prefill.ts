@@ -27,6 +27,11 @@ export interface PrefillPortal {
   hasta: string;
   /** El select de Descarga rápida usa RE para "Ambas". */
   tipo: 'E' | 'R' | 'RE';
+  /**
+   * Acceso con el que se entra al portal. Sin él, el de siempre (e.firma si la
+   * empresa la tiene). La orden lo fija ("con contraseña").
+   */
+  metodo?: 'fiel' | 'ciec';
   etiqueta: string;
 }
 
@@ -66,23 +71,35 @@ export function verPrefill<K extends Clave>(clave: K): Prefills[K] | null {
 }
 
 /**
- * Entrega el prellenado pendiente de `clave` (al montar o cuando llegue uno
- * nuevo) y lo consume. Cada entrega es un objeto nuevo, así que sirve como
- * dependencia de un efecto.
+ * Prellenado de una orden de ⌘K para una pantalla.
+ *
+ * - `inicial`: el que ya estaba pendiente al montar. Se lee en el primer render
+ *   (para usarlo como estado inicial: un Select de Radix que cambia de valor
+ *   justo después de montarse se queda en blanco) y se consume al montar.
+ * - `nuevo`: el que llega con la pantalla ya abierta (otra orden). Cada entrega
+ *   es un objeto nuevo, así que sirve como dependencia de un efecto.
  */
-export function usePrefill<K extends Clave>(clave: K): Prefills[K] | null {
-  const [valor, setValor] = useState<Prefills[K] | null>(null);
+export function usePrefill<K extends Clave>(
+  clave: K,
+): { inicial: Prefills[K] | null; nuevo: Prefills[K] | null } {
+  // verPrefill no consume: el inicializador puede correr dos veces en dev.
+  const [inicial] = useState<Prefills[K] | null>(() => verPrefill(clave));
+  const [nuevo, setNuevo] = useState<Prefills[K] | null>(null);
   useEffect(() => {
+    // El inicial se consume aquí (una sola vez por montaje real).
+    if (inicial && verPrefill(clave) === inicial) tomarPrefill(clave);
     const tomar = () => {
       const v = tomarPrefill(clave);
-      if (v) setValor({ ...v });
+      if (v) setNuevo({ ...v });
     };
+    // Uno que llegó entre el primer render y este efecto.
     tomar();
     const onPrefill = (e: Event) => {
       if ((e as CustomEvent<Clave>).detail === clave) tomar();
     };
     window.addEventListener(EVENTO, onPrefill);
     return () => window.removeEventListener(EVENTO, onPrefill);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clave]);
-  return valor;
+  return { inicial, nuevo };
 }

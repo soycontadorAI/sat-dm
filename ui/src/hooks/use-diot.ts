@@ -77,7 +77,11 @@ export function useDiot(): UseDiotState {
 
   const rfcActivo = empresas.find((e) => e.default)?.rfc ?? null;
 
-  const [periodo, setPeriodoState] = useState<string>(periodoAnterior());
+  // Orden de ⌘K ("DIOT de agosto de ..."): la pantalla abre en ese periodo.
+  const { inicial: prefillInicial, nuevo: prefillNuevo } = usePrefill('diot');
+  const [periodo, setPeriodoState] = useState<string>(
+    () => prefillInicial?.periodo ?? periodoAnterior(),
+  );
   const [filas, setFilas] = useState<FilaDiot[]>([]);
   const [errores, setErrores] = useState<HallazgoDiot[]>([]);
   const [advertencias, setAdvertencias] = useState<HallazgoDiot[]>([]);
@@ -182,11 +186,10 @@ export function useDiot(): UseDiotState {
     setPeriodoState(p);
   }, []);
 
-  // Orden de ⌘K ("DIOT de agosto de ..."): abre la pantalla en ese periodo.
-  const prefill = usePrefill('diot');
+  // Otra orden de ⌘K con la pantalla ya abierta.
   useEffect(() => {
-    if (prefill?.periodo) setPeriodo(prefill.periodo);
-  }, [prefill, setPeriodo]);
+    if (prefillNuevo?.periodo) setPeriodo(prefillNuevo.periodo);
+  }, [prefillNuevo, setPeriodo]);
 
   const marcarEdicion = useCallback(() => {
     epochRef.current += 1;

@@ -22,6 +22,7 @@ import { NavegadorStatusBanner } from '@/components/shared/navegador-status';
 import { metodoPortalPreferido, etiquetaMetodo } from '@/lib/empresa-metodo';
 import type { Empresa } from '@/lib/types';
 import { usePrefill, type PrefillPortal } from '@/lib/prefill';
+import { cn } from '@/lib/utils';
 
 type TipoComprobante = 'R' | 'E' | 'RE';
 
@@ -46,32 +47,47 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
   const { apiClient } = useServer();
   const job = useCiecJob();
 
-  const hoy = useMemo(() => new Date(), []);
-  const [tipo, setTipo] = useState<TipoComprobante>('E');
-  const [desde, setDesde] = useState(ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1)));
-  const [hasta, setHasta] = useState(ymd(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)));
-
-  const metodo = metodoPortalPreferido(empresa);
-  const corriendo = job.estado !== 'idle' && job.estado !== 'done'
-    && job.estado !== 'error' && job.estado !== 'cancelled';
-
   // Orden de ⌘K: el primer Enter llena el formulario y deja el foco en
   // "Iniciar descarga"; el segundo Enter la arranca (con Contraseña, el
   // captcha aparece aquí mismo).
-  const prefill = usePrefill('portal');
-  const [deOrden, setDeOrden] = useState<PrefillPortal | null>(null);
-  const [enfocarPendiente, setEnfocarPendiente] = useState(false);
+  const { inicial, nuevo } = usePrefill('portal');
+
+  const hoy = useMemo(() => new Date(), []);
+  const [tipo, setTipo] = useState<TipoComprobante>(() => inicial?.tipo ?? 'E');
+  const [desde, setDesde] = useState(
+    () => inicial?.desde ?? ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1)),
+  );
+  const [hasta, setHasta] = useState(
+    () => inicial?.hasta ?? ymd(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)),
+  );
+
+  // Una orden de ⌘K puede fijar el acceso ("con contraseña"); vale solo para
+  // la empresa de la orden y si la empresa lo tiene.
+  const [metodoOrden, setMetodoOrden] = useState<{ rfc: string; metodo: 'fiel' | 'ciec' } | null>(
+    () => (inicial?.metodo ? { rfc: inicial.rfc, metodo: inicial.metodo } : null),
+  );
+  const metodo =
+    metodoOrden && metodoOrden.rfc === empresa.rfc && empresa.metodos.includes(metodoOrden.metodo)
+      ? metodoOrden.metodo
+      : metodoPortalPreferido(empresa);
+  const corriendo = job.estado !== 'idle' && job.estado !== 'done'
+    && job.estado !== 'error' && job.estado !== 'cancelled';
+
+  const [deOrden, setDeOrden] = useState<PrefillPortal | null>(inicial);
+  const [enfocarPendiente, setEnfocarPendiente] = useState(!!inicial);
   const iniciarRef = useRef<HTMLButtonElement>(null);
   const listoDesde = useRef(0);
 
+  // Otra orden con la pantalla ya abierta.
   useEffect(() => {
-    if (!prefill) return;
-    setDesde(prefill.desde);
-    setHasta(prefill.hasta);
-    setTipo(prefill.tipo);
-    setDeOrden(prefill);
+    if (!nuevo) return;
+    setDesde(nuevo.desde);
+    setHasta(nuevo.hasta);
+    setTipo(nuevo.tipo);
+    setMetodoOrden(nuevo.metodo ? { rfc: nuevo.rfc, metodo: nuevo.metodo } : null);
+    setDeOrden(nuevo);
     setEnfocarPendiente(true);
-  }, [prefill]);
+  }, [nuevo]);
 
   useEffect(() => {
     if (!enfocarPendiente || !metodo || corriendo) return;
@@ -203,7 +219,11 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
               ref={iniciarRef}
               onClick={iniciar}
               disabled={!metodo || corriendo}
-              className="w-full sm:w-auto"
+              // Después de una orden, el contorno marca dónde cae el segundo Enter.
+              className={cn(
+                'w-full sm:w-auto',
+                deOrden && 'focus:outline-2 focus:outline-offset-3 focus:outline-ring',
+              )}
               onKeyDown={(e) => {
                 if (e.repeat && e.key === 'Enter') e.preventDefault();
               }}

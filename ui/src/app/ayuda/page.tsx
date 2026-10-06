@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 
 import { cn } from '@/lib/utils';
-import { ATAJOS, esMac, formatearAtajo } from '@/lib/atajos';
+import { atajosDe, esMac, formatearAtajo } from '@/lib/atajos';
+import { useNavegacion } from '@/providers/navegacion-provider';
 import { PageHeading } from '@/components/layout/page-heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -111,7 +112,11 @@ export default function AyudaPage() {
     setMac(esMac());
   }, []);
 
-  const gruposAtajos = [...new Set(ATAJOS.map((a) => a.grupo))];
+  // La tarjeta de atajos sigue a la navegación de esta instalación (clásica o
+  // espacios): se regenera sola desde lib/atajos.ts.
+  const { modo } = useNavegacion();
+  const atajos = atajosDe(modo);
+  const gruposAtajos = [...new Set(atajos.map((a) => a.grupo))];
 
   const q = query.trim().toLowerCase();
   const grupos = FAQ_GROUPS.map((g) => ({
@@ -265,11 +270,9 @@ export default function AyudaPage() {
               <div className="space-y-3">
                 {gruposAtajos.map((grupo) => (
                   <div key={grupo}>
-                    <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                      {grupo}
-                    </div>
+                    <div className="mb-1.5 text-xs font-semibold text-ghost">{grupo}</div>
                     <div className="flex flex-col gap-1.5">
-                      {ATAJOS.filter((a) => a.grupo === grupo).map((a) => (
+                      {atajos.filter((a) => a.grupo === grupo).map((a) => (
                         <div
                           key={a.id}
                           className="flex items-center justify-between gap-3 text-[13.5px]"

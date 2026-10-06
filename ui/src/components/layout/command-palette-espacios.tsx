@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 
@@ -149,6 +149,10 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
   const [cambiandoRfc, setCambiandoRfc] = useState<string | null>(null);
   const [mac, setMac] = useState(false);
   const [web, setWeb] = useState(false);
+  // Al ejecutar algo, el foco NO regresa a "Busca o pide algo": el segundo
+  // Enter de una descarga tiene que caer en "Solicitar descarga", no reabrir
+  // el buscador. Con Esc sí regresa (accesibilidad).
+  const sinRestaurarFoco = useRef(false);
 
   useEffect(() => {
     setMac(esMac());
@@ -258,6 +262,7 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
   if (!shell) return null;
 
   function cerrar() {
+    sinRestaurarFoco.current = true;
     onOpenChange(false);
   }
 
@@ -309,6 +314,14 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
     try {
       const r = tipo === 'constancia' ? await apiClient.constanciaFiel() : await apiClient.opinionFiel();
       refresh();
+      // Recientes de SAT: "Constancia, Panadería La Central" abre su fila.
+      registrarReciente('sat', {
+        id: 'constancia-opinion',
+        href: `/empresas?rfc=${encodeURIComponent(empresa.rfc)}&abrir=1`,
+        label: `${tipo === 'constancia' ? 'Constancia' : 'Opinión 32-D'}, ${corto}`,
+        icon: tipo === 'constancia' ? 'ph:identification-card-light' : 'ph:seal-check-light',
+        rfc: empresa.rfc,
+      });
       toast.success(
         tipo === 'constancia' ? `Constancia de ${corto} descargada` : `Opinión 32-D de ${corto} descargada`,
         {
@@ -374,6 +387,7 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
             desde: o.periodo.desde,
             hasta: o.periodo.hasta,
             tipo: o.comprobante === 'A' ? 'RE' : o.comprobante,
+            metodo: o.canal === 'ciec' ? 'ciec' : 'fiel',
             etiqueta: `${etiqueta}, con ${o.canal === 'ciec' ? 'Contraseña' : 'e.firma'}`,
           });
           shell.navegar('/descarga/rapida', 'buscador');
@@ -454,6 +468,12 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
       <DialogContent
         showCloseButton={false}
         aria-describedby={undefined}
+        onCloseAutoFocus={(e) => {
+          if (sinRestaurarFoco.current) {
+            e.preventDefault();
+            sinRestaurarFoco.current = false;
+          }
+        }}
         className="top-[13%] translate-y-0 gap-0 overflow-hidden rounded-[14px] p-0 sm:max-w-[680px]"
       >
         <DialogTitle className="sr-only">
@@ -526,7 +546,7 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
                     </CommandItem>
                   ))}
                 </CommandGroup>
-                <GrupoAcciones acciones={accionesGenerales} mac={mac} onSelect={accionGeneral} />
+                <GrupoAcciones heading="Acciones" acciones={accionesGenerales} mac={mac} onSelect={accionGeneral} />
               </>
             ) : (
               <>
@@ -608,7 +628,12 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
                   </CommandGroup>
                 )}
                 {accionesGenerales.length > 0 && (
-                  <GrupoAcciones acciones={accionesGenerales} mac={mac} onSelect={accionGeneral} />
+                  <GrupoAcciones
+                    heading={ordenes.length ? 'Más acciones' : 'Acciones'}
+                    acciones={accionesGenerales}
+                    mac={mac}
+                    onSelect={accionGeneral}
+                  />
                 )}
               </>
             )}
@@ -641,16 +666,18 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
 }
 
 function GrupoAcciones({
+  heading,
   acciones,
   mac,
   onSelect,
 }: {
+  heading: string;
   acciones: { id: string; label: string; icon: string; atajo: { tecla: string; shift?: boolean } }[];
   mac: boolean;
   onSelect: (id: string) => void;
 }) {
   return (
-    <CommandGroup heading="Acciones">
+    <CommandGroup heading={heading}>
       {acciones.map((a) => (
         <CommandItem key={a.id} value={a.id} onSelect={() => onSelect(a.id)} className="min-h-10 rounded-[9px] px-2.5">
           <Icon icon={a.icon} className="size-4.5 shrink-0 text-muted-foreground" />

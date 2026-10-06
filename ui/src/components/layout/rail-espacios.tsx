@@ -33,17 +33,17 @@ function BotonRiel({
           onClick={onClick}
           aria-current={activo ? 'page' : undefined}
           className={cn(
-            'relative flex w-17 flex-col items-center gap-1 rounded-lg pb-1.5 pt-2.25 text-[10.5px] font-semibold tracking-[-0.005em] transition-colors duration-[120ms]',
+            'relative flex w-[72px] flex-col items-center gap-1 rounded-lg pb-1.5 pt-2.25 text-[10.5px] font-semibold tracking-[-0.02em] transition-colors duration-[120ms]',
             activo
               ? 'bg-muted text-foreground'
               : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
             // Marca del espacio activo, pegada al borde del riel (tinta).
             activo &&
-              'before:absolute before:-left-1.5 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-foreground before:content-[""]',
+              'before:absolute before:-left-[3px] before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-foreground before:content-[""]',
           )}
         >
           <Icon icon={icon} className="size-5.5" />
-          <span className="max-w-full truncate px-0.5">{label}</span>
+          <span className="max-w-full truncate">{label}</span>
         </button>
       </TooltipTrigger>
       <TooltipContent side="right">{tip}</TooltipContent>
@@ -76,7 +76,7 @@ export function RailEspacios() {
         <BrandMark iconOnly size={32} />
       </div>
       {ESPACIOS.map((e, i) => {
-        const activo = !enAyuda && shell.espacioActivo === e.id;
+        const activo = !enAyuda && shell.espacioMarcado === e.id;
         const tip = activo
           ? `${shell.panelAbierto ? 'Ocultar' : 'Mostrar'} el panel (${formatearAtajo({ tecla: 'B' }, mac)})`
           : `${e.label} (${formatearAtajo({ tecla: String(i + 1) }, mac)})`;

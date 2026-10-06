@@ -144,12 +144,16 @@ export function PanelEspacio() {
                   <span className="min-w-0 flex-1">
                     <span
                       className={cn(
-                        'flex items-center gap-1.5 text-[13.5px] font-semibold tracking-[-0.01em]',
+                        'block text-[13.5px] font-semibold leading-snug tracking-[-0.01em]',
                         d.estado === 'pronto' ? 'text-muted-foreground' : 'text-foreground',
                       )}
                     >
-                      <span className="truncate">{d.label}</span>
-                      <EtiquetaDestino destino={d} web={web} />
+                      {d.label}
+                      {(d.estado || (d.soloEscritorio && web)) && (
+                        <span className="ml-1.5 inline-flex translate-y-[-1px] gap-1 align-middle">
+                          <EtiquetaDestino destino={d} web={web} />
+                        </span>
+                      )}
                     </span>
                     <span className="mt-0.5 block text-[11.5px] leading-[1.38] text-muted-foreground">
                       {d.descripcion}

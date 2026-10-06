@@ -17,12 +17,21 @@ import { Icon } from '@/components/ui/icon';
 import { getNotifPrefs, setNotifPrefs, type NotifPrefs } from '@/lib/notify/prefs';
 import { esWeb } from '@/lib/modo';
 import { useUpdates } from '@/hooks/use-updates';
+import { useNavegacion } from '@/providers/navegacion-provider';
+import { esMac, formatearAtajo } from '@/lib/atajos';
+import type { ModoNavegacion } from '@/lib/navegacion-modo';
 
 const TEMAS = [
   { value: 'light', label: 'Claro' },
   { value: 'dark', label: 'Oscuro' },
   { value: 'system', label: 'Sistema' },
 ] as const;
+
+/** Navegación (F3): clásica o espacios, por instalación (`tc:navegacion`). */
+const NAVEGACIONES: readonly { value: ModoNavegacion; label: string }[] = [
+  { value: 'clasica', label: 'Clásica' },
+  { value: 'espacios', label: 'Espacios (beta)' },
+];
 
 /** Selector de carpeta nativo del SO (solo en Electron); null en navegador. */
 function elegirCarpetaNativo(): Promise<string | null> | null {
@@ -152,6 +161,7 @@ export default function AjustesPage() {
   const planLicencia = usePlanLicencia();
   const sinMcp = planesV3 && planLicencia !== null && !planLicencia.capacidades.mcp;
   const { theme, setTheme } = useTheme();
+  const navegacion = useNavegacion();
   const [mounted, setMounted] = useState(false);
   const [esWindows, setEsWindows] = useState(false);
   const [dir, setDir] = useState('');
@@ -313,6 +323,33 @@ export default function AjustesPage() {
               </div>
             }
           />
+          {/* Navegación por espacios (F3): visible con ?labs=espacios, si ya se
+              eligió una o desde el 2 de noviembre. Vale para esta instalación. */}
+          {navegacion.selectorVisible && (
+            <AjRow
+              label="Navegación"
+              sub={`Espacios ordena la app en 5 espacios con su panel, pone tu empresa activa arriba y te deja pedir cosas con ${formatearAtajo({ tecla: 'K' }, !mounted || esMac())}. Se guarda en ${web ? 'este navegador' : 'este equipo'}.`}
+              col
+              control={
+                <div className="flex gap-2">
+                  {NAVEGACIONES.map((n) => {
+                    const activo = navegacion.listo && navegacion.modo === n.value;
+                    return (
+                      <Button
+                        key={n.value}
+                        size="sm"
+                        variant={activo ? 'default' : 'outline'}
+                        onClick={() => navegacion.setPreferencia(n.value)}
+                        aria-pressed={activo}
+                      >
+                        {n.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              }
+            />
+          )}
         </AjCard>
 
         {/* Notificaciones */}

@@ -5,6 +5,7 @@ import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import './globals.css';
 import { AuthProvider } from '@/providers/auth-provider';
+import { NavegacionProvider } from '@/providers/navegacion-provider';
 import { ServerProvider } from '@/providers/server-provider';
 import { ThemeProvider } from '@/providers/theme-provider';
 import { SonnerProvider } from '@/components/providers/sonner-provider';
@@ -28,9 +29,14 @@ export default function RootLayout({
         <ThemeProvider>
           <ServerProvider>
             <AuthProvider>
-              <TooltipProvider>
-                <AppShell>{children}</AppShell>
-              </TooltipProvider>
+              {/* Clásica o espacios (F3): dentro de Auth porque la regla del
+                  2 de noviembre mira el plan, y arriba del login para que
+                  ?labs=espacios se capture aunque no haya sesión. */}
+              <NavegacionProvider>
+                <TooltipProvider>
+                  <AppShell>{children}</AppShell>
+                </TooltipProvider>
+              </NavegacionProvider>
             </AuthProvider>
           </ServerProvider>
           <SonnerProvider />
