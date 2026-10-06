@@ -113,9 +113,16 @@ async def lifespan(app: "FastAPI"):
     except Exception:
         logger.exception("No se pudo iniciar el poller de solicitudes WS")
         detener_poller = None
+
+    # Uso por acción (api/uso.py): hilo daemon que manda la cola de eventos
+    # cada 5 min. No toca el keychain al arrancar (solo cuando hay qué mandar).
+    from . import uso
+
+    uso.iniciar()
     yield
     if detener_poller is not None:
         detener_poller()
+    uso.detener()
 
 
 app = FastAPI(
