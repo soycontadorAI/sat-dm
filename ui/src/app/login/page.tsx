@@ -15,7 +15,8 @@ import { useServer } from '@/providers/server-provider';
 import { useAuth } from '@/providers/auth-provider';
 import { BrandMark } from '@/components/layout/brand-mark';
 import { Icon } from '@/components/ui/icon';
-import { ApiError, SatApiClient } from '@/lib/api-client';
+import { ApiError } from '@/lib/api-client';
+import { adoptarSesion } from '@/lib/adoptar-sesion';
 import { esWeb } from '@/lib/modo';
 import {
   ProvisionerError,
@@ -118,8 +119,7 @@ export default function LoginPage() {
       // El token debe estar en localStorage ANTES del request (el cliente lo
       // lee de ahí para el header X-Agent-Token).
       conectar({ baseUrl: r.base_url, token: r.token });
-      const cliente = new SatApiClient(r.base_url);
-      await cliente.authAdoptSession(r.session);
+      await adoptarSesion(r);
     },
     [conectar],
   );
@@ -209,6 +209,12 @@ export default function LoginPage() {
       }
     });
   }, [manejarCodigoGoogle]);
+
+  // Los botones "Empieza gratis" de todoconta.com mandan a `?crear`: quien llega
+  // de cero ve "Crea tu cuenta" y no "Bienvenido de vuelta".
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('crear')) setVista('signup');
+  }, []);
 
   // Arranca el OAuth: pide la URL al agente y la abre en el navegador del SO
   // (window.open pasa por setWindowOpenHandler → shell.openExternal).

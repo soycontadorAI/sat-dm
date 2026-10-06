@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useServer } from '@/providers/server-provider';
 import { BrandMark } from '@/components/layout/brand-mark';
 import { Icon } from '@/components/ui/icon';
-import { SatApiClient } from '@/lib/api-client';
+import { adoptarSesion } from '@/lib/adoptar-sesion';
 import { mensajeDeError } from '@/lib/errores';
 import { esWeb } from '@/lib/modo';
 import {
@@ -107,7 +107,7 @@ export default function AccesoGooglePage() {
         // Igual que los otros caminos de login web: el token va a localStorage
         // ANTES de hablar con el agente, y el agente adopta la sesión.
         conectar({ baseUrl: r.base_url, token: r.token });
-        await new SatApiClient(r.base_url).authAdoptSession(r.session);
+        await adoptarSesion(r);
         setEstado('listo');
         // Recarga completa en la raíz: los providers leen la conexión nueva y
         // la licencia ya viene con sesión.
