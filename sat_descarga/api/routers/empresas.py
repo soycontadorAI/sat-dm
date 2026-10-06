@@ -4,6 +4,10 @@ Router: catálogo de empresas (persistente; credenciales en keychain del SO)
 
 Endpoints: /empresas* (CRUD, activar, default, archive, unarchive, solicitudes,
 historial) y /historial (global).
+
+Tope de empresas del plan (F1, `api/tope_empresas.py`): alta con e.firma, alta
+con Contraseña y desarchivar responden 402 con `detail` + `tope_empresas`
+cuando no hay lugar. Mismo código en escritorio y en la web.
 """
 
 import os
@@ -11,13 +15,25 @@ import tempfile
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from ...core.config import es_modo_hosted
 from ..state import _cargar_fiel_empresa
 from ..sync_empresas import sincronizar_async
+from ..tope_empresas import (
+    TopeEmpresasAlcanzado,
+    exigir_cupo_para_alta,
+    exigir_cupo_para_desarchivar,
+)
 
 router = APIRouter()
+
+
+def _respuesta_tope(e: TopeEmpresasAlcanzado) -> JSONResponse:
+    """402 Payment Required: el plan no tiene lugar para otra empresa activa."""
+    return JSONResponse(status_code=402, content=e.respuesta())
 
 # ---------------------------------------------------------------------------
 # Modelos de request/response
@@ -93,11 +109,18 @@ async def empresas_add_fiel(
     try:
         cer_tmp.write(cer_data); cer_tmp.flush(); cer_tmp.close()
         key_tmp.write(key_data); key_tmp.flush(); key_tmp.close()
-        rfc = config_store.add_empresa(
-            nombre, cer_tmp.name, key_tmp.name, password, rfc_esperado=rfc_esperado,
+        # En un hilo: validar la e.firma es CPU y el tope puede consultar la
+        # licencia al servicio (solo cuando el cache dice que no hay lugar).
+        rfc = await run_in_threadpool(
+            config_store.add_empresa,
+            nombre, cer_tmp.name, key_tmp.name, password,
+            rfc_esperado=rfc_esperado,
+            antes_de_guardar=exigir_cupo_para_alta,
         )
         sincronizar_async("alta-fiel")
         return {"ok": True, "rfc": rfc}
+    except TopeEmpresasAlcanzado as e:
+        return _respuesta_tope(e)
     except ValueError as e:
         # Error de VALIDACIÓN / usuario: contraseña de la .key incorrecta, RFC del
         # cert que no coincide, par cert↔llave inválido, etc. (config_store/FIEL
@@ -124,6 +147,10 @@ async def empresas_add_fiel(
 def empresas_add_ciec(req: EmpresaCiecRequest):
     """Registra una empresa por CIEC. La contraseña CIEC se guarda en el keychain."""
     from ...cli import config_store
+    try:
+        exigir_cupo_para_alta(req.rfc)
+    except TopeEmpresasAlcanzado as e:
+        return _respuesta_tope(e)
     rfc = config_store.add_empresa_ciec(req.rfc, req.nombre, req.ciec)
     sincronizar_async("alta-ciec")
     return {"ok": True, "rfc": rfc}
@@ -204,8 +231,13 @@ def empresas_archive(rfc: str):
 
 @router.post("/empresas/{rfc}/unarchive")
 def empresas_unarchive(rfc: str):
-    """Desarchiva la empresa (la regresa a la lista principal)."""
+    """Desarchiva la empresa (la regresa a la lista principal). Ocupa un lugar
+    del tope del plan: sin lugar → 402."""
     from ...cli import config_store
+    try:
+        exigir_cupo_para_desarchivar(rfc)
+    except TopeEmpresasAlcanzado as e:
+        return _respuesta_tope(e)
     try:
         config_store.unarchive_empresa(rfc)
     except KeyError:

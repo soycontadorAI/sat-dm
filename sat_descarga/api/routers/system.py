@@ -535,13 +535,25 @@ def auth_upgrade():
 @router.post("/auth/subscribe")
 def auth_subscribe(body: dict | None = Body(default=None)):
     """
-    Crea la Stripe Checkout session de la suscripción anual de TodoConta Desktop.
-    Body opcional `{plan: 'anual' | 'anual_ia'}` (sin body = 'anual').
-    Devuelve `{url, session_id, promo, plan}`; el renderer abre el URL en el navegador.
+    Crea la Stripe Checkout session de la suscripción de TodoConta.
+    Body opcional:
+    - De antes: `{plan: 'anual' | 'anual_ia'}` (sin body = 'anual').
+    - Planes v3 (F1): `{plan: 'esencial' | 'pro' | 'completo',
+      intervalo: 'anual' | 'mensual'}`. Con una suscripción v3 activa, el
+      servicio cambia el plan con prorrateo y puede responder sin `url`.
+    Devuelve lo que responda el servicio (`{url, session_id, promo, plan}` o
+    el cambio de plan); el renderer abre el URL en el navegador si viene.
     """
     from .. import license_client as lc
 
-    plan = "anual_ia" if (body or {}).get("plan") == "anual_ia" else "anual"
+    datos = body or {}
+    pedido = datos.get("plan")
+    if pedido in lc.PLANES_V3_VENTA:
+        intervalo = datos.get("intervalo")
+        return _accion_con_refresh(
+            lambda s: lc.init_subscribe_checkout(s, pedido, intervalo)
+        )
+    plan = "anual_ia" if pedido == "anual_ia" else "anual"
     return _accion_con_refresh(lambda s: lc.init_subscribe_checkout(s, plan))
 
 
@@ -556,14 +568,17 @@ def auth_cancel_subscription():
 
 
 @router.post("/auth/transfer-intent")
-def auth_transfer_intent():
+def auth_transfer_intent(body: dict | None = Body(default=None)):
     """
     Registra la intención de pago por transferencia y devuelve los datos
-    bancarios. `{ok, amount_mxn, promo, banco, message}`.
+    bancarios. `{ok, amount_mxn, promo, banco, message}`. Body opcional
+    `{plan: 'esencial' | 'pro' | 'completo'}` (planes v3; la transferencia
+    solo es anual). Sin body, el plan anual de antes.
     """
     from .. import license_client as lc
 
-    return _accion_con_refresh(lc.create_transfer_intent)
+    plan = (body or {}).get("plan")
+    return _accion_con_refresh(lambda s: lc.create_transfer_intent(s, plan))
 
 
 @router.post("/auth/logout")

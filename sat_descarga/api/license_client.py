@@ -14,7 +14,9 @@ Responsabilidades:
   el backend está caído; solo se desactualiza el badge de fundador).
 - Leer los campos de planes v3 (`plan_codigo`, `plan_nombre`, `limites`,
   `capacidades`, `uso`, `legado`, `precio_asegurado_mxn`) con defaults que
-  nunca bloquean: `limites_de()` y `capacidad()`.
+  nunca bloquean: `limites_de()` y `capacidad()`. El interruptor del Día C
+  (`planes_v3_activo`, F1) se lee con `planes_v3_activos()`; sin el campo,
+  apagado.
 """
 
 from __future__ import annotations
@@ -471,6 +473,16 @@ def capacidad(licencia: Optional[dict], nombre: str) -> bool:
     return lic.get(_CAPACIDAD_LEGADA[nombre]) is True
 
 
+def planes_v3_activos(licencia: Optional[dict]) -> bool:
+    """
+    True si el backend dice que los planes v3 ya están vigentes (Día C:
+    `desktop_subscription_config.planes_v3_desde` ya pasó). Campo aditivo
+    `planes_v3_activo` (F1); sin él = apagado, así que una licencia vieja o el
+    fallback offline nunca encienden topes ni pantallas nuevas.
+    """
+    return (licencia or {}).get("planes_v3_activo") is True
+
+
 # ---------------------------------------------------------------------------
 # Checkout (upgrade a Fundador)
 # ---------------------------------------------------------------------------
@@ -486,16 +498,32 @@ def init_checkout(session: Session) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def init_subscribe_checkout(session: Session, plan: str = "anual") -> dict:
+PLANES_V3_VENTA = ("esencial", "pro", "completo")
+INTERVALOS_V3 = ("anual", "mensual")
+
+
+def init_subscribe_checkout(
+    session: Session, plan: str = "anual", intervalo: Optional[str] = None
+) -> dict:
     """
     POST /api/desktop/subscribe → `{url, session_id, promo, plan}`.
 
-    Crea la Stripe Checkout session de la suscripción anual. `plan` es
-    'anual' (base $2,990; promo $1,495 si es elegible) o 'anual_ia'
-    ($4,990; founders pagan su precio dedicado). El backend SIEMPRE decide
-    el precio — el cliente solo dice qué plan quiere.
+    Payload de antes: `plan` 'anual' (base $2,990; promo $1,495 si es
+    elegible) o 'anual_ia' ($4,990; founders pagan su precio dedicado).
+
+    Planes v3 (F1): `plan` 'esencial' | 'pro' | 'completo' con `intervalo`
+    'anual' | 'mensual' (default anual) → body `{plan, intervalo}`. Si ya hay
+    suscripción v3, el backend cambia el plan con prorrateo y puede responder
+    sin `url`. El backend SIEMPRE decide el precio: el cliente solo dice qué
+    plan quiere.
     """
-    body = {"plan": "anual_ia"} if plan == "anual_ia" else {"plan": "anual"}
+    if plan in PLANES_V3_VENTA:
+        body = {
+            "plan": plan,
+            "intervalo": intervalo if intervalo in INTERVALOS_V3 else "anual",
+        }
+    else:
+        body = {"plan": "anual_ia"} if plan == "anual_ia" else {"plan": "anual"}
     return _post_desktop(
         session, "/api/desktop/subscribe", "init_subscribe_checkout", body
     )
@@ -512,15 +540,18 @@ def cancel_subscription(session: Session) -> dict:
     )
 
 
-def create_transfer_intent(session: Session) -> dict:
+def create_transfer_intent(session: Session, plan: Optional[str] = None) -> dict:
     """
     POST /api/desktop/transfer-intent → `{ok, amount_mxn, promo, banco, message}`.
 
     Registra la intención de pago por transferencia y devuelve los datos
-    bancarios para el depósito (activación manual).
+    bancarios para el depósito (activación manual). Sin `plan`, el cuerpo
+    vacío de siempre (plan anual de antes). Con un plan v3 ('esencial',
+    'pro', 'completo') manda `{plan}`; la transferencia solo es anual.
     """
+    body = {"plan": plan} if plan in PLANES_V3_VENTA else None
     return _post_desktop(
-        session, "/api/desktop/transfer-intent", "create_transfer_intent"
+        session, "/api/desktop/transfer-intent", "create_transfer_intent", body
     )
 
 
