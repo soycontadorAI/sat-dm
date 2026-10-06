@@ -31,6 +31,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
+import capacidades as caps_srv
 import oauth as oauth_srv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -202,8 +203,14 @@ def _validar_key(api_key: str) -> dict:
 
 
 def _exigir_scope(user: dict, scope: str) -> None:
+    """El scope en la key Y la capacidad en el plan del dueño (F1): `mcp`
+    exige `capacidades.mcp`; los scopes REST, `capacidades.api` (o Abacus).
+    La parte del plan depende de CAPACIDADES_MODO (ver capacidades.py)."""
     if scope not in user["scopes"]:
         raise HTTPException(status_code=403, detail=f"Tu API key no tiene el permiso `{scope}`.")
+    capacidad = caps_srv.capacidad_de_scope(scope)
+    if capacidad:
+        caps_srv.exigir(user["user_id"], capacidad, via=f"key:{scope}")
 
 
 # ---------------------------------------------------------------------------
@@ -819,6 +826,8 @@ def internal_vinculo(whatsapp: str, x_interno_token: str = Header(None)):
     filas = r.json() if r.status_code == 200 else []
     if not filas:
         raise HTTPException(status_code=404, detail="Número sin vínculo activo.")
+    # Abacus solo con un plan que lo incluya (Completo, legado con IA, a la medida).
+    caps_srv.exigir(filas[0]["user_id"], "abacus", via="vinculo")
     return {"user_id": filas[0]["user_id"], "api_key_cifrada": filas[0]["api_key_cifrada"]}
 
 
@@ -1275,6 +1284,9 @@ try:
                     _exigir_scope(user, "mcp")
                 else:
                     user = oauth_srv.validar_access_token(bearer)
+                    # El token OAuth dura y se renueva solo: el plan se revisa
+                    # en cada uso, no solo al autorizar.
+                    caps_srv.exigir(user["user_id"], "mcp", via="oauth")
             except HTTPException as e:
                 from fastapi.responses import JSONResponse
 
