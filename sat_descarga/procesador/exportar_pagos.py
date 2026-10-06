@@ -9,7 +9,7 @@ Sheets:
 5. Pagos huérfanos — complementos sin PPD cargada (condicional).
 6. Incidencias PUE — PUE+complemento (condicional, estilo alerta roja).
 
-Reusa los tokens de diseño TodoConta (`#0B5FFF` + Calibri) definidos en
+Reusa los tokens de la marca Señal (tinta `#10141B` + Calibri) definidos en
 `exportar.py:_BRAND_*` para consistencia con el XLSX del procesador CFDI.
 """
 
@@ -31,9 +31,9 @@ from .exportar import (
     _header_row,
 )
 
-# Tono para sheets de alertas (huérfanos, incidencias PUE) — rojo destructive
-# del design system pero más opaco para legibilidad sobre blanco.
-_ALERT_FILL = "B91C1C"
+# Tono para sheets de alertas (huérfanos, incidencias PUE): el `bad` de Señal
+# (Cancelado, Vencido, Error), con texto blanco encima.
+_ALERT_FILL = "BE2530"
 
 
 _STATUS_LABEL = {

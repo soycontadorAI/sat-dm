@@ -18,12 +18,14 @@ from openpyxl.styles import Alignment, Font, PatternFill
 
 from .comunes import TIPOS_TERMINACION
 
-# Tokens de diseño TodoConta (alineados con ui/src/app/globals.css).
-_BRAND_PRIMARY = "0B5FFF"
-_BRAND_PRIMARY_RGB = (11, 95, 255)
-_BRAND_NAVY_RGB = (10, 22, 40)
-_BRAND_MUTED_RGB = (107, 114, 128)
-_BRAND_SUCCESS_RGB = (5, 150, 105)
+# Tokens de la marca Señal (todoconta-apps/DESIGN.md), alineados con
+# ui/src/app/globals.css: todo en tinta y papel; el verde es el `ok` de los
+# estados. Calibri porque Geist no viene en Office ni se incrusta en el XLSX.
+_BRAND_PRIMARY = "10141B"            # ink
+_BRAND_PRIMARY_RGB = (16, 20, 27)    # ink
+_BRAND_NAVY_RGB = (16, 20, 27)       # ink (texto)
+_BRAND_MUTED_RGB = (98, 106, 120)    # ghost
+_BRAND_SUCCESS_RGB = (14, 122, 78)   # ok
 _BRAND_FONT = "Calibri"
 
 TITULOS = {
@@ -446,8 +448,8 @@ def construir_documento(calculadora: str, resultado: dict, anio: int) -> dict:
 
 _FILL_HEADER = PatternFill(start_color=_BRAND_PRIMARY, end_color=_BRAND_PRIMARY, fill_type="solid")
 _FONT_HEADER = Font(name=_BRAND_FONT, bold=True, color="FFFFFF", size=11)
-_FONT_TITULO = Font(name=_BRAND_FONT, bold=True, size=15, color="0A1628")
-_FONT_SUB = Font(name=_BRAND_FONT, size=10, color="6B7280")
+_FONT_TITULO = Font(name=_BRAND_FONT, bold=True, size=15, color="10141B")
+_FONT_SUB = Font(name=_BRAND_FONT, size=10, color="626A78")
 _FONT_SECCION = Font(name=_BRAND_FONT, bold=True, size=12, color=_BRAND_PRIMARY)
 _FONT_LABEL = Font(name=_BRAND_FONT, bold=True, size=11)
 _FONT_NORMAL = Font(name=_BRAND_FONT, size=11)
@@ -631,7 +633,7 @@ def _pdf_tabla(pdf, tabla: dict) -> None:
 
     pdf.set_text_color(*_BRAND_NAVY_RGB)
     relleno = False
-    pdf.set_fill_color(247, 249, 252)
+    pdf.set_fill_color(245, 246, 248)
     for row in tabla["rows"]:
         for i, (w, v) in enumerate(zip(anchos, row)):
             texto = _celda_ajustada(_latin1(v), w, "", es_primera=i == 0)
@@ -720,7 +722,7 @@ def recibos_ptu_pdf(resultado: dict) -> bytes:
         pdf.cell(ancho * 0.4, 7, "Importe", fill=True, align="R", new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(*_BRAND_NAVY_RGB)
         relleno = False
-        pdf.set_fill_color(247, 249, 252)
+        pdf.set_fill_color(245, 246, 248)
         for etiqueta, valor in desglose:
             pdf.set_font("Helvetica", "", 10)
             pdf.cell(ancho * 0.6, 7, _latin1(etiqueta), fill=relleno)

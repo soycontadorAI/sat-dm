@@ -21,20 +21,18 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from .db import CfdiFiltros, ProcesadorDB
 
 
-# Tokens de diseño TodoConta (alineados con ui/src/app/globals.css).
-# Se aplica al XLSX para que los documentos exportados sean visualmente
-# consistentes con la app web.
+# Tokens de la marca Señal (todoconta-apps/DESIGN.md), alineados con
+# ui/src/app/globals.css: encabezados en tinta con texto blanco, como los
+# botones de la app. El cian no va aquí (es solo para lo automático).
 #
-# Tipografía: la app usa Inter, pero como Excel no la trae por default
-# usamos Calibri (sans-serif moderna, universal en Windows y macOS Office
-# desde 2007) — es el equivalente más cercano a Inter disponible en todos
-# los sistemas sin requerir instalación.
+# Tipografía: la marca usa Geist, pero Excel no la trae ni se puede incrustar
+# en un XLSX; Calibri es la sans-serif universal de Office (Windows y macOS)
+# y la más cercana disponible sin instalar nada.
 #
-# Colores: hex literal de la paleta TodoConta. Excel los renderiza tal
-# cual (es el mismo formato que usa CSS).
-_BRAND_PRIMARY = "0B5FFF"            # --primary (azul TodoConta)
-_BRAND_PRIMARY_FOREGROUND = "FFFFFF"  # --primary-foreground (blanco)
-_BRAND_FONT_NAME = "Calibri"          # universal; fallback más cercano a Inter
+# Colores: hex literal (Excel los renderiza tal cual, mismo formato que CSS).
+_BRAND_PRIMARY = "10141B"            # ink (tinta): encabezados
+_BRAND_PRIMARY_FOREGROUND = "FFFFFF"  # texto sobre tinta
+_BRAND_FONT_NAME = "Calibri"          # universal; fallback más cercano a Geist
 _BRAND_FONT_SIZE = 11
 
 
@@ -204,8 +202,8 @@ def _chunks(seq: list, size: int) -> Iterable[list]:
 
 def _header_row(ws, values: list, font: Font, fill: PatternFill) -> list:
     """
-    Construye la fila de encabezado con la paleta TodoConta (fondo `--primary`
-    azul `#0B5FFF`, texto blanco, fuente Inter bold). El sheet en modo
+    Construye la fila de encabezado con la marca Señal (fondo en tinta
+    `#10141B`, texto blanco en negritas). El sheet en modo
     write_only requiere `WriteOnlyCell` con referencia explícita al ws.
     """
     from openpyxl.cell import WriteOnlyCell
