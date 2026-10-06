@@ -13,6 +13,9 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   apuntan ahí.
 - **La campana de anuncios carga en la web.** La CSP de app.todoconta.com bloqueaba
   `todoconta.com/anuncios.json`.
+- **El primer acceso en la web ya no falla con "Failed to fetch".** Al crear el espacio
+  de un usuario nuevo, el proxy público tarda unos segundos en publicar su ruta; la app
+  ahora reintenta entregar la sesión hasta 15 s en vez de mostrar el error.
 - **JetBrains Mono se sirve desde la app** (`@fontsource-variable/jetbrains-mono`) en vez de
   Google Fonts, que la CSP de la web también bloqueaba.
 
