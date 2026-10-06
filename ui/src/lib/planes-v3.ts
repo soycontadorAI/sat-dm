@@ -160,3 +160,34 @@ export function mensajeTope(t: TopeEmpresas): string {
   const Sujeto = sujeto.charAt(0).toUpperCase() + sujeto.slice(1);
   return `${Sujeto} incluye ${empresasTexto(t.tope)}. Archiva una que ya no trabajes o ${salida(t.siguiente_plan)}.`;
 }
+
+// ---------------------------------------------------------------------------
+// Descargas al SAT del mes (plan gratis)
+// ---------------------------------------------------------------------------
+
+const MESES = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+  'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/** "2026-12-01" → "1 de diciembre" (sin pasar por Date: nada de zonas horarias). */
+export function fechaLarga(iso: string): string {
+  const [, mes, dia] = iso.split('-').map((x) => parseInt(x, 10));
+  if (!mes || !dia || mes < 1 || mes > 12) return iso;
+  return `${dia} de ${MESES[mes - 1]}`;
+}
+
+/** Mismo texto que el 402 `tope_descargas` del agente. */
+export function mensajeTopeDescargas(t: {
+  tope: number;
+  usadas: number;
+  reinicia: string;
+  plan_nombre: string | null;
+  siguiente_plan: { nombre: string } | null;
+}): string {
+  const siguiente = t.siguiente_plan?.nombre ?? 'Esencial';
+  return (
+    `Tu plan ${t.plan_nombre ?? 'Gratis'} incluye ${t.tope} descargas al mes y ya usaste las ${t.usadas}. ` +
+    `Se renuevan el ${fechaLarga(t.reinicia)}; para seguir hoy, cambia a ${siguiente} (descargas sin límite).`
+  );
+}

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 
 import { esWeb } from '@/lib/modo';
 import { PromoBanner } from '@/components/auth/promo-banner';
+import { AvisoDescargasMes } from '@/components/planes/aviso-descargas';
 import { GlobalShortcuts } from '@/components/layout/global-shortcuts';
 import { Sidebar } from '@/components/layout/sidebar';
 import { StartupSplash } from '@/components/layout/startup-splash';
@@ -69,6 +70,8 @@ export function AppShell({ children }: AppShellProps) {
           planes v3: con el interruptor encendido ya no se muestra (el archivo
           se queda para el banner de F5). */}
       {!planesV3 && <PromoBanner />}
+      {/* Planes v3: descargas al SAT del mes del plan gratis (aviso + diálogo). */}
+      {planesV3 && <AvisoDescargasMes />}
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto p-6 md:p-8">{children}</main>

@@ -23,6 +23,14 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   existe nunca cuenta como alta. Sin tope para el legado, los fundadores, las licencias
   viejas y el modo sin internet sin cache; los topes de la prueba y del plan gratis solo se
   aplican con el interruptor del Día C. Mismo código en escritorio y en la web.
+- **El plan gratis cuenta sus descargas del mes.** Un solo contador para todo lo que se baja
+  del SAT (solicitudes de CFDI y metadata, CFDIs por el portal, constancia, 32-D y acuses);
+  cuenta lo que salió bien y se reinicia cada mes. Con los planes v3 activos y el plan
+  gratis, la descarga 11 responde 402 ("Tu plan Gratis incluye 10 descargas al mes...") y
+  la app muestra un aviso fijo desde la 8 y un diálogo con la liga a los planes. Sin datos
+  de licencia nunca bloquea. El resumen del mes viaja con la sincronización del catálogo.
+- `app.todoconta.com/planes` lleva a Suscripción con el plan y el intervalo de la liga
+  (`?plan=pro&intervalo=mensual`) ya elegidos.
 
 ### Bug fix
 
@@ -34,13 +42,14 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 - **El gateway revisa el plan del dueño de cada credencial (`CAPACIDADES_MODO`).** El scope
   `mcp` y el OAuth de /mcp exigen `capacidades.mcp`; la REST, `capacidades.api` (o Abacus);
-  el vínculo de Abacus, `capacidades.abacus`. La licencia sale de `/api/admin/license`
-  (`LICENCIA_ADMIN_TOKEN`) y se guarda 5 minutos. Arranca en `observar`: solo deja en el log
+  el vínculo de Abacus, `capacidades.abacus`. La licencia sale de `/api/admin/license` con
+  el secreto propio del gateway (`LICENCIA_GATEWAY_SECRET`) y se guarda 5 minutos. Arranca en `observar`: solo deja en el log
   lo que rechazaría; `exigir` responde 403 con liga a los planes. Sin datos nunca bloquea.
   `deploy/gateway/reporte-capacidades.py` simula el cambio con conteos por plan y
   `emitir-key.py --whatsapp` revisa que el plan incluya Abacus.
 - `/auth/subscribe` acepta `{plan, intervalo}` de los planes v3 y `/auth/transfer-intent`
-  acepta `{plan}`; los payloads de antes siguen igual.
+  acepta `{plan}`; los payloads de antes siguen igual. `GET /descargas/cupo` da las descargas
+  del mes y el tope, y el sync del catálogo manda `descargas_mes`.
 - **La app ya lee los planes v3 de la licencia.** `license_client` guarda y expone los topes y
   capacidades por plan (`limites_de`, `capacidad`) con defaults que nunca bloquean (licencia
   vieja u offline sin cache = sin tope); la UI los tipa como opcionales y trae los flags

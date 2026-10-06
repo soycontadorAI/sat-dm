@@ -183,7 +183,8 @@ function PlanBadgeV3({
     clase = '';
     icono = null;
     titulo = 'Plan Gratis';
-    texto = 'La app sigue funcionando con lo básico. Toca para ver los planes.';
+    texto =
+      'La app sigue funcionando con lo básico: hasta 5 empresas y 10 descargas al SAT al mes. Toca para ver los planes.';
   } else if (PLANES_V3_PAGO.includes(plan.codigo)) {
     texto = cancela
       ? `Tu suscripción termina${vence ? ` el ${vence}` : ''} y no se renovará. Puedes reactivarla cuando quieras.`

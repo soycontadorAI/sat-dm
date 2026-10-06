@@ -98,6 +98,15 @@ export function SuscripcionV3() {
     if (intervaloActual) setIntervalo(intervaloActual);
   }, [intervaloActual]);
 
+  // Liga con plan elegido (/planes?plan=pro&intervalo=mensual desde la landing).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const i = q.get('intervalo');
+    if (i === 'anual' || i === 'mensual') setIntervalo(i);
+    const p = q.get('plan');
+    if (p === 'esencial' || p === 'pro' || p === 'completo') setElegido(p);
+  }, []);
+
   if (!license?.authenticated) return null;
 
   const codigo = plan?.codigo;
@@ -124,7 +133,12 @@ export function SuscripcionV3() {
   const dias = license.days_remaining ?? null;
   const tieneIa = license.ai_features_unlocked === true;
   const planActual = situacion === 'v3' ? planDelCatalogo(codigo) : null;
-  const catalogoElegido = planDelCatalogo(elegido);
+  // Una preselección por URL solo aplica a quien contrata (no a un plan v3 ni
+  // al legado sin confirmar, que eligen con su tarjeta).
+  const catalogoElegido =
+    situacion === 'prueba' || situacion === 'gratis' || situacion === 'legado'
+      ? planDelCatalogo(elegido)
+      : null;
   const muestraPlanes = situacion === 'v3' || situacion === 'legado' || situacion === 'prueba' || situacion === 'gratis';
 
   // ── Acciones ──────────────────────────────────────────────────────────────
@@ -403,8 +417,9 @@ export function SuscripcionV3() {
           {situacion === 'gratis' && (
             <PlanCard markClass="bg-secondary text-muted-foreground" icon="ph:user-light" titulo="Plan Gratis">
               <p className="text-sm leading-relaxed text-muted-foreground">
-                La app de escritorio sigue funcionando con lo básico. Para la web, más empresas,
-                las exportaciones y la conexión con tu IA, elige un plan.
+                La app de escritorio sigue funcionando con lo básico: hasta 5 empresas y 10
+                descargas al SAT al mes. Para la web, más empresas, descargas sin límite, las
+                exportaciones y la conexión con tu IA, elige un plan.
               </p>
             </PlanCard>
           )}
@@ -441,7 +456,7 @@ export function SuscripcionV3() {
                       key={p.codigo}
                       plan={p}
                       intervalo={intervalo}
-                      seleccionado={elegido === p.codigo}
+                      seleccionado={catalogoElegido?.codigo === p.codigo}
                       etiqueta={
                         esActual
                           ? 'Tu plan'
