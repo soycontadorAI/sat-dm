@@ -1470,6 +1470,45 @@ export interface AuthPollResponse {
 
 export type DesktopPlan = 'founder' | 'premium' | 'trial' | 'free';
 
+/**
+ * Plan v3 resuelto por el backend (F0 de docs/operacion/plan-app-v3.md en
+ * todoconta-apps). Incluye los legados para que la UI los nombre sin adivinar.
+ */
+export type PlanCodigo =
+  | 'esencial'
+  | 'pro'
+  | 'completo'
+  | 'medida'
+  | 'trial'
+  | 'gratis'
+  | 'desktop'
+  | 'desktop_ia'
+  | 'fundador'
+  | 'profesional'
+  | 'despachos'
+  | 'empresarial'
+  | 'legado';
+
+/** Topes del plan. `null` = sin tope. */
+export interface LimitesPlan {
+  empresas: number | null;
+  usuarios: number | null;
+}
+
+export interface CapacidadesPlan {
+  web: boolean;
+  exportar: boolean;
+  mcp: boolean;
+  abacus: boolean;
+  api: boolean;
+  /** Piloto automático (F7). */
+  piloto: boolean;
+  /** Vigilancia (F8): en la app y por correo, y por WhatsApp. */
+  vigilancia: { app_correo: boolean; whatsapp: boolean };
+  /** Reporte mensual para el cliente con logo (F9b). */
+  reporte_cliente: boolean;
+}
+
 export interface LicenseStatus {
   authenticated: boolean;
   user_id?: string;
@@ -1502,6 +1541,17 @@ export interface LicenseStatus {
   ai_features_unlocked?: boolean;
   ia_price_mxn?: number;
   ia_founder_price_mxn?: number;
+
+  // Planes v3 (campos aditivos desde F0). Faltan con un backend viejo, un cache
+  // de antes de F0 o el fallback offline sin cache: tratar la ausencia como
+  // "sin datos", nunca como candado.
+  plan_codigo?: PlanCodigo;
+  plan_nombre?: string;
+  limites?: LimitesPlan;
+  capacidades?: CapacidadesPlan;
+  uso?: { empresas_activas: number | null };
+  legado?: boolean;
+  precio_asegurado_mxn?: number | null;
   // Flags del cache local del agente.
   from_cache?: boolean;
   stale?: boolean;
