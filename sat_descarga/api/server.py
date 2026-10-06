@@ -188,6 +188,19 @@ async def _verificar_token_del_shell(request: Request, call_next):
     return await call_next(request)
 
 # ---------------------------------------------------------------------------
+# Límites del plan (F1): tope de empresas y descargas del mes → HTTP 402 con
+# `{detail, codigo, <codigo>: datos}` (ver api/limites_plan.py).
+# ---------------------------------------------------------------------------
+
+from .limites_plan import LimitePlanAlcanzado  # noqa: E402
+
+
+@app.exception_handler(LimitePlanAlcanzado)
+async def _limite_plan(request: Request, exc: LimitePlanAlcanzado):
+    return JSONResponse(status_code=402, content=exc.respuesta())
+
+
+# ---------------------------------------------------------------------------
 # Routers por dominio (las rutas completas viven en cada decorador)
 # ---------------------------------------------------------------------------
 

@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from .. import jobs
+from .. import cupo_descargas, jobs
 from ...core.config import TIPO_RECIBIDO
 from ..state import _session, _get_fiel, _descargas_base, _registrar_descarga
 
@@ -78,6 +78,7 @@ def descargar_ciec(req: CIECDescargaRequest):
     """
     from ...portal.cfdi import descargar_cfdi_ciec
 
+    cupo_descargas.exigir()
     try:
         archivos = descargar_cfdi_ciec(
             rfc=req.rfc,
@@ -88,6 +89,7 @@ def descargar_ciec(req: CIECDescargaRequest):
             directorio_salida=req.directorio_salida,
             max_registros=req.max_registros,
         )
+        cupo_descargas.registrar("cfdi")
         return {
             "ok": True,
             "metodo": "ciec",
@@ -120,6 +122,7 @@ def descargar_constancia(req: ConstanciaRequest):
     """
     from ...portal.constancia import descargar_constancia_ciec
 
+    cupo_descargas.exigir()
     try:
         pdf = descargar_constancia_ciec(
             rfc=req.rfc,
@@ -131,6 +134,7 @@ def descargar_constancia(req: ConstanciaRequest):
                 status_code=502,
                 detail="No se pudo generar/descargar la constancia.",
             )
+        cupo_descargas.registrar("constancia")
         return {"ok": True, "archivo": str(pdf)}
     except ImportError as e:
         raise HTTPException(
@@ -176,7 +180,7 @@ def _resolver_ciec(rfc: str, ciec: Optional[str]) -> str:
     return guardada
 
 
-def _lanzar_job_portal(fn_factory, al_completar=None):
+def _lanzar_job_portal(fn_factory, al_completar=None, *, tipo: str):
     """
     Crea un job de scraping del portal (CIEC o FIEL), inyecta el callback de captcha
     del bridge y lo corre en un worker thread. `fn_factory(pedir_captcha)` devuelve
@@ -184,12 +188,23 @@ def _lanzar_job_portal(fn_factory, al_completar=None):
     porque el login con e.firma no pide captcha.
     `al_completar(resultado)` (opcional) se ejecuta al terminar bien (p. ej. registrar
     en el historial). Solo un job a la vez (la sesión del agente es de un usuario).
+
+    Toda descarga del portal cuenta como descarga del mes (`tipo`: cfdi,
+    constancia, opinion): sin cupo (plan gratis) → 402 antes de abrir el
+    navegador; al terminar bien se suma al contador.
     """
     if jobs.registry.hay_activo():
         raise HTTPException(
             status_code=409,
             detail="Ya hay una operación en curso. Espera a que termine o cancélala.",
         )
+    cupo_descargas.exigir()
+
+    def al_completar_y_contar(resultado):
+        cupo_descargas.registrar(tipo)
+        if al_completar is not None:
+            al_completar(resultado)
+
     job = jobs.registry.crear()
     pedir_captcha = jobs.registry.pedir_captcha_callback(job)
     fn = fn_factory(pedir_captcha)
@@ -212,7 +227,7 @@ def _lanzar_job_portal(fn_factory, al_completar=None):
             jobs.registry.emitir(job, "log", nivel="ok", mensaje="Navegador listo.")
         return fn()
 
-    jobs.registry.ejecutar(job, fn_con_navegador, al_completar=al_completar)
+    jobs.registry.ejecutar(job, fn_con_navegador, al_completar=al_completar_y_contar)
     return {"job_id": job.id}
 
 
@@ -315,7 +330,7 @@ def ciec_cfdi(req: CIECDescargaRequest):
         _registrar_descarga(req.rfc, "ciec", "cfdi", descripcion=desc,
                             ruta=salida, total=(resultado or {}).get("total"))
 
-    return _lanzar_job_portal(factory, al_completar=al_completar)
+    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="cfdi")
 
 
 @router.post("/ciec/constancia")
@@ -348,7 +363,7 @@ def ciec_constancia(req: ConstanciaRequest):
             config_store.set_csf_descargada(req.rfc, archivo)
             _actualizar_empresa_desde_csf(req.rfc, archivo)
 
-    return _lanzar_job_portal(factory, al_completar=al_completar)
+    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="constancia")
 
 
 @router.post("/ciec/opinion")
@@ -381,7 +396,7 @@ def ciec_opinion(req: OpinionRequest):
             config_store.set_opinion_descargada(req.rfc, archivo)
             _actualizar_empresa_desde_opinion(req.rfc, archivo)
 
-    return _lanzar_job_portal(factory, al_completar=al_completar)
+    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="opinion")
 
 
 @router.post("/jobs/{job_id}/captcha")
@@ -428,6 +443,7 @@ def constancia_fiel_endpoint():
     from ...core import paths
 
     _get_fiel()
+    cupo_descargas.exigir()
     salida = str(paths.dir_documento(paths.TIPO_CONSTANCIA, _session["rfc"] or "", salida_base=_descargas_base()))
     try:
         pdf = descargar_constancia_fiel(
@@ -438,6 +454,7 @@ def constancia_fiel_endpoint():
             raise HTTPException(status_code=502, detail="No se pudo descargar la constancia.")
         _registrar_descarga(_session["rfc"] or "", "fiel", "constancia",
                             descripcion="Constancia de Situación Fiscal", ruta=str(pdf))
+        cupo_descargas.registrar("constancia")
         if _session["rfc"]:
             from ...cli import config_store
             config_store.set_csf_descargada(_session["rfc"], str(pdf))
@@ -456,6 +473,7 @@ def opinion_fiel_endpoint():
     from ...core import paths
 
     _get_fiel()
+    cupo_descargas.exigir()
     salida = str(paths.dir_documento(paths.TIPO_OPINION, _session["rfc"] or "", salida_base=_descargas_base()))
     try:
         pdf = descargar_opinion_fiel(
@@ -466,6 +484,7 @@ def opinion_fiel_endpoint():
             raise HTTPException(status_code=502, detail="No se pudo descargar la opinión 32-D.")
         _registrar_descarga(_session["rfc"] or "", "fiel", "opinion",
                             descripcion="Opinión de Cumplimiento 32-D", ruta=str(pdf))
+        cupo_descargas.registrar("opinion")
         if _session["rfc"]:
             from ...cli import config_store
             config_store.set_opinion_descargada(_session["rfc"], str(pdf))
@@ -511,4 +530,4 @@ def cfdi_fiel(req: FIELCfdiRequest):
         _registrar_descarga(rfc, "fiel", "cfdi", descripcion=desc,
                             ruta=salida, total=(resultado or {}).get("total"))
 
-    return _lanzar_job_portal(factory, al_completar=al_completar)
+    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="cfdi")

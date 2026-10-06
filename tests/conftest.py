@@ -50,11 +50,13 @@ def licencia_en_tmp(tmp_path, monkeypatch):
     real: con el tope de empresas (F1) la licencia del equipo de quien corre
     las pruebas podría bloquear altas en los tests del catálogo.
     """
-    from sat_descarga.api import license_client
+    from sat_descarga.api import cupo_descargas, license_client
 
     monkeypatch.setattr(
         license_client, "LICENSE_CACHE_PATH", tmp_path / "license-cache-aislado.json"
     )
+    # Igual con el contador de descargas del mes: nunca el del equipo real.
+    monkeypatch.setattr(cupo_descargas, "_ruta", lambda: tmp_path / "descargas-mes-aislado.json")
 
 
 @pytest.fixture(autouse=True)

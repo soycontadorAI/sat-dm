@@ -26,12 +26,12 @@ y en la web (el agente hosted usa este router).
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
 from ..cli import config_store
 from . import license_client as lc
+from .limites_plan import LimitePlanAlcanzado, licencia_en_cache, licencia_fresca
 
 logger = logging.getLogger(__name__)
 
@@ -61,27 +61,13 @@ SIGUIENTE_PLAN: dict[str, Optional[dict]] = {
     "medida": None,
 }
 
-# No volver a pedir la licencia al servicio si el cache tiene menos de esto.
-_LICENCIA_RECIENTE_S = 60
-
-
-class TopeEmpresasAlcanzado(Exception):
-    """Alta o desarchivado rechazado por el tope del plan (HTTP 402)."""
+class TopeEmpresasAlcanzado(LimitePlanAlcanzado):
+    """Alta o desarchivado rechazado por el tope del plan (HTTP 402). Cuerpo:
+    `detail` + `tope_empresas` con lo que la UI necesita para el diálogo de
+    Archivar / Cambiar de plan."""
 
     def __init__(self, mensaje: str, datos: dict):
-        super().__init__(mensaje)
-        self.mensaje = mensaje
-        self.datos = datos
-
-    def respuesta(self) -> dict:
-        """Cuerpo del 402: `detail` (texto para mostrar tal cual, como en
-        cualquier error del agente) + `tope_empresas` con lo que la UI necesita
-        para el diálogo de Archivar / Cambiar de plan."""
-        return {
-            "detail": self.mensaje,
-            "codigo": "tope_empresas",
-            "tope_empresas": self.datos,
-        }
+        super().__init__(mensaje, "tope_empresas", datos)
 
 
 @dataclass(frozen=True)
@@ -103,33 +89,6 @@ class CupoEmpresas:
 # ---------------------------------------------------------------------------
 # Licencia y conteo
 # ---------------------------------------------------------------------------
-
-
-def _cache_utilizable() -> Optional[dict]:
-    """Payload de la licencia en cache si está dentro de la gracia offline
-    (30 días), igual que `get_license_status` sin red. Sin cache: None."""
-    cache = lc._cache_read()
-    if not cache:
-        return None
-    if int(time.time()) - int(cache.get("cached_at", 0) or 0) >= lc.CACHE_GRACE_SECONDS:
-        return None
-    payload = cache.get("payload")
-    return payload if isinstance(payload, dict) else None
-
-
-def _cache_es_reciente() -> bool:
-    cache = lc._cache_read() or {}
-    return int(time.time()) - int(cache.get("cached_at", 0) or 0) < _LICENCIA_RECIENTE_S
-
-
-def _licencia_fresca() -> Optional[dict]:
-    """Licencia recién pedida al servicio (o la del cache si no hay red).
-    Nunca lanza: cualquier fallo devuelve None y se decide con el cache."""
-    try:
-        return lc.get_license_status(force_refresh=True)
-    except Exception as e:  # noqa: BLE001 — el tope nunca debe tumbar un alta con 500
-        logger.warning("[tope] no se pudo refrescar la licencia: %s", e)
-        return None
 
 
 def tope_de(licencia: Optional[dict]) -> Optional[int]:
@@ -234,17 +193,16 @@ def _exigir(rfc: str, accion: str) -> None:
     rfc = (rfc or "").strip().upper()
     if not rfc or not _ocupa_lugar_nuevo(rfc, accion):
         return
-    cupo = estado_cupo(_cache_utilizable())
+    cupo = estado_cupo(licencia_en_cache())
     if not cupo.lleno:
         return
     # El cache dice que no hay lugar: confirmar con la licencia del servicio
     # (pudo haber cambiado de plan hace un momento) antes de rechazar.
-    if not _cache_es_reciente():
-        fresca = _licencia_fresca()
-        if fresca is not None:
-            cupo = estado_cupo(fresca)
-            if not cupo.lleno:
-                return
+    fresca = licencia_fresca()
+    if fresca is not None:
+        cupo = estado_cupo(fresca)
+        if not cupo.lleno:
+            return
     logger.info(
         "[tope] %s rechazada: %s de %s empresas (plan %s)",
         accion, cupo.activas, cupo.tope, cupo.plan_codigo,

@@ -273,9 +273,11 @@ def diot_acuse(req: DiotAcuseRequest):
     docs/producto/pendientes-envios-sat.md — acuse de aceptación DIOT).
     """
     from .certifica import _credenciales_keychain, _lanzar_job_certifica
+    from .. import cupo_descargas
 
     empresa = _credenciales_keychain(req.rfc)
     rfc = _rfc_requerido(req.rfc)
+    cupo_descargas.exigir()  # el acuse cuenta como descarga del mes (plan gratis)
     from ...cli.config_store import get_descargas_dir
     salida = (Path(get_descargas_dir()) / "diot" / "presentaciones" / rfc
               / str(req.ejercicio) / f"{req.periodo:02d}-{req.ejercicio}")
@@ -293,6 +295,8 @@ def diot_acuse(req: DiotAcuseRequest):
                 ejercicio=req.ejercicio, periodo=req.periodo,
                 directorio_salida=str(salida), rfc=rfc,
             )
+            if acuse:
+                cupo_descargas.registrar("acuse")
             return {"acuse": str(acuse) if acuse else None}
         return fn
 
