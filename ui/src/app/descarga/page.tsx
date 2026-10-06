@@ -331,7 +331,6 @@ export default function DescargaPage() {
               <Button variant="outline" size="sm" asChild>
                 <Link href="/descarga/rapida">
                   Descarga rápida
-                  <Icon icon="ph:arrow-right-light" className="size-4" />
                 </Link>
               </Button>
             }

@@ -60,7 +60,7 @@ export function EstadoCarteraDonut({ cartera }: EstadoCarteraDonutProps) {
               <span className="text-2xl font-extrabold leading-none tracking-tight">
                 {total}
               </span>
-              <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="mt-0.5 text-[11px] font-medium text-muted-foreground">
                 {total === 1 ? 'empresa' : 'empresas'}
               </span>
             </div>

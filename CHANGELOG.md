@@ -8,6 +8,33 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Feature
 
+- **Nueva navegación: Espacios y comando (beta, detrás de `NAV_ESPACIOS`).** Cinco espacios en
+  un riel (Despacho, SAT, Revisar, Cumplimiento y Herramientas), cada uno con su panel: una
+  línea que explica cada destino, los sub-destinos que se despliegan (CFDI, Nómina y Pagos;
+  las 7 calculadoras; DIOT), Recientes y lo que llega después con la etiqueta "Pronto" y su
+  pantalla Próximamente. La empresa activa sube a la barra de título y "Busca o pide algo"
+  (⌘K) entiende órdenes: "descargar recibidos de septiembre de Distribuidora El Roble" llena
+  la solicitud y la mandas con un segundo Enter; "constancia de..." y "opinión de..." se bajan
+  directo con aviso de progreso; también cambia de empresa por nombre o RFC y abre cualquier
+  pantalla por su nombre o un sinónimo ("69-B", "pagos"). El intérprete es local: lo que
+  escribes no sale del equipo. Ninguna URL cambia.
+  - **Atajos que cambian con espacios:** `⌘1` a `⌘5` abren los espacios (antes, las páginas
+    1 a 5 del menú), `⌘6` a `⌘9` ya no abren nada y avisan dónde quedó lo que abrían, y `⌘B`
+    esconde el panel. `⌘K`, `⌘E`, `⌘N`, `⇧⌘D`, `⌘,`, `F1` y `⇧⌘L` siguen igual. La tarjeta
+    de atajos de Ayuda sigue a la navegación elegida.
+  - **Cómo se enciende:** por instalación con `?labs=espacios` (web), escribiendo "labs" en
+    ⌘K (escritorio) o en Ajustes > Apariencia > Navegación. Desde el 2 de noviembre de 2026
+    las cuentas en prueba y las nuevas abren con espacios (`NAV_ESPACIOS_DEFAULT_DESDE`); las
+    que pagan siguen con la clásica y la pueden encender en Ajustes. Con el interruptor
+    apagado, la app se ve igual que hoy.
+  - En la web, con espacios, el Organizador explica que vive en la app de escritorio y ofrece
+    la descarga o el ZIP del Historial; el menú de cuenta trae "Descargar app de escritorio".
+- **Marca Señal en toda la app.** Tinta y papel, Geist y Geist Mono, botones en tinta y el cian
+  solo para lo automático (una descarga corriendo, un aviso de progreso). Los avisos usan los
+  estados de la marca, sin etiquetas en mayúsculas ni puntos medios entre datos, y el Excel y
+  los PDF de cálculo salen en Señal.
+- **Descarga rápida muestra "N de M XML"** cuando el agente reporta el avance (evento
+  opcional `progreso`).
 - **Planes v3 listos para el Día C, apagados hasta entonces.** Con el interruptor encendido
   (`license.planes_v3_activo` del servicio, o el flag `PLANES_V3` para probar), Suscripción
   muestra Esencial, Pro y Completo con cobro anual o mensual, con tarjeta o transferencia
@@ -54,6 +81,11 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   capacidades por plan (`limites_de`, `capacidad`) con defaults que nunca bloquean (licencia
   vieja u offline sin cache = sin tope); la UI los tipa como opcionales y trae los flags
   `PLANES_V3` y `NAV_ESPACIOS`, apagados. No cambia nada visible.
+- **La UI respeta `modo_grabacion` de `/health`** (agente en modo de grabación para los
+  tutoriales): sin banners de venta, el plan sin cuenta regresiva y sin el recordatorio diario
+  de e.firma. No se anuncia en pantalla.
+- `pnpm test:ordenes` corre las pruebas del intérprete de órdenes de ⌘K (`node --test`, sin
+  dependencias).
 
 ## [2.3.1] - 2026-10-05
 

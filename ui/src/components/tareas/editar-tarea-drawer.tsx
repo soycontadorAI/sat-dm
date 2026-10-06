@@ -105,7 +105,7 @@ export function EditarTareaDrawer({
           aria-describedby={undefined}
         >
           <div className="flex shrink-0 items-center gap-2 border-b px-5 py-3.5">
-            <DialogPrimitive.Title className="flex-1 text-xs font-extrabold uppercase tracking-wider text-muted-foreground">
+            <DialogPrimitive.Title className="flex-1 text-[13px] font-semibold text-ghost">
               Editar tarea
             </DialogPrimitive.Title>
             <DialogPrimitive.Close asChild>

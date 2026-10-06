@@ -345,7 +345,7 @@ export default function TareasPage() {
 
       <div className="flex items-center gap-2 text-[12.5px] text-muted-foreground/70">
         <Icon icon="ph:user-light" className="size-3.5" />
-        {abiertas} {abiertas === 1 ? 'tarea abierta · asignada' : 'tareas abiertas · asignadas'} a ti.
+        {abiertas} {abiertas === 1 ? 'tarea abierta asignada' : 'tareas abiertas asignadas'} a ti.
       </div>
 
       <NuevaTareaDialog

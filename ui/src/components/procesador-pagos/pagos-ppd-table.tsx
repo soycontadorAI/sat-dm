@@ -289,7 +289,7 @@ function PagosDetalleDrilldown({
 
   return (
     <div className="space-y-1 p-2">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-semibold text-ghost">
         Pagos relacionados ({items.length})
       </div>
       <Table>

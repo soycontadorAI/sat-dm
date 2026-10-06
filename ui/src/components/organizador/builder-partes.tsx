@@ -220,7 +220,7 @@ export function PartesBuilder({
       )}
 
       <div>
-        <div className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+        <div className="mb-2 text-xs font-semibold text-ghost">
           {paletaLabel}
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -264,7 +264,7 @@ export function PartesBuilder({
 export function VistaPrevia({ children }: { children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+      <div className="mb-1.5 text-xs font-semibold text-ghost">
         Vista previa
       </div>
       {children}

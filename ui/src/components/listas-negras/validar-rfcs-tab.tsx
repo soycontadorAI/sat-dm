@@ -168,8 +168,8 @@ export function ValidarRfcsTab() {
                 <CardTitle className="text-base">Resultados</CardTitle>
                 <CardDescription>
                   {matches.length} RFC{matches.length === 1 ? '' : 's'} consultado
-                  {matches.length === 1 ? '' : 's'} · EFOS {conteos.EFOS} · Aclarado{' '}
-                  {conteos.Aclarado} · En 69 {conteos['69']} · Limpios {conteos.Limpio}
+                  {matches.length === 1 ? '' : 's'}: EFOS {conteos.EFOS}, aclarados{' '}
+                  {conteos.Aclarado}, en 69 {conteos['69']} y limpios {conteos.Limpio}.
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">

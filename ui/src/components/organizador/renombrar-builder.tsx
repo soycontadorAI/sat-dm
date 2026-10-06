@@ -44,7 +44,7 @@ export function RenombrarBuilder({
       vacioTexto="Aún no hay partes. Agrega una abajo."
       extras={
         <div className="flex items-center gap-2.5">
-          <span className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+          <span className="text-xs font-semibold text-ghost">
             Separador
           </span>
           <div className="inline-flex overflow-hidden rounded-lg border bg-card">

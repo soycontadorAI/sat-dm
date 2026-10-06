@@ -57,7 +57,7 @@ export function FielStatus() {
         )}
         {sem && (
           <span className={cn('block px-1 text-[11px] font-medium', ESTILO_TEXTO[sem.estado])}>
-            e.firma · {sem.label}
+            e.firma: {sem.label.charAt(0).toLowerCase() + sem.label.slice(1)}
           </span>
         )}
       </button>

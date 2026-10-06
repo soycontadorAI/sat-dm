@@ -341,7 +341,7 @@ function SuscripcionActual() {
               )}
 
               {/* separador */}
-              <div className="flex items-center gap-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <div className="flex items-center gap-3 text-xs font-semibold text-ghost">
                 <span className="h-px flex-1 bg-border" />
                 Elige cómo pagar
                 <span className="h-px flex-1 bg-border" />
@@ -448,7 +448,7 @@ function SuscripcionActual() {
         <aside className="flex flex-col gap-4">
           {esPrueba && dias !== null && (
             <div className="rounded-xl border bg-card p-5 text-card-foreground shadow-sm">
-              <div className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-ghost">
                 <Icon icon="ph:hourglass-medium-light" className="size-4 text-muted-foreground/70" />
                 Periodo de prueba
               </div>
@@ -468,7 +468,7 @@ function SuscripcionActual() {
           )}
 
           <div className="rounded-xl border bg-card p-5 text-card-foreground shadow-sm">
-            <div className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-ghost">
               <Icon icon="ph:gear-light" className="size-4 text-muted-foreground/70" />
               Tu cuenta
             </div>

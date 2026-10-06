@@ -432,7 +432,7 @@ export function ConfiguracionFiscalCard({ empresa, onGuardar, onDatosAplicados }
                     </span>
                   )}
                   {a.principal && (
-                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                    <span className="ml-2 text-[11px] font-semibold text-foreground">
                       Principal
                     </span>
                   )}

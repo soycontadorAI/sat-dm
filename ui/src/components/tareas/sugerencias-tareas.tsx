@@ -53,7 +53,7 @@ export function SugerenciasTareas({
           {sugerencias.length}
         </span>
         <span className="hidden font-medium text-muted-foreground/70 sm:inline">
-          · detectadas de tus empresas. Acéptalas para convertirlas en tarea.
+          detectadas de tus empresas. Acéptalas para convertirlas en tarea.
         </span>
       </div>
       <div className="flex flex-col gap-3 md:flex-row">

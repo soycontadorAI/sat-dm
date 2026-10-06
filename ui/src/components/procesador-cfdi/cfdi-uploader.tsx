@@ -324,13 +324,17 @@ export function CfdiUploader({ bareback = false, onCargado }: Props) {
               className="size-4"
             />
             <AlertDescription>
-              {resumen.agregados} agregados
-              {resumen.duplicados > 0 && ` · ${resumen.duplicados} duplicados`}
-              {resumen.omitidos_rfc > 0 &&
-                ` · ${resumen.omitidos_rfc} omitidos por no corresponder al RFC ${empresaActiva?.rfc ?? 'de la empresa activa'}`}
-              {resumen.archivos_encontrados !== undefined &&
-                ` · ${resumen.archivos_encontrados} archivos escaneados`}
-              {resumen.errores.length > 0 && ` · ${resumen.errores.length} con error`}
+              {[
+                `${resumen.agregados} agregados`,
+                resumen.duplicados > 0 && `${resumen.duplicados} duplicados`,
+                resumen.omitidos_rfc > 0 &&
+                  `${resumen.omitidos_rfc} omitidos por no corresponder al RFC ${empresaActiva?.rfc ?? 'de la empresa activa'}`,
+                resumen.archivos_encontrados !== undefined &&
+                  `${resumen.archivos_encontrados} archivos escaneados`,
+                resumen.errores.length > 0 && `${resumen.errores.length} con error`,
+              ]
+                .filter(Boolean)
+                .join(', ')}
             </AlertDescription>
           </Alert>
         )}

@@ -168,7 +168,7 @@ export default function AyudaPage() {
           )}
           {grupos.map((g) => (
             <div key={g.grupo}>
-              <div className="mb-2.5 ml-0.5 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              <div className="mb-2.5 ml-0.5 flex items-center gap-2 text-[13px] font-semibold text-ghost">
                 <Icon icon={g.icon} className="size-3.75" />
                 {g.grupo}
               </div>
@@ -295,7 +295,7 @@ export default function AyudaPage() {
               <Icon icon="ph:check-circle-light" className="size-3" />
               Estás al día
             </span>
-            <span>TodoConta Desktop{version ? ` · versión ${version}` : ''}</span>
+            <span>TodoConta Desktop{version ? `, versión ${version}` : ''}</span>
           </div>
         </div>
       </div>

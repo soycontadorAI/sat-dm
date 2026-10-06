@@ -284,7 +284,7 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
                 <>
                   {sem.vencida ? 'Venció el' : 'Vence el'} {formatDate(sem.fecha)}
                   {!sem.vencida && sem.dias >= 0 && (
-                    <> · {sem.dias === 0 ? 'hoy' : `en ${sem.dias} ${sem.dias === 1 ? 'día' : 'días'}`}</>
+                    <> ({sem.dias === 0 ? 'hoy' : `en ${sem.dias} ${sem.dias === 1 ? 'día' : 'días'}`})</>
                   )}
                 </>
               )}
@@ -349,7 +349,7 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
         {/* Constancia de Situación Fiscal */}
         <DocCardShell icon="ph:file-text-light" titulo="Constancia de Situación Fiscal">
           {metodo && (
-            <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <div className="flex items-center gap-1 text-[11.5px] font-medium text-muted-foreground">
               <Icon
                 icon={metodo === 'fiel' ? 'ph:shield-check-light' : 'ph:key-light'}
                 className="size-3"
@@ -359,7 +359,7 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
           )}
           <p className="text-xs text-muted-foreground">
             {empresa.csf_descargada_en
-              ? `Última descarga · ${formatoFecha(empresa.csf_descargada_en)}`
+              ? `Última descarga: ${formatoFecha(empresa.csf_descargada_en)}`
               : 'Aún no la has descargado'}
           </p>
           {renderDescarga('constancia', 'Descargar CSF')}
@@ -371,7 +371,7 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
         {/* Opinión de Cumplimiento 32-D */}
         <DocCardShell icon="ph:clipboard-text-light" titulo="Opinión de Cumplimiento 32-D">
           {metodo && (
-            <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <div className="flex items-center gap-1 text-[11.5px] font-medium text-muted-foreground">
               <Icon
                 icon={metodo === 'fiel' ? 'ph:shield-check-light' : 'ph:key-light'}
                 className="size-3"
@@ -381,7 +381,7 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
           )}
           <p className="text-xs text-muted-foreground">
             {empresa.opinion_descargada_en
-              ? `Última descarga · ${formatoFecha(empresa.opinion_descargada_en)}`
+              ? `Última descarga: ${formatoFecha(empresa.opinion_descargada_en)}`
               : 'Aún no la has descargado'}
           </p>
           {empresa.opinion_status && (
@@ -389,10 +389,10 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
               className={cn(
                 'flex items-center gap-1.5 text-xs font-medium',
                 semaforoOpinion(empresa).tono === 'rojo'
-                  ? 'text-red-600 dark:text-red-400'
+                  ? 'text-destructive'
                   : semaforoOpinion(empresa).tono === 'verde'
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-amber-600 dark:text-amber-400',
+                    ? 'text-success'
+                    : 'text-warning',
               )}
             >
               <Icon
@@ -406,7 +406,7 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
                 className="size-3.5 shrink-0"
               />
               Opinión {semaforoOpinion(empresa).label.toLowerCase()}
-              {semaforoOpinion(empresa).negativa && ' · ver detalle de la empresa'}
+              {semaforoOpinion(empresa).negativa && '. Los motivos, en el detalle de la empresa'}
             </div>
           )}
           {renderDescarga('opinion', 'Descargar 32-D')}

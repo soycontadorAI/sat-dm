@@ -26,7 +26,7 @@ function tiposLabel(porTipo: Record<string, number>): string {
   };
   return Object.entries(porTipo)
     .map(([k, v]) => `${v} ${ETIQUETAS[k] ?? k}`)
-    .join(' · ');
+    .join(', ');
 }
 
 export function CfdiStats({ stats }: Props) {
@@ -89,7 +89,7 @@ export function CfdiStats({ stats }: Props) {
             <Icon icon="ph:percent-light" className="size-4" />
             Impuestos
           </CardTitle>
-          <CardDescription>IVA trasladado · IVA ret. · ISR ret.</CardDescription>
+          <CardDescription>IVA trasladado, IVA retenido e ISR retenido</CardDescription>
         </CardHeader>
         <CardContent className="space-y-1 text-sm">
           <div>

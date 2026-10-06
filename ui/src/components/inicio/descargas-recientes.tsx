@@ -2,7 +2,6 @@ import Link from 'next/link';
 
 import { PanelInicio, PanelVacio } from '@/components/inicio/panel-inicio';
 import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
 import { formatNumber } from '@/lib/formatting';
 import type { HistorialItem } from '@/lib/types';
 
@@ -49,7 +48,6 @@ export function DescargasRecientes({
         <Button variant="ghost" size="sm" asChild>
           <Link href="/historial">
             Ver historial
-            <Icon icon="ph:arrow-right-light" className="size-3.5" />
           </Link>
         </Button>
       }

@@ -99,8 +99,8 @@ export function MisCfdisTab() {
         setInfo('Todos los RFCs ya están verificados (válidos por 30 días). Usa "Forzar revalidación" si necesitas volver a consultar.');
       } else {
         setInfo(
-          `Validados ${r.validados} RFCs · EFOS ${r.efos} · Aclarados ${r.aclarados} · ` +
-          `En 69 ${r.lista_69} · Limpios ${r.limpios}`,
+          `Validados ${r.validados} RFCs: EFOS ${r.efos}, aclarados ${r.aclarados}, ` +
+          `en 69 ${r.lista_69} y limpios ${r.limpios}.`,
         );
       }
       await refrescar(filtro);

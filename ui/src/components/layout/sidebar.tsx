@@ -96,7 +96,7 @@ function BuscarItem({ collapsed, mac }: { collapsed: boolean; mac: boolean }) {
     <Tooltip>
       <TooltipTrigger asChild>{boton}</TooltipTrigger>
       <TooltipContent side="right">
-        Buscar · {formatearAtajo({ tecla: 'K' }, mac)}
+        Buscar ({formatearAtajo({ tecla: 'K' }, mac)})
       </TooltipContent>
     </Tooltip>
   );

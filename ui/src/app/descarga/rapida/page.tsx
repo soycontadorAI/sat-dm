@@ -102,7 +102,6 @@ export default function DescargaRapidaPage() {
                 <Button variant="outline" size="sm" asChild>
                   <Link href="/descarga">
                     Web Service
-                    <Icon icon="ph:arrow-right-light" className="size-4" />
                   </Link>
                 </Button>
               }
