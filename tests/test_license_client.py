@@ -362,3 +362,88 @@ def test_router_subscribe_y_transfer_pasan_el_plan_v3(entorno, monkeypatch):
         {"plan": "completo"},
         None,
     ]
+
+
+# ---------------------------------------------------------------------------
+# Usuarios adicionales (2026-10-06): Pro y Completo, $990 al año o $129 al mes
+# ---------------------------------------------------------------------------
+
+
+def test_subscribe_con_usuarios_adicionales(monkeypatch):
+    enviados = _captura_post(monkeypatch, {"url": "https://checkout"})
+    sesion = Session(access_token="t", refresh_token=None, user_id="u", email=None)
+    lc.init_subscribe_checkout(sesion, "pro", "mensual", 2)
+    lc.init_subscribe_checkout(sesion, "completo", None, 0, previsualizar=True)
+    lc.init_subscribe_checkout(sesion, "anual", None, 3)  # oferta de antes: no viaja
+    lc.init_subscribe_checkout(sesion, "pro", "anual", True)  # un bool no es cantidad
+    assert [b for _, b in enviados] == [
+        {"plan": "pro", "intervalo": "mensual", "usuarios_adicionales": 2},
+        {"plan": "completo", "intervalo": "anual", "usuarios_adicionales": 0, "previsualizar": True},
+        {"plan": "anual"},
+        {"plan": "pro", "intervalo": "anual"},
+    ]
+
+
+def test_transfer_intent_con_usuarios_adicionales(monkeypatch):
+    enviados = _captura_post(monkeypatch, {"ok": True, "amount_mxn": 8970})
+    sesion = Session(access_token="t", refresh_token=None, user_id="u", email=None)
+    lc.create_transfer_intent(sesion, "pro", 2)
+    lc.create_transfer_intent(sesion, "pro", 0)
+    lc.create_transfer_intent(sesion, None, 2)  # plan de antes: cuerpo vacío
+    assert [b for _, b in enviados] == [
+        {"plan": "pro", "usuarios_adicionales": 2},
+        {"plan": "pro"},
+        None,
+    ]
+
+
+def test_router_pasa_usuarios_adicionales_y_rechaza_los_invalidos(entorno, monkeypatch):
+    pytest.importorskip("fastapi")
+    from fastapi import HTTPException
+
+    from sat_descarga.api.routers import system
+
+    enviados = _captura_post(monkeypatch, {"url": "https://checkout", "ok": True})
+    system.auth_subscribe({"plan": "pro", "intervalo": "anual", "usuarios_adicionales": 2})
+    system.auth_subscribe({"plan": "pro", "usuarios_adicionales": 1, "previsualizar": True})
+    system.auth_transfer_intent({"plan": "completo", "usuarios_adicionales": 3})
+    assert [b for _, b in enviados] == [
+        {"plan": "pro", "intervalo": "anual", "usuarios_adicionales": 2},
+        {"plan": "pro", "intervalo": "anual", "usuarios_adicionales": 1, "previsualizar": True},
+        {"plan": "completo", "usuarios_adicionales": 3},
+    ]
+    for malo in ("2", -1, 1.5):
+        with pytest.raises(HTTPException) as e:
+            system.auth_subscribe({"plan": "pro", "usuarios_adicionales": malo})
+        assert e.value.status_code == 400
+    assert len(enviados) == 3
+
+
+def test_cuenta_usuarios_adicionales_proxya_y_espeja_el_status(entorno, monkeypatch):
+    pytest.importorskip("fastapi")
+    from fastapi import HTTPException
+
+    from sat_descarga.api.routers import system
+
+    llamadas = []
+    respuesta = {"valor": (200, {"ok": True, "usuarios_adicionales": 3, "max_usuarios": 6})}
+
+    def fake_proxy(method, path, *, json_body=None, params=None):
+        llamadas.append((method, path, json_body))
+        return respuesta["valor"]
+
+    monkeypatch.setattr(lc, "proxy_desktop", fake_proxy)
+    r = system.cuenta_usuarios_adicionales(system.UsuariosAdicionalesRequest(usuarios_adicionales=3))
+    assert r == {"ok": True, "usuarios_adicionales": 3, "max_usuarios": 6}
+    assert llamadas == [
+        ("POST", "/api/desktop/usuarios-adicionales", {"usuarios_adicionales": 3, "previsualizar": False})
+    ]
+
+    # Un 409 del servicio (el equipo no cabe) sigue siendo 409, con su mensaje.
+    respuesta["valor"] = (409, {"codigo": "excede_usuarios", "error": "Tu equipo tiene 5 usuarios..."})
+    with pytest.raises(HTTPException) as e:
+        system.cuenta_usuarios_adicionales(
+            system.UsuariosAdicionalesRequest(usuarios_adicionales=1, previsualizar=True)
+        )
+    assert e.value.status_code == 409
+    assert e.value.detail == "Tu equipo tiene 5 usuarios..."
