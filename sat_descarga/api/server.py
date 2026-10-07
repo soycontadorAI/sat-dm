@@ -62,6 +62,7 @@ from .routers import (
     tareas_router,
     system_router,
     descargas_router,
+    sesion_router,
 )
 
 # Telemetría de errores (Sentry). Apagada salvo que haya SENTRY_DSN en el entorno
@@ -119,9 +120,22 @@ async def lifespan(app: "FastAPI"):
     except Exception:
         logger.exception("No se pudo iniciar el poller de solicitudes WS")
         detener_poller = None
+
+    # Sesión única (F1.1): en escritorio, un hilo late cada 60 s para enterarse
+    # de que otra instalación reclamó la cuenta (y pausar lo de fondo). En la
+    # web no corre: ahí late cada navegador.
+    try:
+        from .sesion_unica import iniciar_latidos, detener_latidos
+
+        iniciar_latidos()
+    except Exception:
+        logger.exception("No se pudo iniciar el latido de la sesión")
+        detener_latidos = None
     yield
     if detener_poller is not None:
         detener_poller()
+    if detener_latidos is not None:
+        detener_latidos()
 
 
 app = FastAPI(
@@ -222,6 +236,7 @@ app.include_router(diot_router)
 app.include_router(ce_router)
 app.include_router(tareas_router)
 app.include_router(descargas_router)
+app.include_router(sesion_router)
 
 # ---------------------------------------------------------------------------
 # Entry point

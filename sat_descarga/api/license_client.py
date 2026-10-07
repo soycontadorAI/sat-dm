@@ -269,10 +269,19 @@ def _mensaje_usuario(resp: "requests.Response") -> str:
 
 
 def fetch_license_remote(session: Session) -> dict:
-    """Hace GET /api/desktop/license con el Bearer del session."""
+    """Hace GET /api/desktop/license con el Bearer del session.
+
+    En escritorio manda además la instalación (`X-TodoConta-Instalacion`): el
+    servicio responde el campo `sesion` (sesión única, F1.1) y así esta
+    instalación se entera también aquí de que otra reclamó la cuenta."""
+    from . import sesion_unica
+
     resp = _get_con_red(
         f"{API_BASE_URL}/api/desktop/license",
-        headers={"Authorization": f"Bearer {session.access_token}"},
+        headers={
+            "Authorization": f"Bearer {session.access_token}",
+            **sesion_unica.header_instalacion(),
+        },
         timeout=10,
     )
     if resp.status_code == 200:
@@ -381,6 +390,12 @@ def get_license_status(force_refresh: bool = False) -> dict:
             "offline": True,
         }
 
+    # Sesión única (F1.1): el estado es del momento, no se cachea.
+    if isinstance(payload, dict) and "sesion" in payload:
+        from . import sesion_unica
+
+        sesion_unica.desde_licencia(payload)
+        payload = {k: v for k, v in payload.items() if k != "sesion"}
     _cache_write({"cached_at": now, "payload": payload})
     return payload
 
