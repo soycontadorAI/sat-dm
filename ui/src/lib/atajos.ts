@@ -68,7 +68,7 @@ export function formatearAtajo(
 
 // Tabla de referencia (card "Atajos de teclado" en /ayuda) de la navegación
 // clásica. Los ⌘1..⌘9 se asignan por el ORDEN de NAV_ITEMS en
-// lib/navegacion.ts — ver nota ahí (a partir de la 10.ª página ya no hay
+// lib/navegacion.ts (ver la nota ahí; a partir de la 10.ª página ya no hay
 // dígito; se llega por ⌘K).
 export const ATAJOS: readonly Atajo[] = [
   { id: 'palette', tecla: 'K', descripcion: 'Buscar página o acción', grupo: 'Navegación' },
