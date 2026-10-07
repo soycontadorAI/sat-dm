@@ -11,7 +11,8 @@ import type { EspacioId } from '@/lib/navegacion';
 // ---------------------------------------------------------------------------
 
 const LLAVE = 'tc:recientes';
-const POR_ESPACIO = 3;
+/** Se guardan 4 para mostrar 3 sin contar la pantalla en la que estás. */
+const POR_ESPACIO = 4;
 /** Evento window: una pantalla registró (o enriqueció) un reciente. */
 export const EVENTO_RECIENTE = 'tc:reciente';
 

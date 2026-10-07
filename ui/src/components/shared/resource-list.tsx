@@ -77,7 +77,8 @@ export function ResourceList<T>({
       const fila = Array.from(
         listaRef.current?.querySelectorAll<HTMLElement>('[data-resource-key]') ?? [],
       ).find((el) => el.dataset.resourceKey === abrirKey.key);
-      fila?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      // Lo justo para que la fila abierta se vea completa (sin esconder el encabezado si ya cabe).
+      fila?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }, 60);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps

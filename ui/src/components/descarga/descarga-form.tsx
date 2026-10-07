@@ -57,13 +57,15 @@ interface DescargaFormProps {
   onSubmit: (params: DescargaFormParams) => void;
   isLoading: boolean;
   disabled: boolean;
+  /** RFC de la empresa activa: el aviso de una orden de ⌘K solo vale para la suya. */
+  rfcActivo?: string | null;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProps) {
+export function DescargaForm({ onSubmit, isLoading, disabled, rfcActivo }: DescargaFormProps) {
   // Orden de ⌘K ("descargar recibidos de septiembre de ..."): el primer Enter
   // llena el formulario y deja el foco en "Solicitar descarga"; el segundo
   // Enter la manda. Nada sale al SAT sin ese segundo Enter (el SAT limita las
@@ -116,6 +118,8 @@ export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProp
   }
 
   const isDisabled = disabled || isLoading;
+  // Si después cambiaste de empresa, el aviso ya no es de la empresa activa.
+  const ordenVigente = deOrden && (!rfcActivo || deOrden.rfc === rfcActivo) ? deOrden : null;
 
   return (
     <Card>
@@ -131,12 +135,12 @@ export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProp
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {deOrden && (
+          {ordenVigente && (
             <div className="flex items-start gap-2.5 rounded-[10px] border border-border bg-background px-3.5 py-2.5 text-[13px] text-muted-foreground">
               <Icon icon="ph:arrow-elbow-down-left-light" className="mt-0.5 size-4 shrink-0 text-foreground" />
               <span>
                 <span className="font-semibold text-foreground">Lo llenó tu orden:</span>{' '}
-                {deOrden.etiqueta}. Revisa y confirma con Enter.
+                {ordenVigente.etiqueta}. Revisa y confirma con Enter.
               </span>
             </div>
           )}
@@ -210,7 +214,7 @@ export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProp
             // Después de una orden, el contorno marca dónde cae el segundo Enter.
             className={cn(
               'w-full sm:w-auto',
-              deOrden && 'focus:outline-2 focus:outline-offset-3 focus:outline-ring',
+              ordenVigente && 'focus:outline-2 focus:outline-offset-3 focus:outline-ring',
             )}
             onKeyDown={(e) => {
               if (e.repeat && e.key === 'Enter') e.preventDefault();

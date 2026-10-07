@@ -25,6 +25,50 @@ interface FaqGroup {
   items: FaqItem[];
 }
 
+/** Preguntas de la navegación por espacios (navegacion-espacios.md, sección 6). */
+const FAQ_NAVEGACION: FaqGroup = {
+  grupo: 'La navegación nueva',
+  icon: 'ph:compass-light',
+  items: [
+    {
+      q: '¿Dónde quedó el menú de la izquierda?',
+      a: 'Ahora son 5 espacios en el riel: Despacho, SAT, Revisar, Cumplimiento y Herramientas. Elige uno y el panel de al lado te muestra lo que hay adentro, con una línea que explica cada cosa. Nada se borró: todo sigue, solo que mejor acomodado.',
+    },
+    {
+      q: '¿Dónde cambio de empresa?',
+      a: 'Arriba a la izquierda, en la barra de título, o con ⌘E (Ctrl+E en Windows). También puedes escribir su nombre o su RFC en "Busca o pide algo".',
+    },
+    {
+      q: '¿Qué le puedo pedir a "Busca o pide algo"?',
+      a: 'Que te lleve a cualquier pantalla ("nómina", "69-B", "historial"), que cambie de empresa y que haga cosas: "descargar recibidos de septiembre", "constancia de" o "opinión de" y el nombre de la empresa, o "finiquito". Antes de hacer algo te enseña lo que entendió (periodo, empresa y canal), y una descarga de CFDIs la confirmas con un segundo Enter. Lo que escribes no sale de tu equipo.',
+    },
+    {
+      q: '¿Dónde bajo la Constancia o la Opinión 32-D?',
+      a: 'En SAT, Constancia y Opinión 32-D: te lleva a la fila de tu empresa activa en Despacho, Empresas. O escribe en el buscador "constancia de" y el nombre de la empresa.',
+    },
+    {
+      q: '¿Dónde están los procesadores de CFDI, Nómina y Pagos?',
+      a: 'En Revisar, Comprobantes. Al entrar se despliegan los tres en el panel.',
+    },
+    {
+      q: '¿Por qué ⌘2 ya no abre Tareas?',
+      a: 'Los números ahora abren los espacios: ⌘1 Despacho, ⌘2 SAT, ⌘3 Revisar, ⌘4 Cumplimiento y ⌘5 Herramientas (en Windows, Ctrl en vez de ⌘). Tareas está en Despacho, igual que Inicio, Empresas e Historial.',
+    },
+    {
+      q: '¿Cómo escondo el panel?',
+      a: 'Con ⌘B (Ctrl+B en Windows), con el botón de flecha doble del panel o con un clic en el espacio donde ya estás. El riel siempre se queda.',
+    },
+    {
+      q: '¿Qué es lo que dice "Pronto"?',
+      a: 'Algo que todavía no está en la app pero ya tiene su lugar. Al abrirlo ves qué va a hacer.',
+    },
+    {
+      q: '¿Puedo volver a la navegación anterior?',
+      a: 'Durante la beta, sí: en Ajustes, Apariencia, Navegación.',
+    },
+  ],
+};
+
 const FAQ_GROUPS: FaqGroup[] = [
   {
     grupo: 'Primeros pasos',
@@ -119,7 +163,8 @@ export default function AyudaPage() {
   const gruposAtajos = [...new Set(atajos.map((a) => a.grupo))];
 
   const q = query.trim().toLowerCase();
-  const grupos = FAQ_GROUPS.map((g) => ({
+  const gruposBase = modo === 'espacios' ? [FAQ_NAVEGACION, ...FAQ_GROUPS] : FAQ_GROUPS;
+  const grupos = gruposBase.map((g) => ({
     ...g,
     items: g.items.filter(
       (it) => !q || it.q.toLowerCase().includes(q) || it.a.toLowerCase().includes(q),

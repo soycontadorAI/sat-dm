@@ -150,6 +150,8 @@ export function EspaciosShellProvider({ children }: { children: ReactNode }) {
     // Recientes: el destino (o su padre si comparten ruta, como DIOT) con la
     // empresa activa si trabaja sobre ella.
     const base = u.padre && u.padre.href === u.destino.href ? u.padre : u.destino;
+    // Inicio siempre está a un clic (⌘1): no ocupa lugar en Recientes.
+    if (base.id === 'inicio') return;
     const empresa = activaRef.current;
     const porEmpresa = esPorEmpresa(u) && !!empresa;
     registrarReciente(

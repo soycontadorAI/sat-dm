@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 
 import { cn } from '@/lib/utils';
-import { espacioPorId, type Destino, type DestinoUbicado } from '@/lib/navegacion';
+import { espacioPorId, normalizarRuta, type Destino, type DestinoUbicado } from '@/lib/navegacion';
 import { esMac, formatearAtajo } from '@/lib/atajos';
 import { esWeb } from '@/lib/modo';
 import { mensajeDeError } from '@/lib/errores';
@@ -62,8 +63,21 @@ export function PanelEspacio() {
     setWeb(esWeb());
   }, []);
 
+  const pathname = usePathname() ?? '/';
   const espacio = espacioPorId(shell?.espacioActivo ?? 'despacho');
-  const recientes = useRecientes(espacio.id);
+  const activaRfc = empresas.find((e) => e.default && !e.archived_at)?.rfc ?? null;
+  // La pantalla en la que estás (con la misma empresa) no cuenta: Recientes
+  // es "a dónde regreso".
+  const recientes = useRecientes(espacio.id)
+    .filter(
+      (r) =>
+        !(
+          normalizarRuta(r.href) === normalizarRuta(pathname) &&
+          !r.href.includes('?') &&
+          (!r.rfc || r.rfc === activaRfc)
+        ),
+    )
+    .slice(0, 3);
 
   if (!shell) return null;
   const activo = shell.destinoActivo;

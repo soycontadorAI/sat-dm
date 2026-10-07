@@ -74,6 +74,8 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
     && job.estado !== 'error' && job.estado !== 'cancelled';
 
   const [deOrden, setDeOrden] = useState<PrefillPortal | null>(inicial);
+  // El aviso de la orden solo vale mientras su empresa sea la activa.
+  const ordenVigente = deOrden && deOrden.rfc === empresa.rfc ? deOrden : null;
   const [enfocarPendiente, setEnfocarPendiente] = useState(!!inicial);
   const iniciarRef = useRef<HTMLButtonElement>(null);
   const listoDesde = useRef(0);
@@ -147,12 +149,12 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {deOrden && (
+            {ordenVigente && (
               <div className="flex items-start gap-2.5 rounded-[10px] border border-border bg-background px-3.5 py-2.5 text-[13px] text-muted-foreground">
                 <Icon icon="ph:arrow-elbow-down-left-light" className="mt-0.5 size-4 shrink-0 text-foreground" />
                 <span>
                   <span className="font-semibold text-foreground">Lo llenó tu orden:</span>{' '}
-                  {deOrden.etiqueta}. Revisa y confirma con Enter.
+                  {ordenVigente.etiqueta}. Revisa y confirma con Enter.
                 </span>
               </div>
             )}
@@ -222,7 +224,7 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
               // Después de una orden, el contorno marca dónde cae el segundo Enter.
               className={cn(
                 'w-full sm:w-auto',
-                deOrden && 'focus:outline-2 focus:outline-offset-3 focus:outline-ring',
+                ordenVigente && 'focus:outline-2 focus:outline-offset-3 focus:outline-ring',
               )}
               onKeyDown={(e) => {
                 if (e.repeat && e.key === 'Enter') e.preventDefault();

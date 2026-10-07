@@ -397,6 +397,7 @@ export default function DescargaPage() {
               onSubmit={handleSubmit}
               isLoading={isRequesting}
               disabled={!isConnected || !fielLoaded}
+              rfcActivo={empresaActiva?.rfc ?? null}
             />
           )}
 
