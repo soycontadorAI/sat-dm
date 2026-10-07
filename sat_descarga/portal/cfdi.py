@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from .login import iniciar_sesion_ciec, iniciar_sesion_fiel, SesionPortalInvalida
+from .. import demo
 from ..core import paths
 
 logger = logging.getLogger(__name__)
@@ -532,6 +533,12 @@ def descargar_cfdi_ciec(
     para teclearlo (hasta 3 intentos); el resto (búsqueda + descarga) es automático.
     `headless=False` solo para depurar (muestra el navegador).
     """
+    if demo.aplica(rfc):  # modo de grabación: empresa de demo, sin SAT
+        from ..demo import sat as sat_demo
+        return sat_demo.portal_cfdi(
+            rfc.strip().upper(), fecha_inicio, fecha_fin, tipo_comprobante,
+            directorio_salida, max_registros, pedir_captcha=pedir_captcha,
+        )
     client = CIECClient(rfc=rfc, ciec=ciec, headless=headless)
     return client.descargar(
         fecha_inicio=fecha_inicio,
@@ -566,6 +573,14 @@ def descargar_cfdi_fiel(
     `headless=False` SOLO para depurar (si el autollenado e.firma falla y necesitas
     completarlo a mano).
     """
+    rfc_demo = demo.aplica_archivos_fiel(cer_path, key_path, password)
+    if rfc_demo:  # modo de grabación: empresa de demo, sin SAT
+        from ..demo import sat as sat_demo
+        return sat_demo.portal_cfdi(
+            rfc_demo, fecha_inicio, fecha_fin, tipo_comprobante,
+            directorio_salida, max_registros, con_captcha=False,
+        )
+
     rfc = ""
     try:
         from ..core.fiel import FIEL

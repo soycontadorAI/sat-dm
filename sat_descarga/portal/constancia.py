@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from .login import iniciar_sesion_ciec, iniciar_sesion_fiel
+from .. import demo
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +260,9 @@ def descargar_constancia_ciec(
     `pedir_captcha` permite inyectar otra UI de captcha (p. ej. el bridge del agente).
     `url_entrada` permite ajustar la URL de inicio del login si el SAT la cambia.
     """
+    if demo.aplica(rfc):  # modo de grabación: empresa de demo, sin SAT
+        from ..demo import sat as sat_demo
+        return sat_demo.constancia(rfc, directorio_salida, pedir_captcha=pedir_captcha)
     client = ConstanciaClient(rfc=rfc, ciec=ciec, headless=headless)
     return client.descargar(
         directorio_salida=directorio_salida, url_entrada=url_entrada,
@@ -280,6 +284,11 @@ def descargar_constancia_fiel(
     e.firma es 100% automático (no hay captcha). `headless=False` SOLO para depurar
     si el autollenado de .cer/.key/contraseña falla y necesitas completarlo a mano.
     """
+    rfc_demo = demo.aplica_archivos_fiel(cer_path, key_path, password)
+    if rfc_demo:  # modo de grabación: empresa de demo, sin SAT
+        from ..demo import sat as sat_demo
+        return sat_demo.constancia(rfc_demo, directorio_salida, con_captcha=False)
+
     # El RFC para nombrar el PDF se extrae del certificado.
     rfc = ""
     try:

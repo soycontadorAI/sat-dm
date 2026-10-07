@@ -16,6 +16,14 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   al 100%, un diálogo para archivar una empresa o cambiar de plan. Ajustes pone candado con
   liga a los planes en la MCP, la API y Abacus según el plan; el badge del plan usa los
   nombres nuevos y el banner del 50% deja de salir. Apagado, la app se ve igual que hoy.
+- **Usuarios adicionales en Pro y Completo (con el mismo interruptor).** Al elegir Pro o
+  Completo en Suscripción aparece "Usuarios adicionales" con su precio ($990 al año o $129 al
+  mes cada uno) y el total se actualiza, con tarjeta o con transferencia (anual). Quien ya paga
+  Pro o Completo cambia la cantidad desde su plan y ve el cobro proporcional antes de
+  confirmar; reducir no puede dejar fuera a nadie del equipo. Equipo muestra "3 de 5
+  usuarios" y, con el equipo lleno, agrega un usuario ahí mismo (Pro y Completo) o lleva a
+  Pro (Esencial). El mensual de los planes pasa a $449, $899 y $1,899: con el anual pagas 8
+  meses y lo usas 12.
 - **El agente hace cumplir el tope de empresas del plan.** Alta con e.firma, alta con
   Contraseña y desarchivar responden 402 con un mensaje claro ("Tu plan Esencial incluye 10
   empresas. Archiva una que ya no trabajes o cambia a Pro (50 empresas).") y los datos para
@@ -39,6 +47,28 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   web; el gateway cuenta además las tools MCP, la API y los mensajes de Abacus, y cada evento
   dice si la acción llegó por la app, la MCP, la API o Abacus. Se apaga con
   `SAT_DM_SIN_USO=1` y en desarrollo no se envía nada.
+- **Una sesión activa a la vez (gana la más reciente), en modo observar.** Al abrir la app o
+  iniciar sesión, esta computadora (o este navegador) reclama la cuenta; cada una tiene un
+  id estable y una etiqueta ("macOS · nombre-del-equipo", "Chrome en Windows"). La app
+  pregunta cada 60 segundos y al volver a la ventana si otra la reclamó. Con el servicio en
+  modo exigir, la desplazada muestra "Se cerró esta sesión porque abriste TodoConta en otra
+  computadora (…, hace N min)" con "Continuar aquí" (sin volver a iniciar sesión) y "Cerrar
+  sesión"; mientras tanto se pausan los reenvíos de contabilidad electrónica y la
+  sincronización, y las solicitudes del Web Service ya hechas se terminan de bajar. Sin
+  vencimiento por inactividad y sin internet nunca cierra. Mientras el servicio esté en
+  observar (el default) solo se registra y nadie ve nada.
+
+### Tooling
+
+- **Modo de grabación para los tutoriales.** Con `SAT_DM_MODO_GRABACION=1` en el entorno del
+  agente, las 7 empresas de demo de los guiones (RFC ficticios) responden con datos de ejemplo
+  y nunca tocan al SAT: el Web Service queda "En proceso" y se resuelve solo
+  (`SAT_DM_GRABACION_ESPERA`, 20 s), la Descarga rápida pide el captcha en la app y avanza XML
+  por XML, la constancia y la 32-D salen como PDF de ejemplo (una 32-D negativa con motivos),
+  "Validar contra SAT" encuentra 3 canceladas y las listas negras, un proveedor en el 69-B.
+  Las empresas reales siguen igual en la misma sesión. `python -m sat_descarga.demo sembrar`
+  deja la cuenta de grabación con empresas, semáforos e historial; `perfil` arma un perfil
+  aparte (`SAT_DM_CONFIG_DIR`) para no mezclar con el catálogo real. Apagado por default.
 
 ### Bug fix
 
@@ -60,6 +90,9 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 - `/auth/subscribe` acepta `{plan, intervalo}` de los planes v3 y `/auth/transfer-intent`
   acepta `{plan}`; los payloads de antes siguen igual. `GET /descargas/cupo` da las descargas
   del mes y el tope, y el sync del catálogo manda `descargas_mes`.
+- `/auth/subscribe` y `/auth/transfer-intent` pasan además `usuarios_adicionales` (y
+  `previsualizar` en el checkout); `POST /cuenta/usuarios-adicionales` proxya el cambio de
+  cantidad al servicio (`/api/desktop/usuarios-adicionales`) y espeja su status.
 - **La app ya lee los planes v3 de la licencia.** `license_client` guarda y expone los topes y
   capacidades por plan (`limites_de`, `capacidad`) con defaults que nunca bloquean (licencia
   vieja u offline sin cache = sin tope); la UI los tipa como opcionales y trae los flags

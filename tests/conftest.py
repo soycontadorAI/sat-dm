@@ -116,3 +116,23 @@ def test_password():
 def test_rfc():
     """RFC del certificado de prueba."""
     return "XAXX010101000"
+
+
+@pytest.fixture(autouse=True)
+def sesion_unica_aislada(tmp_path, monkeypatch):
+    """
+    Sesión única (F1.1): el id de instalación nunca se escribe en el
+    `~/.sat-descarga` real, el estado arranca limpio en cada test y el hilo de
+    latidos no corre (los lifespans de TestClient lo arrancarían).
+    """
+    from sat_descarga.api import sesion_unica
+
+    monkeypatch.setenv("SAT_DM_SIN_SESION_UNICA", "1")
+    monkeypatch.setattr(
+        sesion_unica, "_ruta_instalacion", lambda: tmp_path / "instalacion-aislada.json"
+    )
+    monkeypatch.setattr(sesion_unica, "_instalacion_cache", None)
+    monkeypatch.setattr(sesion_unica, "_ultima_interaccion", None)
+    sesion_unica.reiniciar()
+    yield
+    sesion_unica.reiniciar()

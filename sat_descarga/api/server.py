@@ -62,6 +62,7 @@ from .routers import (
     tareas_router,
     system_router,
     descargas_router,
+    sesion_router,
 )
 
 # Telemetría de errores (Sentry). Apagada salvo que haya SENTRY_DSN en el entorno
@@ -91,6 +92,12 @@ async def lifespan(app: "FastAPI"):
     # que necesite FIEL la carga on-demand. Ver memoria
     # `feedback-keyring-macos-unsigned-hang`.
 
+    # Modo de grabación (SAT_DM_MODO_GRABACION=1): una línea en el log para
+    # quien opera. Sin banner en pantalla: saldría en la grabación.
+    from .. import demo
+
+    demo.anunciar()
+
     # Warm-up del navegador del portal en un hilo daemon: descarga/actualiza
     # Chromium en background (primera vez o tras actualizar la app, cuando
     # Playwright pide una revisión nueva). No toca keyring ni bloquea el
@@ -119,9 +126,21 @@ async def lifespan(app: "FastAPI"):
     from . import uso
 
     uso.iniciar()
+    # Sesión única (F1.1): en escritorio, un hilo late cada 60 s para enterarse
+    # de que otra instalación reclamó la cuenta (y pausar lo de fondo). En la
+    # web no corre: ahí late cada navegador.
+    try:
+        from .sesion_unica import iniciar_latidos, detener_latidos
+
+        iniciar_latidos()
+    except Exception:
+        logger.exception("No se pudo iniciar el latido de la sesión")
+        detener_latidos = None
     yield
     if detener_poller is not None:
         detener_poller()
+    if detener_latidos is not None:
+        detener_latidos()
     uso.detener()
 
 
@@ -241,6 +260,7 @@ app.include_router(diot_router)
 app.include_router(ce_router)
 app.include_router(tareas_router)
 app.include_router(descargas_router)
+app.include_router(sesion_router)
 
 # ---------------------------------------------------------------------------
 # Entry point

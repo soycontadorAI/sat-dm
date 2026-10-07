@@ -10,6 +10,7 @@ import base64
 import hashlib
 from lxml import etree
 
+from .. import demo
 from ..core.fiel import FIEL
 from ..core.config import ENDPOINTS, SOAP_ACTIONS
 from ..core.http_client import make_request
@@ -144,6 +145,10 @@ def obtener_token(fiel: FIEL) -> str:
     Raises:
         RuntimeError: Si la autenticación falla.
     """
+    if demo.aplica_fiel(fiel):  # modo de grabación: empresa de demo, sin SAT
+        from ..demo import sat as sat_demo
+        return sat_demo.token(demo.rfc_de_fiel(fiel))
+
     body = _build_auth_envelope(fiel)
     headers = {
         "Content-Type": "text/xml; charset=utf-8",

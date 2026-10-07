@@ -11,10 +11,15 @@ import { formatDate, formatPesosEnteros } from '@/lib/formatting';
 import type { IntervaloPlan, PlanV3Venta, TransferIntentResponse } from '@/lib/api-client';
 import {
   CATALOGO_V3,
+  PRECIO_USUARIO_ADICIONAL,
+  adicionalesDeLicencia,
+  adicionalesTexto,
+  admiteUsuariosAdicionales,
   empresasTexto,
   planDelCatalogo,
   precioDe,
   sufijoIntervalo,
+  usuariosTexto,
   type PlanV3Catalogo,
 } from '@/lib/planes-v3';
 import { cn } from '@/lib/utils';
@@ -38,6 +43,10 @@ import {
   Note,
   PlanCard,
 } from '@/components/suscripcion/piezas';
+import {
+  GestionUsuariosAdicionales,
+  SelectorUsuarios,
+} from '@/components/suscripcion/usuarios-adicionales';
 
 /**
  * /suscripcion con los planes v3 (F1 de docs/operacion/plan-app-v3.md en
@@ -51,7 +60,11 @@ import {
  *  - Fundador: su licencia de por vida y, si no la tiene, la IA a su precio.
  *  - Prueba y Gratis: los tres planes, anual o mensual, con tarjeta o SPEI
  *    (la transferencia solo es anual).
- * El servidor decide siempre el precio; aquí solo se elige plan e intervalo.
+ *  - Usuarios adicionales (Pro y Completo, 2026-10-06): al contratar se eligen
+ *    con el selector y suman al total; quien ya paga cambia la cantidad desde
+ *    su plan, con la vista previa del prorrateo.
+ * El servidor decide siempre el precio; aquí solo se elige plan, intervalo y
+ * cuántos usuarios adicionales.
  */
 
 type Situacion = 'v3' | 'medida' | 'fundador' | 'legado' | 'prueba' | 'gratis';
@@ -72,6 +85,7 @@ export function SuscripcionV3() {
 
   const [intervalo, setIntervalo] = useState<IntervaloPlan>('anual');
   const [elegido, setElegido] = useState<PlanV3Venta | null>(null);
+  const [adicionales, setAdicionales] = useState(0);
   const [metodo, setMetodo] = useState<Metodo>('tarjeta');
   const [transfer, setTransfer] = useState<TransferIntentResponse | null>(null);
   const [busyPago, setBusyPago] = useState(false);
@@ -140,6 +154,17 @@ export function SuscripcionV3() {
       ? planDelCatalogo(elegido)
       : null;
   const muestraPlanes = situacion === 'v3' || situacion === 'legado' || situacion === 'prueba' || situacion === 'gratis';
+  // Usuarios adicionales: los que ya paga (Pro y Completo) y los que elige al contratar.
+  const adicionalesActuales = adicionalesDeLicencia(license);
+  const planDeEquipo = license.plan_de_equipo === true;
+  const admiteElegido = !!catalogoElegido && admiteUsuariosAdicionales(catalogoElegido.codigo);
+  const adicionalesElegidos = admiteElegido ? adicionales : 0;
+  const totalElegido = catalogoElegido
+    ? precioDe(catalogoElegido, intervalo) + adicionalesElegidos * PRECIO_USUARIO_ADICIONAL[intervalo]
+    : 0;
+  const totalAnualElegido = catalogoElegido
+    ? catalogoElegido.precioAnual + adicionalesElegidos * PRECIO_USUARIO_ADICIONAL.anual
+    : 0;
 
   // ── Acciones ──────────────────────────────────────────────────────────────
 
@@ -156,14 +181,30 @@ export function SuscripcionV3() {
     }
     setElegido(p.codigo);
     setTransfer(null);
-    if (metodo === 'transferencia') void pedirTransferencia(p.codigo);
+    const admite = admiteUsuariosAdicionales(p.codigo);
+    if (!admite) setAdicionales(0);
+    if (metodo === 'transferencia') void pedirTransferencia(p.codigo, admite ? adicionales : 0);
   }
 
-  async function contratar(p: PlanV3Catalogo) {
+  function cambiarAdicionales(n: number) {
+    setAdicionales(n);
+    // El monto de la transferencia cambia: se vuelven a pedir los datos.
+    setTransfer(null);
+  }
+
+  /**
+   * `conAdicionales`: en un alta (o legado que cambia) van los elegidos; en un
+   * cambio de plan v3 no se mandan y el servidor conserva los que ya paga.
+   */
+  async function contratar(p: PlanV3Catalogo, conAdicionales: boolean) {
     if (busyPago) return;
     setBusyPago(true);
     try {
-      const res = await apiClient.authSubscribePlan(p.codigo, intervalo);
+      const res = await apiClient.authSubscribePlan(
+        p.codigo,
+        intervalo,
+        conAdicionales && admiteUsuariosAdicionales(p.codigo) ? { usuariosAdicionales: adicionales } : {},
+      );
       if (res.url) {
         window.open(res.url, '_blank', 'noopener,noreferrer');
         toast.info(
@@ -184,14 +225,14 @@ export function SuscripcionV3() {
   function pagarConTarjeta() {
     if (!catalogoElegido) return;
     if (situacion === 'legado') setConfirmar({ plan: catalogoElegido, motivo: 'legado' });
-    else void contratar(catalogoElegido);
+    else void contratar(catalogoElegido, true);
   }
 
-  async function pedirTransferencia(p: PlanV3Venta) {
+  async function pedirTransferencia(p: PlanV3Venta, usuariosAdicionales: number) {
     if (busyTransfer) return;
     setBusyTransfer(true);
     try {
-      setTransfer(await apiClient.authTransferIntent(p));
+      setTransfer(await apiClient.authTransferIntent(p, usuariosAdicionales));
     } catch (e) {
       toast.error(mensajeDeError(e));
     } finally {
@@ -202,7 +243,9 @@ export function SuscripcionV3() {
   function elegirMetodo(m: Metodo) {
     if (m === 'transferencia' && intervalo === 'mensual') return;
     setMetodo(m);
-    if (m === 'transferencia' && elegido && !transfer && !busyTransfer) void pedirTransferencia(elegido);
+    if (m === 'transferencia' && elegido && !transfer && !busyTransfer) {
+      void pedirTransferencia(elegido, admiteUsuariosAdicionales(elegido) ? adicionales : 0);
+    }
   }
 
   async function pagarIa() {
@@ -299,9 +342,27 @@ export function SuscripcionV3() {
                 />
                 <InfoRow
                   label="Usuarios"
-                  value={`Hasta ${plan?.limites.usuarios ?? planActual.usuarios}`}
+                  value={`Hasta ${plan?.limites.usuarios ?? planActual.usuarios + adicionalesActuales}${
+                    adicionalesActuales > 0 ? ` (${adicionalesTexto(adicionalesActuales)})` : ''
+                  }`}
                 />
               </div>
+              {admiteUsuariosAdicionales(planActual.codigo) && !planDeEquipo && (
+                <GestionUsuariosAdicionales
+                  key={adicionalesActuales}
+                  planNombre={planActual.nombre}
+                  intervalo={intervaloActual ?? 'anual'}
+                  base={planActual.usuarios}
+                  actuales={adicionalesActuales}
+                  onCambiado={() => void refresh()}
+                />
+              )}
+              {planDeEquipo && (
+                <Note icon="ph:users-light">
+                  Tu acceso viene del equipo de quien administra el plan. Los usuarios adicionales los
+                  agrega esa persona.
+                </Note>
+              )}
               {botonCancelar}
             </PlanCard>
           )}
@@ -433,7 +494,7 @@ export function SuscripcionV3() {
                     {situacion === 'legado' ? 'Planes nuevos' : situacion === 'v3' ? 'Cambiar de plan' : 'Elige tu plan'}
                   </h2>
                   <p className="mt-0.5 text-[13px] text-muted-foreground">
-                    Precios con IVA. El anual cuesta 10 mensualidades: 2 meses gratis.
+                    Precios con IVA. Con el anual pagas 8 meses y lo usas 12.
                   </p>
                 </div>
                 <SelectorIntervalo valor={intervalo} onCambio={cambiarIntervalo} />
@@ -489,12 +550,28 @@ export function SuscripcionV3() {
             >
               <div className="flex flex-wrap items-baseline gap-2">
                 <span className="text-4xl font-extrabold tracking-tight tabular-nums">
-                  {formatPesosEnteros(precioDe(catalogoElegido, intervalo))}
+                  {formatPesosEnteros(totalElegido)}
                 </span>
                 <span className="text-sm font-medium text-muted-foreground">
                   {sufijoIntervalo(intervalo)}, IVA incluido
                 </span>
               </div>
+              {adicionalesElegidos > 0 && (
+                <p className="-mt-3 text-xs text-muted-foreground tabular-nums">
+                  {catalogoElegido.nombre} {formatPesosEnteros(precioDe(catalogoElegido, intervalo))} +{' '}
+                  {adicionalesTexto(adicionalesElegidos)}{' '}
+                  {formatPesosEnteros(adicionalesElegidos * PRECIO_USUARIO_ADICIONAL[intervalo])}
+                </p>
+              )}
+              {admiteElegido && (
+                <SelectorUsuarios
+                  valor={adicionales}
+                  onCambio={cambiarAdicionales}
+                  intervalo={intervalo}
+                  base={catalogoElegido.usuarios}
+                  deshabilitado={busyPago || busyTransfer}
+                />
+              )}
 
               {activas > catalogoElegido.empresas && (
                 <Note icon="ph:warning-light">
@@ -533,7 +610,7 @@ export function SuscripcionV3() {
                       icon={busyPago ? 'ph:circle-notch-light' : 'ph:lightning-light'}
                       className={cn('size-4', busyPago && 'animate-spin')}
                     />
-                    Pagar {formatPesosEnteros(precioDe(catalogoElegido, intervalo))} con tarjeta
+                    Pagar {formatPesosEnteros(totalElegido)} con tarjeta
                   </Button>
                   <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Icon icon="ph:lock-light" className="size-3.5" />
@@ -542,10 +619,11 @@ export function SuscripcionV3() {
                 </div>
               ) : (
                 <DatosTransferencia
-                  monto={transfer?.amount_mxn ?? catalogoElegido.precioAnual}
+                  monto={transfer?.amount_mxn ?? totalAnualElegido}
                   transfer={transfer}
                   cargando={busyTransfer}
                   onCopiar={copiar}
+                  onSolicitar={() => void pedirTransferencia(catalogoElegido.codigo, adicionalesElegidos)}
                 />
               )}
 
@@ -586,7 +664,7 @@ export function SuscripcionV3() {
           <div className="flex gap-2 px-1 text-xs leading-relaxed text-muted-foreground">
             <Icon icon="ph:question-light" className="mt-0.5 size-4 shrink-0 text-muted-foreground/70" />
             <span>
-              ¿Más de 100 empresas o más usuarios? Armamos un plan a tu medida.{' '}
+              ¿Más de 100 empresas? Armamos un plan a tu medida.{' '}
               <a href="mailto:soporte@todoconta.com" className="font-semibold text-primary hover:underline">
                 Escríbenos
               </a>
@@ -608,7 +686,11 @@ export function SuscripcionV3() {
             <DialogDescription>
               {confirmar?.motivo === 'legado'
                 ? `Al cambiar a ${confirmar.plan.nombre} dejas tu precio actual y tus empresas ilimitadas. Si después quieres regresar, ya no se puede.`
-                : 'Stripe ajusta el cobro con prorrateo: pagas o se te abona la diferencia del periodo.'}
+                : `Stripe ajusta el cobro con prorrateo: pagas o se te abona la diferencia del periodo.${
+                    confirmar && !admiteUsuariosAdicionales(confirmar.plan.codigo) && adicionalesActuales > 0
+                      ? ` Se quitan tus ${adicionalesTexto(adicionalesActuales)}.`
+                      : ''
+                  }`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -618,7 +700,7 @@ export function SuscripcionV3() {
             <Button
               onClick={async () => {
                 if (!confirmar) return;
-                await contratar(confirmar.plan);
+                await contratar(confirmar.plan, confirmar.motivo === 'legado');
                 setConfirmar(null);
               }}
               disabled={busyPago}
@@ -736,7 +818,8 @@ function TarjetaPlan({
         </li>
         <li className="flex items-center gap-2 font-semibold">
           <Icon icon="ph:users-light" className="size-4 shrink-0 text-foreground/70" />
-          {plan.usuarios === 1 ? '1 usuario' : `${plan.usuarios} usuarios`}
+          {usuariosTexto(plan.usuarios)}
+          {admiteUsuariosAdicionales(plan.codigo) ? ', y puedes sumar más' : ''}
         </li>
         {plan.incluye.map((f) => (
           <li
@@ -770,11 +853,14 @@ function DatosTransferencia({
   transfer,
   cargando,
   onCopiar,
+  onSolicitar,
 }: {
   monto: number;
   transfer: TransferIntentResponse | null;
   cargando: boolean;
   onCopiar: (texto: string, etiqueta: string) => void;
+  /** Pedir los datos de nuevo (cuando cambió el monto, por ejemplo con usuarios adicionales). */
+  onSolicitar?: () => void;
 }) {
   return (
     <div className="rounded-xl border bg-secondary/50 p-4">
@@ -807,6 +893,11 @@ function DatosTransferencia({
             </span>
           </p>
         </>
+      ) : !transfer && onSolicitar ? (
+        <Button variant="outline" size="sm" onClick={onSolicitar}>
+          <Icon icon="ph:bank-light" className="size-4" />
+          Ver los datos para transferir
+        </Button>
       ) : (
         <p className="text-sm text-muted-foreground">
           Los datos bancarios aún no están configurados. Escríbenos a soporte.

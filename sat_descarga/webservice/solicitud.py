@@ -20,6 +20,7 @@ from io import BytesIO
 from typing import Optional
 from lxml import etree
 
+from .. import demo
 from ..core.config import ENDPOINTS, SOAP_ACTIONS, TIPO_CFDI, TIPO_EMITIDO
 from ..core.fiel import FIEL
 from ..core.http_client import make_request
@@ -67,6 +68,13 @@ def solicitar_descarga(
     Raises:
         RuntimeError: Si el SAT rechaza la solicitud.
     """
+    if demo.aplica(rfc_solicitante):  # modo de grabación: empresa de demo, sin SAT
+        from ..demo import sat as sat_demo
+        return sat_demo.solicitar(
+            rfc_solicitante, fecha_inicio, fecha_fin, tipo_solicitud,
+            tipo_comprobante, rfc_emisor, rfc_receptor,
+        )
+
     # El SAT marca CodEstatus=5002 ("Se han agotado las solicitudes de por vida")
     # cuando el rango EXACTO ya se solicitó suficientes veces. Cambiamos la firma
     # del rango restando 1 segundo a fecha_fin en cada reintento — un truco
@@ -272,6 +280,10 @@ def solicitar_descarga_folio(
     Returns:
         IdSolicitud (string) para usar en verificación.
     """
+    if demo.aplica(rfc_solicitante):  # modo de grabación: empresa de demo, sin SAT
+        from ..demo import sat as sat_demo
+        return sat_demo.solicitar(rfc_solicitante, None, None, tipo_solicitud, uuids=uuids)
+
     solicitud_attrs = (
         f' RfcSolicitante="{rfc_solicitante}"'
         f' TipoSolicitud="{tipo_solicitud}"'

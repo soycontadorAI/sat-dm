@@ -50,7 +50,7 @@ def descargar_metadata_endpoint(req: SolicitudRequest):
     from .. import cupo_descargas
 
     fiel = _get_fiel()
-    cupo_descargas.exigir()  # cuenta como descarga del mes (plan gratis)
+    cupo_descargas.exigir(rfc=fiel.rfc)  # cuenta como descarga del mes (plan gratis)
 
     try:
         records = descargar_metadata(
@@ -63,7 +63,7 @@ def descargar_metadata_endpoint(req: SolicitudRequest):
             rfc_emisor=req.rfc_emisor,
             rfc_receptor=req.rfc_receptor,
         )
-        cupo_descargas.registrar("metadata")
+        cupo_descargas.registrar("metadata", rfc=fiel.rfc)
         track("descarga_solicitada", canal="web_service", credencial="efirma", tipo="metadata")
         track("descarga_completada", canal="web_service", credencial="efirma",
               tipo="metadata", tamano=rango(len(records)), segundo_plano=False)

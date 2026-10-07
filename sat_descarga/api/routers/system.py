@@ -17,6 +17,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
+from ... import demo
 from ...core.config import es_modo_hosted
 from ..state import _session
 from ..uso import sistema, track
@@ -66,6 +67,9 @@ def health():
         "efirma_vencimiento": fiel.not_valid_after.date().isoformat() if fiel else None,
         "efirma_vigente": fiel.vigente if fiel else None,
         "navegador": navegador,
+        # Modo de grabación (empresas de demo sin SAT). La UI puede mostrar una
+        # marca discreta solo en dev/labs; nunca un banner (sale en cuadro).
+        "modo_grabacion": demo.activo(),
     }
 
 
@@ -305,6 +309,11 @@ def _guardar_sesion(session, metodo: str) -> dict:
 
     lc.save_session(session)
     lc.clear_license_cache()
+    # Sesión única (F1.1): un cierre de la cuenta anterior no aplica a esta. La
+    # UI reclama la cuenta en cuanto ve la sesión iniciada.
+    from .. import sesion_unica
+
+    sesion_unica.reiniciar()
     track("sesion_iniciada", metodo=metodo)
     # Con sesión fresca, jala/empuja el catálogo de empresas y las tareas
     # (best-effort, cada uno en su hilo).
@@ -546,8 +555,9 @@ def auth_subscribe(body: dict | None = Body(default=None)):
     Body opcional:
     - De antes: `{plan: 'anual' | 'anual_ia'}` (sin body = 'anual').
     - Planes v3 (F1): `{plan: 'esencial' | 'pro' | 'completo',
-      intervalo: 'anual' | 'mensual'}`. Con una suscripción v3 activa, el
-      servicio cambia el plan con prorrateo y puede responder sin `url`.
+      intervalo: 'anual' | 'mensual', usuarios_adicionales?: int,
+      previsualizar?: bool}`. Con una suscripción v3 activa, el servicio
+      cambia el plan con prorrateo y puede responder sin `url`.
     Devuelve lo que responda el servicio (`{url, session_id, promo, plan}` o
     el cambio de plan); el renderer abre el URL en el navegador si viene.
     """
@@ -557,8 +567,12 @@ def auth_subscribe(body: dict | None = Body(default=None)):
     pedido = datos.get("plan")
     if pedido in lc.PLANES_V3_VENTA:
         intervalo = datos.get("intervalo")
+        adicionales = _usuarios_adicionales_de(datos)
+        previsualizar = datos.get("previsualizar") is True
         return _accion_con_refresh(
-            lambda s: lc.init_subscribe_checkout(s, pedido, intervalo)
+            lambda s: lc.init_subscribe_checkout(
+                s, pedido, intervalo, adicionales, previsualizar
+            )
         )
     plan = "anual_ia" if pedido == "anual_ia" else "anual"
     return _accion_con_refresh(lambda s: lc.init_subscribe_checkout(s, plan))
@@ -579,13 +593,34 @@ def auth_transfer_intent(body: dict | None = Body(default=None)):
     """
     Registra la intención de pago por transferencia y devuelve los datos
     bancarios. `{ok, amount_mxn, promo, banco, message}`. Body opcional
-    `{plan: 'esencial' | 'pro' | 'completo'}` (planes v3; la transferencia
-    solo es anual). Sin body, el plan anual de antes.
+    `{plan: 'esencial' | 'pro' | 'completo', usuarios_adicionales?: int}`
+    (planes v3; la transferencia solo es anual). Sin body, el plan anual de
+    antes.
     """
     from .. import license_client as lc
 
-    plan = (body or {}).get("plan")
-    return _accion_con_refresh(lambda s: lc.create_transfer_intent(s, plan))
+    datos = body or {}
+    plan = datos.get("plan")
+    adicionales = _usuarios_adicionales_de(datos)
+    return _accion_con_refresh(
+        lambda s: lc.create_transfer_intent(s, plan, adicionales)
+    )
+
+
+def _usuarios_adicionales_de(datos: dict) -> Optional[int]:
+    """`usuarios_adicionales` del cuerpo: None si no viene; 400 si no es un
+    entero de 0 en adelante (el tope y el plan los valida el servicio)."""
+    from .. import license_client as lc
+
+    valor = datos.get("usuarios_adicionales")
+    if valor is None:
+        return None
+    if not lc.usuarios_adicionales_validos(valor):
+        raise HTTPException(
+            status_code=400,
+            detail="Los usuarios adicionales deben ser un número entero, de 0 en adelante.",
+        )
+    return valor
 
 
 @router.post("/auth/logout")
@@ -593,9 +628,11 @@ def auth_logout():
     """Borra la sesión local (keyring + cache). Idempotente."""
     from .. import license_client as lc
     from .. import uso
+    from .. import sesion_unica
 
     uso.al_cerrar_sesion()  # lo pendiente sale con esta cuenta; nada pasa a la siguiente
     lc.clear_session()
+    sesion_unica.reiniciar()
     return {"ok": True}
 
 
@@ -737,6 +774,26 @@ def cuenta_teams_remover(req: RemoverMiembroRequest):
 def cuenta_teams_salir():
     """El usuario sale de su equipo (el admin no puede: debe cancelar la suscripción)."""
     return _proxy_cuenta("POST", "/api/desktop/teams/leave")
+
+
+class UsuariosAdicionalesRequest(BaseModel):
+    usuarios_adicionales: int
+    previsualizar: bool = False
+
+
+@router.post("/cuenta/usuarios-adicionales")
+def cuenta_usuarios_adicionales(req: UsuariosAdicionalesRequest):
+    """Cambia cuántos usuarios adicionales paga el plan Pro o Completo (con
+    prorrateo; `previsualizar` solo calcula el cobro). Espeja el status del
+    servicio: un 409 (equipo que no cabe, plan que no los admite) sigue siendo 409."""
+    return _proxy_cuenta(
+        "POST",
+        "/api/desktop/usuarios-adicionales",
+        json_body={
+            "usuarios_adicionales": req.usuarios_adicionales,
+            "previsualizar": req.previsualizar,
+        },
+    )
 
 
 @router.patch("/cuenta/teams/members/permissions")
