@@ -107,8 +107,17 @@ def test_registrar_valida_cuenta_y_propiedades(gw_uso):
 
     gw_uso.registrar(USER, "mcp_herramienta", herramienta="descargar_csf", conexion="oauth")
     (ev,) = list(gw_uso._cola)
-    assert set(ev) == {"id", "user_id", "evento", "props", "ocurrido_en"}
+    assert set(ev) == {"id", "user_id", "evento", "props", "ocurrido_en", "origen"}
     assert ev["user_id"] == USER and ev["props"] == {"herramienta": "descargar_csf", "conexion": "oauth"}
+    assert ev["origen"] == "mcp"
+
+
+def test_origen_de_los_eventos_del_gateway(gw_uso):
+    gw_uso.registrar(USER, "api_llamada", endpoint="csf", origen="integracion")
+    gw_uso.registrar(USER, "api_llamada", endpoint="csf", origen="abacus")
+    gw_uso.registrar(USER, "abacus_mensaje")
+    assert [e["origen"] for e in gw_uso._cola] == ["api", "abacus", "abacus"]
+    assert all(e["origen"] in uso_agente.ORIGENES for e in gw_uso._cola)
 
 
 def test_kill_switch(gw_uso, monkeypatch):
@@ -264,6 +273,28 @@ def test_llamada_rest_cuenta_endpoint_y_origen(gw, client, cola, monkeypatch):
     ]
     assert all(e["evento"] == "api_llamada" and e["user_id"] == USER for e in eventos)
     assert "CAMY89051862A" not in repr(eventos)
+
+
+def test_el_agente_recibe_el_origen_de_la_peticion(gw, client, cola, monkeypatch):
+    vistos = []
+
+    def agente_falso(user_id):
+        return "http://agente-fake:8787", gw._headers_agente("token-del-agente")
+
+    def get_falso(url, headers=None, **kw):
+        vistos.append(headers)
+        return _RespJson(200, {"empresas": []})
+
+    monkeypatch.setattr(gw, "_asegurar_agente", agente_falso)
+    monkeypatch.setattr(gw, "_validar_key", lambda key: {"user_id": USER, "scopes": ["documentos:leer"]})
+    monkeypatch.setattr(gw.caps_srv, "exigir", lambda *a, **k: None)
+    monkeypatch.setattr(gw.requests, "get", get_falso)
+    client.get("/v1/empresas", headers={"X-Api-Key": "tc_live_x"})
+    client.get("/v1/empresas", headers={"X-Api-Key": "tc_live_x", "X-Forwarded-For": "201.1.2.3"})
+    assert [h["X-Todoconta-Origen"] for h in vistos] == ["abacus", "api"]
+    assert all(h["X-Agent-Token"] == "token-del-agente" for h in vistos)
+    # Fuera de una petición del gateway no se inventa un origen.
+    assert "X-Todoconta-Origen" not in gw._headers_agente("t")
 
 
 def test_mensaje_de_abacus_se_cuenta_sin_contenido(gw, client, cola, monkeypatch):

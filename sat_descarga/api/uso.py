@@ -25,6 +25,11 @@ Privacidad (la regla que este módulo hace cumplir):
   lo inyecta el shell Electron) o modo hosted. En desarrollo y en las pruebas
   `track()` no hace nada, salvo `SAT_DM_USO=1`.
 
+Origen: cada evento dice de dónde salió la acción (`app` | `mcp` | `api` | `abacus`).
+El gateway del VPS marca sus llamadas al agente con `X-Todoconta-Origen` y un
+middleware de server.py lo deja en `_origen` para toda la petición (y para el job que
+la petición lance). Lo que corre en segundo plano (el poller) va sin origen.
+
 La taxonomía es un contrato con todoconta-apps (`apps/web/src/lib/uso/taxonomia.ts`
 y la migración 043): si cambias un evento aquí, cámbialo allá. `huella()` resume la
 taxonomía en un hash que las pruebas de los dos repos fijan con el mismo valor.
@@ -33,6 +38,7 @@ Documento: docs/operacion/uso-por-accion.md (todoconta-apps).
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import logging
@@ -254,6 +260,34 @@ def activo() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Origen de la acción (categórico: nunca más que estos cuatro valores)
+# ---------------------------------------------------------------------------
+
+ORIGENES = ("app", "mcp", "api", "abacus")
+
+_origen: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("uso_origen", default=None)
+
+
+def origen_de_cabecera(valor: Optional[str]) -> str:
+    """Origen de una petición al agente: el gateway manda `mcp`, `api` o
+    `abacus`; sin cabecera (o con otra cosa) es la app (renderer desktop o web)."""
+    v = (valor or "").strip().lower()
+    return v if v in ORIGENES else "app"
+
+
+def fijar_origen(origen: Optional[str]) -> contextvars.Token:
+    return _origen.set(origen if origen in ORIGENES else None)
+
+
+def restaurar_origen(token: contextvars.Token) -> None:
+    _origen.reset(token)
+
+
+def origen_actual() -> Optional[str]:
+    return _origen.get()
+
+
+# ---------------------------------------------------------------------------
 # Cola local (persistida y con tope)
 # ---------------------------------------------------------------------------
 
@@ -354,12 +388,16 @@ def track(evento: str, **props) -> None:
         limpias = validar(evento, props)
         if _repetido(evento, limpias):
             return
-        _encolar({
+        registro = {
             "id": str(uuid.uuid4()),
             "evento": evento,
             "props": limpias,
             "ocurrido_en": _ahora_iso(),
-        })
+        }
+        origen = _origen.get()
+        if origen in ORIGENES:
+            registro["origen"] = origen
+        _encolar(registro)
     except Exception as e:  # noqa: BLE001
         logger.warning("[uso] evento %s descartado: %s", evento, e)
 

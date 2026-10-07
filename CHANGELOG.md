@@ -36,7 +36,8 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   propiedades salen de una lista cerrada por evento, sin RFC, nombres, UUID, montos ni
   archivos. Se manda en lotes cada 5 minutos a la API de servicios con la sesión de la
   cuenta; sin internet se guarda y se manda después. Mismo código en escritorio y en la
-  web; el gateway cuenta además las tools MCP, la API y los mensajes de Abacus. Se apaga con
+  web; el gateway cuenta además las tools MCP, la API y los mensajes de Abacus, y cada evento
+  dice si la acción llegó por la app, la MCP, la API o Abacus. Se apaga con
   `SAT_DM_SIN_USO=1` y en desarrollo no se envía nada.
 
 ### Bug fix

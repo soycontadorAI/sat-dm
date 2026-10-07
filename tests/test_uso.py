@@ -159,6 +159,27 @@ def test_el_evento_solo_lleva_id_evento_props_y_fecha(encendido):
     assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", ev["ocurrido_en"])
 
 
+def test_el_origen_es_categorico_y_viaja_con_el_evento(encendido):
+    assert uso.origen_de_cabecera("mcp") == "mcp"
+    assert uso.origen_de_cabecera(" API ") == "api"
+    assert uso.origen_de_cabecera("abacus") == "abacus"
+    assert uso.origen_de_cabecera(None) == "app"
+    assert uso.origen_de_cabecera("XAXX010101000") == "app"
+
+    marca = uso.fijar_origen("mcp")
+    try:
+        uso.track("diot_generada")
+    finally:
+        uso.restaurar_origen(marca)
+    marca = uso.fijar_origen("cualquier-cosa")  # fuera de la lista: sin origen
+    try:
+        uso.track("diot_txt_exportado")
+    finally:
+        uso.restaurar_origen(marca)
+    uso.track("empresa_archivada")  # fuera de una petición (p. ej. el poller)
+    assert [e.get("origen") for e in _cola()] == ["mcp", None, None]
+
+
 # ---------------------------------------------------------------------------
 # Encendido
 # ---------------------------------------------------------------------------

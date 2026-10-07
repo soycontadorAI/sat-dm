@@ -160,7 +160,14 @@ class JobRegistry:
         bien (p. ej. para registrar la descarga en el historial). Sus errores se
         registran pero NO tumban el job ni se propagan al front.
         """
+        # El hilo nuevo no hereda el contexto de la petición: el origen de la
+        # acción (uso por acción) se pasa a mano para los eventos del job.
+        from .uso import fijar_origen, origen_actual
+
+        origen = origen_actual()
+
         def _run():
+            fijar_origen(origen)
             job.estado = "running"
             self.emitir(job, "estado", estado="running")
             try:

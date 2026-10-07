@@ -108,6 +108,15 @@ def herramienta_de(nombre: str) -> str:
     return nombre if nombre in HERRAMIENTAS_MCP else "otra"
 
 
+def _origen_de(evento: str, props: dict) -> str:
+    """Origen (app | mcp | api | abacus, el mismo campo que los eventos del agente)."""
+    if evento == "mcp_herramienta":
+        return "mcp"
+    if evento == "abacus_mensaje" or props.get("origen") == "abacus":
+        return "abacus"
+    return "api"
+
+
 def validar(evento: str, props: dict) -> dict:
     reglas = EVENTOS.get(evento)
     if reglas is None:
@@ -141,6 +150,7 @@ def registrar(user_id: Optional[str], evento: str, **props) -> None:
             "evento": evento,
             "props": limpias,
             "ocurrido_en": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "origen": _origen_de(evento, limpias),
         })
     _asegurar_hilo()
 

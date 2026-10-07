@@ -154,6 +154,12 @@ ctx_user: contextvars.ContextVar[Optional[dict]] = contextvars.ContextVar(
 ctx_uso: contextvars.ContextVar[Optional[dict]] = contextvars.ContextVar(
     "ctx_uso", default=None
 )
+# De dónde vino la petición (mcp | api | abacus): viaja al agente del usuario en
+# X-Todoconta-Origen para que sus eventos de uso digan por qué canal llegó la
+# acción. Lo pone `_log_uso`.
+ctx_origen: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "ctx_origen", default=None
+)
 
 
 def _validar_key(api_key: str) -> dict:
@@ -294,7 +300,7 @@ def _asegurar_agente(user_id: str) -> tuple[str, dict]:
             logger.info("contenedor %s creado", nombre)
 
     base = f"http://{nombre}:8787"
-    headers = {"X-Agent-Token": d["token"]}
+    headers = _headers_agente(d["token"])
     limite = time.monotonic() + 45
     while time.monotonic() < limite:
         try:
@@ -304,6 +310,16 @@ def _asegurar_agente(user_id: str) -> tuple[str, dict]:
             pass
         time.sleep(1.5)
     raise HTTPException(status_code=503, detail="El espacio del usuario está arrancando; reintenta en unos segundos.")
+
+
+def _headers_agente(token: str) -> dict:
+    """Headers para hablar con el agente: su token y, si se sabe, el origen de la
+    petición (uso por acción; el agente lo usa solo para etiquetar eventos)."""
+    headers = {"X-Agent-Token": token}
+    origen = ctx_origen.get()
+    if origen in ("mcp", "api", "abacus"):
+        headers["X-Todoconta-Origen"] = origen
+    return headers
 
 
 def _agente_de(user: dict) -> tuple[str, dict]:
@@ -1373,10 +1389,17 @@ async def _log_uso(request: Request, call_next):
     huella = hashlib.sha256(clave.encode()).hexdigest()[:12] if clave else "-"
     holder: dict = {}
     marca = ctx_uso.set(holder)
+    # Los enlaces firmados de descarga solo los emiten las tools MCP.
+    if path.startswith("/mcp") or path.startswith("/v1/descargas/firmada"):
+        origen = "mcp"
+    else:
+        origen = "api" if request.headers.get("x-forwarded-for") else "abacus"
+    marca_origen = ctx_origen.set(origen)
     try:
         response = await call_next(request)
     finally:
         ctx_uso.reset(marca)
+        ctx_origen.reset(marca_origen)
     dur_ms = int((time.monotonic() - inicio) * 1000)
     logger.info(
         "uso key=%s %s %s -> %s (%sms)", huella, request.method, path, response.status_code, dur_ms

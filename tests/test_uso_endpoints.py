@@ -129,6 +129,7 @@ def test_descarga_completada_por_el_poller(monkeypatch):
         "canal": "web_service", "credencial": "efirma", "tipo": "recibidos",
         "tamano": "11_100", "segundo_plano": True,
     })]
+    assert "origen" not in _eventos()[0]  # segundo plano: sin petición que lo origine
     texto = uso._ruta().read_text(encoding="utf-8")
     assert RFC_2 not in texto and "sol-1" not in texto and "PKG-1" not in texto
 
@@ -154,6 +155,33 @@ def test_solicitud_vacia_tambien_cuenta_como_completada(monkeypatch):
         "canal": "web_service", "credencial": "efirma", "tipo": "metadata",
         "tamano": "0", "segundo_plano": True,
     })]
+
+
+def test_origen_de_la_peticion(client):
+    client.post("/tareas", json={"titulo": "Desde la app"})
+    client.post("/tareas", json={"titulo": "Desde la MCP"}, headers={"X-Todoconta-Origen": "mcp"})
+    client.post("/tareas", json={"titulo": "Desde Abacus"}, headers={"X-Todoconta-Origen": "abacus"})
+    client.post("/tareas", json={"titulo": "Cabecera rara"}, headers={"X-Todoconta-Origen": "otra-cosa"})
+    assert [e["origen"] for e in _eventos()] == ["app", "mcp", "abacus", "app"]
+
+
+def test_el_job_hereda_el_origen_de_la_peticion():
+    import threading
+
+    from sat_descarga.api import jobs
+
+    registro = jobs.JobRegistry()
+    listo = threading.Event()
+    marca = uso.fijar_origen("api")
+    try:
+        job = registro.crear()
+        registro.ejecutar(job, lambda: {"total": 3},
+                          al_completar=lambda r: (uso.track("diot_generada"), listo.set()))
+    finally:
+        uso.restaurar_origen(marca)
+    assert listo.wait(5)
+    (evento,) = _eventos()
+    assert evento["origen"] == "api"
 
 
 def test_apagado_ningun_endpoint_escribe(client, monkeypatch):
