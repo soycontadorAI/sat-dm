@@ -1,4 +1,4 @@
-import { API_BASE_URL, getAgentToken } from './constants';
+import { getAgentBaseUrl, getAgentToken } from './constants';
 import { agregarBreadcrumb, capturarExcepcion } from './telemetria';
 import type {
   HealthResponse,
@@ -152,7 +152,8 @@ export function topeEmpresasDeError(e: unknown): TopeEmpresas | null {
 // ---------------------------------------------------------------------------
 
 export class SatApiClient {
-  private readonly baseUrl: string;
+  /** `null`: sin agente (la web antes de conectarse); nada sale a la red. */
+  private readonly baseUrl: string | null;
 
   /**
    * ¿El agente respondió alguna vez en esta sesión? Arranca en `false` y pasa a
@@ -163,13 +164,26 @@ export class SatApiClient {
    */
   private agenteVistoArriba = false;
 
-  constructor(baseUrl?: string) {
-    this.baseUrl = (baseUrl ?? API_BASE_URL).replace(/\/+$/, '');
+  /**
+   * Sin argumento usa el agente del entorno (`getAgentBaseUrl`). Con `null` (la
+   * web aún sin conexión con su agente) toda petición se rechaza sin salir a
+   * la red: el build web nunca intenta localhost.
+   */
+  constructor(baseUrl: string | null = getAgentBaseUrl()) {
+    this.baseUrl = baseUrl === null ? null : baseUrl.replace(/\/+$/, '');
   }
 
   // -----------------------------------------------------------------------
   // Internal helpers
   // -----------------------------------------------------------------------
+
+  /** Base del agente; sin agente lanza en vez de hacer la petición. */
+  private base(): string {
+    if (this.baseUrl === null) {
+      throw new Error('Aún no hay conexión con tu agente. Inicia sesión para conectarte.');
+    }
+    return this.baseUrl;
+  }
 
   /** Header de autenticación con el agente (token efímero inyectado por Electron). */
   private tokenHeaders(): Record<string, string> {
@@ -182,7 +196,7 @@ export class SatApiClient {
     options: RequestInit = {},
     opts: { reportarFallosDeRed?: boolean } = {},
   ): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
+    const url = `${this.base()}${path}`;
     const method = options.method ?? 'GET';
     agregarBreadcrumb({ category: 'http', message: `${method} ${path}`, level: 'info' });
 
@@ -268,7 +282,7 @@ export class SatApiClient {
 
   /** URL absoluta para un path del agente (p. ej. para EventSource). */
   url(path: string): string {
-    return `${this.baseUrl}${path}`;
+    return `${this.base()}${path}`;
   }
 
   /**
@@ -288,7 +302,7 @@ export class SatApiClient {
     const token = getAgentToken();
     if (!token) return this.url(path);
     const sep = path.includes('?') ? '&' : '?';
-    return `${this.baseUrl}${path}${sep}token=${encodeURIComponent(token)}`;
+    return `${this.base()}${path}${sep}token=${encodeURIComponent(token)}`;
   }
 
   // -----------------------------------------------------------------------

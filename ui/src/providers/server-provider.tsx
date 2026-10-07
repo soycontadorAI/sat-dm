@@ -39,7 +39,7 @@ interface ServerContextValue {
   /** Typed API client instance (stable reference). */
   apiClient: SatApiClient;
 
-  /** Whether the Python server at localhost:8787 is reachable. */
+  /** Whether the agent (local in desktop, the user's container in web) is reachable. */
   isConnected: boolean;
 
   /** Current e-firma status from the server. */
@@ -115,24 +115,31 @@ export function ServerProvider({ children, baseUrl }: ServerProviderProps) {
   }, []);
 
   // En Electron el agente corre en un puerto efímero que el preload inyecta en
-  // window.satAgent.baseUrl; en la web viene de la conexión guardada; en dev
-  // cae a API_BASE_URL (localhost:8787).
+  // window.satAgent.baseUrl; en la web viene de la conexión guardada y, sin
+  // ella, es null (la web nunca cae a localhost); en dev cae a API_BASE_URL
+  // (localhost:8787).
   const resolvedBaseUrl = baseUrl ?? conexionWeb?.baseUrl ?? getAgentBaseUrl();
   const apiClient = useMemo(() => new SatApiClient(resolvedBaseUrl), [resolvedBaseUrl]);
 
-  // Sin conexión en la web no hay a quién pollear: el health check se apaga
-  // hasta que el login (o /conectar) entregue el agente del usuario.
   const webSinConexion = esWeb() && webHidratado && !conexionWeb && !baseUrl;
 
+  // Sin agente no hay a quién pollear: en la web el health check se apaga
+  // hasta que el login (o /conectar) entregue el agente del usuario. Mira la
+  // URL y no solo `webSinConexion`, que en el primer render (antes de leer
+  // localStorage) todavía es false.
+  const hayAgente = resolvedBaseUrl !== null && !webSinConexion;
   const {
-    isConnected,
+    isConnected: healthOk,
     rfcCargado,
     efirmaLista,
     efirmaVencimiento,
     navegador,
     modoGrabacion,
     refresh: refreshHealth,
-  } = useServerHealth(apiClient, undefined, { enabled: !webSinConexion });
+  } = useServerHealth(apiClient, undefined, { enabled: hayAgente });
+  // Desconectado desde el mismo render en que se olvida el agente (el hook lo
+  // refleja hasta su efecto): nada que dependa de isConnected llama sin agente.
+  const isConnected = hayAgente && healthOk;
 
   // Track numero_serie separately — the /health endpoint does not return it,
   // so we store it when cargarFiel succeeds and clear it on descargarFiel.
