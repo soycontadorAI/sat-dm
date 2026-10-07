@@ -16,6 +16,14 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   al 100%, un diálogo para archivar una empresa o cambiar de plan. Ajustes pone candado con
   liga a los planes en la MCP, la API y Abacus según el plan; el badge del plan usa los
   nombres nuevos y el banner del 50% deja de salir. Apagado, la app se ve igual que hoy.
+- **Usuarios adicionales en Pro y Completo (con el mismo interruptor).** Al elegir Pro o
+  Completo en Suscripción aparece "Usuarios adicionales" con su precio ($990 al año o $129 al
+  mes cada uno) y el total se actualiza, con tarjeta o con transferencia (anual). Quien ya paga
+  Pro o Completo cambia la cantidad desde su plan y ve el cobro proporcional antes de
+  confirmar; reducir no puede dejar fuera a nadie del equipo. Equipo muestra "3 de 5
+  usuarios" y, con el equipo lleno, agrega un usuario ahí mismo (Pro y Completo) o lleva a
+  Pro (Esencial). El mensual de los planes pasa a $449, $899 y $1,899: con el anual pagas 8
+  meses y lo usas 12.
 - **El agente hace cumplir el tope de empresas del plan.** Alta con e.firma, alta con
   Contraseña y desarchivar responden 402 con un mensaje claro ("Tu plan Esencial incluye 10
   empresas. Archiva una que ya no trabajes o cambia a Pro (50 empresas).") y los datos para
@@ -50,6 +58,9 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 - `/auth/subscribe` acepta `{plan, intervalo}` de los planes v3 y `/auth/transfer-intent`
   acepta `{plan}`; los payloads de antes siguen igual. `GET /descargas/cupo` da las descargas
   del mes y el tope, y el sync del catálogo manda `descargas_mes`.
+- `/auth/subscribe` y `/auth/transfer-intent` pasan además `usuarios_adicionales` (y
+  `previsualizar` en el checkout); `POST /cuenta/usuarios-adicionales` proxya el cambio de
+  cantidad al servicio (`/api/desktop/usuarios-adicionales`) y espeja su status.
 - **La app ya lee los planes v3 de la licencia.** `license_client` guarda y expone los topes y
   capacidades por plan (`limites_de`, `capacidad`) con defaults que nunca bloquean (licencia
   vieja u offline sin cache = sin tope); la UI los tipa como opcionales y trae los flags

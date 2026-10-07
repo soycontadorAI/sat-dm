@@ -7,12 +7,26 @@
 // `/api/desktop/teams/*`); el allow-list por empresa usa las empresas del equipo
 // desde Supabase (`getTeamEmpresas`), NO el catálogo local del agente (que va por RFC
 // y no conoce el `id` de la empresa del equipo). Funciona en Desktop y Web.
+//
+// Planes v3: el tope sale de la licencia (`limites.usuarios`, ya con los usuarios
+// adicionales) y se muestra "3 de 5 usuarios". Con el equipo lleno, Pro y
+// Completo agregan un usuario adicional desde aquí; Esencial ve el camino a Pro.
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 
 import { useServer } from '@/providers/server-provider';
+import { useAuth, usePlanLicencia, usePlanesV3 } from '@/providers/auth-provider';
+import { formatPesosEnteros } from '@/lib/formatting';
+import {
+  PRECIO_USUARIO_ADICIONAL,
+  adicionalesDeLicencia,
+  admiteUsuariosAdicionales,
+  sufijoIntervalo,
+  usuariosTexto,
+} from '@/lib/planes-v3';
+import { AgregarUsuarioBoton } from '@/components/suscripcion/usuarios-adicionales';
 import { PageHeading } from '@/components/layout/page-heading';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,6 +64,9 @@ function mensajeError(e: unknown, fallback: string): string {
 
 export default function AjustesEquipoPage() {
   const { apiClient } = useServer();
+  const { license, refresh } = useAuth();
+  const planLic = usePlanLicencia();
+  const planesV3 = usePlanesV3();
   const [data, setData] = useState<TeamResponse | null>(null);
   const [empresas, setEmpresas] = useState<TeamEmpresa[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,7 +206,15 @@ export default function AjustesEquipoPage() {
 
   const canManageTeam = data?.isAdmin === true;
   const activeMembers = data?.members.filter((m) => m.status !== 'removed') ?? [];
-  const maxMembers = data?.team?.max_members ?? 5;
+  // Planes v3: el tope de la licencia (plan + usuarios adicionales); legado: el del equipo.
+  const esV3 = planesV3 && !!planLic && ['esencial', 'pro', 'completo', 'medida'].includes(planLic.codigo);
+  const topeLicencia =
+    esV3 && typeof planLic?.limites.usuarios === 'number' ? planLic.limites.usuarios : null;
+  const maxMembers = topeLicencia ?? data?.team?.max_members ?? 5;
+  const puedeSumar = esV3 && admiteUsuariosAdicionales(planLic?.codigo) && license?.plan_de_equipo !== true;
+  const esEsencial = esV3 && planLic?.codigo === 'esencial';
+  const intervalo = license?.intervalo ?? 'anual';
+  const caminoAPro = 'Esencial incluye 1 usuario. Para invitar a tu equipo cambia a Pro: 3 usuarios, y puedes sumar más.';
   const empresasActivas = empresas.filter((e) => !e.archived_at);
 
   if (!data?.team) {
@@ -200,7 +225,14 @@ export default function AjustesEquipoPage() {
         <EmptyState
           icon="ph:users-light"
           title="Sin equipo"
-          description="El equipo se crea automáticamente al suscribirte al plan Despachos o Empresarial."
+          description={
+            esEsencial
+              ? caminoAPro
+              : esV3
+                ? 'El equipo se crea al contratar Pro o Completo.'
+                : 'El equipo se crea automáticamente al suscribirte al plan Despachos o Empresarial.'
+          }
+          action={esEsencial ? { label: 'Cambiar a Pro', href: '/suscripcion', icon: 'ph:arrow-up-light' } : undefined}
         />
       </div>
     );
@@ -306,7 +338,7 @@ export default function AjustesEquipoPage() {
               Miembros
             </h2>
             <Badge variant="outline">
-              {activeMembers.length} de {maxMembers}
+              {activeMembers.length} de {usuariosTexto(maxMembers)}
             </Badge>
           </div>
 
@@ -359,12 +391,36 @@ export default function AjustesEquipoPage() {
           </Card>
         )}
 
-        {canManageTeam && activeMembers.length >= maxMembers && (
-          <p className="text-center text-sm text-muted-foreground">
-            Has alcanzado el límite de {maxMembers} miembros. Contacta a soporte para aumentar tu
-            capacidad.
-          </p>
-        )}
+        {canManageTeam &&
+          activeMembers.length >= maxMembers &&
+          (puedeSumar ? (
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card p-4">
+              <p className="max-w-md text-sm text-muted-foreground">
+                Tu plan {planLic?.nombre} tiene sus {maxMembers} lugares ocupados. Agrega un usuario por{' '}
+                {formatPesosEnteros(PRECIO_USUARIO_ADICIONAL[intervalo])} {sufijoIntervalo(intervalo)}.
+              </p>
+              <AgregarUsuarioBoton
+                planNombre={planLic?.nombre ?? 'actual'}
+                actuales={adicionalesDeLicencia(license)}
+                onAgregado={() => {
+                  void refresh();
+                  void fetchTeam();
+                }}
+              />
+            </div>
+          ) : esEsencial ? (
+            <div className="flex flex-col items-center gap-3 text-center">
+              <p className="text-sm text-muted-foreground">{caminoAPro}</p>
+              <Button asChild variant="outline">
+                <Link href="/suscripcion">Cambiar a Pro</Link>
+              </Button>
+            </div>
+          ) : (
+            <p className="text-center text-sm text-muted-foreground">
+              Has alcanzado el límite de {maxMembers} miembros. Contacta a soporte para aumentar tu
+              capacidad.
+            </p>
+          ))}
       </div>
 
       {/* Diálogo de permisos */}
