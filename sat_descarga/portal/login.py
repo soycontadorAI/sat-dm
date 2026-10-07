@@ -10,6 +10,7 @@ extra `ciec`.
 
 import logging
 
+from sat_descarga import demo
 from sat_descarga.core.errores import ErrorEsperado
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,19 @@ class CredencialCIECInvalida(ErrorEsperado):
     Se lanza para abortar de inmediato (sin gastar reintentos de captcha) cuando el
     portal muestra un error de credenciales. Es `ErrorEsperado`: el usuario
     capturó mal su clave — se le avisa, no se reporta a telemetría."""
+
+
+class OperacionNoSimulada(ErrorEsperado):
+    """Modo de grabación: la empresa es de demo y este trámite del portal no
+    tiene datos de ejemplo. Se corta ANTES de abrir el portal: una empresa de
+    demo nunca toca al SAT (descargas, constancia y 32-D sí están simuladas y
+    no llegan aquí)."""
+
+    def __init__(self, rfc: str):
+        super().__init__(
+            f"Modo de grabación: {rfc} es una empresa de demo y este trámite del "
+            "portal no está simulado, así que no se envía al SAT."
+        )
 
 
 class SesionPortalInvalida(RuntimeError):
@@ -138,6 +152,15 @@ def iniciar_sesion_ciec(page, rfc: str, ciec: str, url_entrada: str, exito,
     Reutilizado por el portal CFDI (CIECClient) y los scrapers de constancia / opinión:
     solo cambian `url_entrada` y `exito`.
     """
+    if demo.aplica(rfc):
+        raise OperacionNoSimulada(rfc.strip().upper())
+    if demo.es_ciec_de_ejemplo(rfc, ciec):
+        # Modo apagado con una empresa sembrada: no mandar la Contraseña de
+        # ejemplo al portal (podría bloquear la de un contribuyente real).
+        raise CredencialCIECInvalida(
+            "Esta es la Contraseña de ejemplo del modo de grabación; solo funciona "
+            "con SAT_DM_MODO_GRABACION=1."
+        )
     from playwright.sync_api import TimeoutError as PWTimeout
     from .captcha import bytes_de_data_uri
 
@@ -227,6 +250,10 @@ def iniciar_sesion_fiel(page, cer_path: str, key_path: str, password: str,
 
     Reutilizado por los scrapers (constancia/opinión): solo cambia url_entrada y `exito`.
     """
+    rfc_demo = demo.aplica_archivos_fiel(cer_path, key_path, password)
+    if rfc_demo:
+        raise OperacionNoSimulada(rfc_demo)
+
     import os
     from playwright.sync_api import TimeoutError as PWTimeout
 

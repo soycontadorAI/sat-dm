@@ -32,6 +32,18 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 - `app.todoconta.com/planes` lleva a Suscripción con el plan y el intervalo de la liga
   (`?plan=pro&intervalo=mensual`) ya elegidos.
 
+### Tooling
+
+- **Modo de grabación para los tutoriales.** Con `SAT_DM_MODO_GRABACION=1` en el entorno del
+  agente, las 7 empresas de demo de los guiones (RFC ficticios) responden con datos de ejemplo
+  y nunca tocan al SAT: el Web Service queda "En proceso" y se resuelve solo
+  (`SAT_DM_GRABACION_ESPERA`, 20 s), la Descarga rápida pide el captcha en la app y avanza XML
+  por XML, la constancia y la 32-D salen como PDF de ejemplo (una 32-D negativa con motivos),
+  "Validar contra SAT" encuentra 3 canceladas y las listas negras, un proveedor en el 69-B.
+  Las empresas reales siguen igual en la misma sesión. `python -m sat_descarga.demo sembrar`
+  deja la cuenta de grabación con empresas, semáforos e historial; `perfil` arma un perfil
+  aparte (`SAT_DM_CONFIG_DIR`) para no mezclar con el catálogo real. Apagado por default.
+
 ### Bug fix
 
 - **La campana ya no cuenta como pendientes los anuncios viejos.** Un anuncio con más de

@@ -22,6 +22,7 @@ from ..core.config import (
     POLL_INTERVAL_INITIAL, POLL_INTERVAL_MAX,
     POLL_BACKOFF_FACTOR, POLL_MAX_ATTEMPTS,
 )
+from .. import demo
 from ..core.fiel import FIEL
 from ..core.http_client import make_request
 from ..core.xml_seguro import parser_seguro
@@ -145,6 +146,10 @@ def _consultar_una_vez(
     token: str, rfc_solicitante: str, id_solicitud: str, fiel: FIEL = None
 ) -> EstadoSolicitud:
     """Realiza una sola consulta de verificación."""
+    if demo.aplica(rfc_solicitante):  # modo de grabación: empresa de demo, sin SAT
+        from ..demo import sat as sat_demo
+        return sat_demo.verificar(rfc_solicitante, id_solicitud)
+
     envelope_xml = (
         f'<s:Envelope xmlns:s="{_SOAP_NS}" xmlns:des="{_DES_NS}">'
         f'<s:Header/>'

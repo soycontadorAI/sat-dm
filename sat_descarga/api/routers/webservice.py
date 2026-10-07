@@ -230,7 +230,7 @@ def solicitar(req: SolicitudRequest):
     al llegar al tope). Bajar sus paquetes después no vuelve a contar.
     """
     fiel = _get_fiel()
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=fiel.rfc)
     token = _renovar_token()
 
     try:
@@ -252,7 +252,8 @@ def solicitar(req: SolicitudRequest):
         )
         _guardar_solicitud_ws(fiel.rfc, id_solicitud, req)
         cupo_descargas.registrar(
-            "metadata" if str(req.tipo_solicitud).lower() == "metadata" else "cfdi"
+            "metadata" if str(req.tipo_solicitud).lower() == "metadata" else "cfdi",
+            rfc=fiel.rfc,
         )
         return {"ok": True, "id_solicitud": id_solicitud}
     except ErrorTransitorioSAT:
@@ -428,7 +429,7 @@ def descarga_completa(req: DescargaCompletaRequest):
     """
     from ...webservice.client import descargar_cfdi
 
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=_session["rfc"])
     try:
         zips = descargar_cfdi(
             cer_path=_session["cer_path"],
@@ -446,7 +447,7 @@ def descarga_completa(req: DescargaCompletaRequest):
             descripcion=f"Descarga WS completa · {req.fecha_inicio} a {req.fecha_fin}",
             ruta=req.directorio_salida,
         )
-        cupo_descargas.registrar("cfdi")
+        cupo_descargas.registrar("cfdi", rfc=_session["rfc"])
         return {
             "ok": True,
             "archivos": [str(z) for z in zips],
@@ -474,7 +475,7 @@ def solicitar_folio(req: SolicitudFolioRequest):
     from ...webservice.client import descargar_por_uuid
 
     _get_fiel()
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=_session["rfc"])
 
     try:
         zips = descargar_por_uuid(
@@ -486,7 +487,7 @@ def solicitar_folio(req: SolicitudFolioRequest):
             tipo_solicitud=req.tipo_solicitud,
             extraer=req.extraer,
         )
-        cupo_descargas.registrar("cfdi")
+        cupo_descargas.registrar("cfdi", rfc=_session["rfc"])
         return {
             "ok": True,
             "archivos": [str(z) for z in zips],
@@ -524,7 +525,7 @@ def descarga_inteligente(req: DescargaInteligente):
     from ...webservice.client import descargar_cfdi_inteligente
 
     _get_fiel()  # Verificar que hay e-firma
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=_session["rfc"])
 
     try:
         resultado = descargar_cfdi_inteligente(
@@ -538,7 +539,7 @@ def descarga_inteligente(req: DescargaInteligente):
             ciec=req.ciec,
             umbral_ciec=req.umbral_ciec,
         )
-        cupo_descargas.registrar("cfdi")
+        cupo_descargas.registrar("cfdi", rfc=_session["rfc"])
         return resultado
     except (requests.RequestException, ErrorTransitorioSAT):
         raise  # red/SSL o error interno del SAT → @_sat_disponible lo hace 503

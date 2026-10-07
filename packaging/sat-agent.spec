@@ -139,6 +139,18 @@ hiddenimports: list[str] = [
     "sat_descarga.calculadoras",
     "sat_descarga.calculadoras.exportar",
     "sat_descarga.calculadoras.store",
+    # Modo de grabación (SAT_DM_MODO_GRABACION=1): se importa dentro de las
+    # funciones que hablan con el SAT, solo cuando aplica.
+    "sat_descarga.demo",
+    "sat_descarga.demo.escenario",
+    "sat_descarga.demo.catalogo",
+    "sat_descarga.demo.cfdi",
+    "sat_descarga.demo.documentos",
+    "sat_descarga.demo.efirma",
+    "sat_descarga.demo.sat",
+    "sat_descarga.demo.siembra",
+    "fpdf.table",
+    "fpdf.fonts",
 ]
 
 # Recolectar todos los submódulos de uvicorn y playwright (cinturón + tirantes).
