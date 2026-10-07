@@ -30,7 +30,7 @@ export function EmpresaChip({
   return (
     <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-muted-foreground">
       <span
-        className="flex size-4 shrink-0 items-center justify-center rounded font-mono text-[8px] font-bold text-white"
+        className="flex size-4 shrink-0 items-center justify-center rounded font-mono text-[8px] font-bold text-background"
         style={{ background: colorEmpresa(empresa.rfc) }}
       >
         {iniciales(empresa.nombre)}
@@ -143,11 +143,11 @@ export function TareaRow({ tarea, empresas, onToggle, onEdit }: TareaRowProps) {
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <EmpresaChip rfc={tarea.rfc} empresas={empresas} />
-          <span className="text-border">·</span>
+          <span className="h-3 w-px bg-border" aria-hidden />
           <TipoTareaTag tipo={tarea.tipo} />
           {tarea.estado === 'curso' && (
             <>
-              <span className="text-border">·</span>
+              <span className="h-3 w-px bg-border" aria-hidden />
               <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-primary">
                 <Icon icon="ph:arrows-clockwise-light" className="size-3" />
                 En curso

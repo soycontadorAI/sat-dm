@@ -289,7 +289,7 @@ function PagosDetalleDrilldown({
 
   return (
     <div className="space-y-1 p-2">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-semibold text-ghost">
         Pagos relacionados ({items.length})
       </div>
       <Table>
@@ -309,7 +309,7 @@ function PagosDetalleDrilldown({
             <TableRow key={`${p.cfdi_pago_uuid}-${i}`}>
               <TableCell className="font-mono text-xs">{p.cfdi_pago_uuid}</TableCell>
               <TableCell className="text-xs">{formatoFecha(p.cfdi_pago_fecha_pago)}</TableCell>
-              <TableCell className="text-xs">{p.cfdi_pago_forma || '—'}</TableCell>
+              <TableCell className="text-xs">{p.cfdi_pago_forma || '–'}</TableCell>
               <TableCell className="text-center text-xs">{p.docto_num_parcialidad}</TableCell>
               <TableCell className="text-right font-mono text-xs">
                 {formatoMXN(p.docto_imp_saldo_ant, moneda)}

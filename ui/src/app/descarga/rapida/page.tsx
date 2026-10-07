@@ -78,7 +78,7 @@ export default function DescargaRapidaPage() {
           <AlertDescription>
             {/* Un solo <p>: AlertDescription es grid y apilaría texto y Link. */}
             <p>
-              Agrega tu <strong>e.firma</strong> (recomendado — descarga sin captcha) o tu{' '}
+              Agrega tu <strong>e.firma</strong> (recomendado: descarga sin captcha) o tu{' '}
               <strong>Contraseña del SAT</strong> (descarga directa con captcha) en{' '}
               <Link href="/empresas" className="font-medium underline underline-offset-2">
                 Empresas
@@ -102,7 +102,6 @@ export default function DescargaRapidaPage() {
                 <Button variant="outline" size="sm" asChild>
                   <Link href="/descarga">
                     Web Service
-                    <Icon icon="ph:arrow-right-light" className="size-4" />
                   </Link>
                 </Button>
               }

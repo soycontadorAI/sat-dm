@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 
 import { cn } from '@/lib/utils';
-import { ATAJOS, esMac, formatearAtajo } from '@/lib/atajos';
+import { atajosDe, esMac, formatearAtajo } from '@/lib/atajos';
+import { useNavegacion } from '@/providers/navegacion-provider';
 import { PageHeading } from '@/components/layout/page-heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,6 +25,50 @@ interface FaqGroup {
   items: FaqItem[];
 }
 
+/** Preguntas de la navegación por espacios (navegacion-espacios.md, sección 6). */
+const FAQ_NAVEGACION: FaqGroup = {
+  grupo: 'La navegación nueva',
+  icon: 'ph:compass-light',
+  items: [
+    {
+      q: '¿Dónde quedó el menú de la izquierda?',
+      a: 'Ahora son 5 espacios en el riel: Despacho, SAT, Revisar, Cumplimiento y Herramientas. Elige uno y el panel de al lado te muestra lo que hay adentro, con una línea que explica cada cosa. Nada se borró: todo sigue, solo que mejor acomodado.',
+    },
+    {
+      q: '¿Dónde cambio de empresa?',
+      a: 'Arriba a la izquierda, en la barra de título, o con ⌘E (Ctrl+E en Windows). También puedes escribir su nombre o su RFC en "Busca o pide algo".',
+    },
+    {
+      q: '¿Qué le puedo pedir a "Busca o pide algo"?',
+      a: 'Que te lleve a cualquier pantalla ("nómina", "69-B", "historial"), que cambie de empresa y que haga cosas: "descargar recibidos de septiembre", "constancia de" o "opinión de" y el nombre de la empresa, o "finiquito". Antes de hacer algo te enseña lo que entendió (periodo, empresa y canal), y una descarga de CFDIs la confirmas con un segundo Enter. Lo que escribes no sale de tu equipo.',
+    },
+    {
+      q: '¿Dónde bajo la Constancia o la Opinión 32-D?',
+      a: 'En SAT, Constancia y Opinión 32-D: te lleva a la fila de tu empresa activa en Despacho, Empresas. O escribe en el buscador "constancia de" y el nombre de la empresa.',
+    },
+    {
+      q: '¿Dónde están los procesadores de CFDI, Nómina y Pagos?',
+      a: 'En Revisar, Comprobantes. Al entrar se despliegan los tres en el panel.',
+    },
+    {
+      q: '¿Por qué ⌘2 ya no abre Tareas?',
+      a: 'Los números ahora abren los espacios: ⌘1 Despacho, ⌘2 SAT, ⌘3 Revisar, ⌘4 Cumplimiento y ⌘5 Herramientas (en Windows, Ctrl en vez de ⌘). Tareas está en Despacho, igual que Inicio, Empresas e Historial.',
+    },
+    {
+      q: '¿Cómo escondo el panel?',
+      a: 'Con ⌘B (Ctrl+B en Windows), con el botón de flecha doble del panel o con un clic en el espacio donde ya estás. El riel siempre se queda.',
+    },
+    {
+      q: '¿Qué es lo que dice "Pronto"?',
+      a: 'Algo que todavía no está en la app pero ya tiene su lugar. Al abrirlo ves qué va a hacer.',
+    },
+    {
+      q: '¿Puedo volver a la navegación anterior?',
+      a: 'Durante la beta, sí: en Ajustes, Apariencia, Navegación.',
+    },
+  ],
+};
+
 const FAQ_GROUPS: FaqGroup[] = [
   {
     grupo: 'Primeros pasos',
@@ -31,7 +76,7 @@ const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: '¿Cómo agrego una empresa?',
-        a: 'Ve a Empresas y toca «Agregar empresa». Solo necesitas el RFC y un acceso: tu e.firma (con su contraseña) o tu Contraseña del SAT (antes CIEC). Puedes registrar todas las empresas que manejes y cambiar entre ellas desde la parte superior del menú.',
+        a: 'Ve a Empresas y toca "Agregar empresa". Solo necesitas el RFC y un acceso: tu e.firma (con su contraseña) o tu Contraseña del SAT (antes CIEC). Puedes registrar todas las empresas que manejes y cambiar entre ellas desde la parte superior del menú.',
       },
       {
         q: '¿Necesito e.firma o me basta con la Contraseña del SAT?',
@@ -45,7 +90,7 @@ const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: '¿Cómo descargo mis CFDIs?',
-        a: 'Entra a Descargar CFDIs, elige el periodo y si quieres las emitidas, las recibidas o ambas, y toca «Solicitar descarga». Cuando estén listas las verás en el Historial y en Comprobantes.',
+        a: 'Entra a Descargar CFDIs, elige el periodo y si quieres las emitidas, las recibidas o ambas, y toca "Solicitar descarga". Cuando estén listas las verás en el Historial y en Comprobantes.',
       },
       {
         q: '¿Cuál es la diferencia entre descarga masiva y descarga rápida?',
@@ -111,10 +156,15 @@ export default function AyudaPage() {
     setMac(esMac());
   }, []);
 
-  const gruposAtajos = [...new Set(ATAJOS.map((a) => a.grupo))];
+  // La tarjeta de atajos sigue a la navegación de esta instalación (clásica o
+  // espacios): se regenera sola desde lib/atajos.ts.
+  const { modo } = useNavegacion();
+  const atajos = atajosDe(modo);
+  const gruposAtajos = [...new Set(atajos.map((a) => a.grupo))];
 
   const q = query.trim().toLowerCase();
-  const grupos = FAQ_GROUPS.map((g) => ({
+  const gruposBase = modo === 'espacios' ? [FAQ_NAVEGACION, ...FAQ_GROUPS] : FAQ_GROUPS;
+  const grupos = gruposBase.map((g) => ({
     ...g,
     items: g.items.filter(
       (it) => !q || it.q.toLowerCase().includes(q) || it.a.toLowerCase().includes(q),
@@ -153,7 +203,7 @@ export default function AyudaPage() {
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground">
                 <div className="mb-1 font-semibold text-foreground">
-                  Sin resultados para «{query}»
+                  Sin resultados para "{query}"
                 </div>
                 <div className="text-sm">
                   Prueba con otra palabra o escríbenos directamente.
@@ -163,7 +213,7 @@ export default function AyudaPage() {
           )}
           {grupos.map((g) => (
             <div key={g.grupo}>
-              <div className="mb-2.5 ml-0.5 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              <div className="mb-2.5 ml-0.5 flex items-center gap-2 text-[13px] font-semibold text-ghost">
                 <Icon icon={g.icon} className="size-3.75" />
                 {g.grupo}
               </div>
@@ -265,11 +315,9 @@ export default function AyudaPage() {
               <div className="space-y-3">
                 {gruposAtajos.map((grupo) => (
                   <div key={grupo}>
-                    <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                      {grupo}
-                    </div>
+                    <div className="mb-1.5 text-xs font-semibold text-ghost">{grupo}</div>
                     <div className="flex flex-col gap-1.5">
-                      {ATAJOS.filter((a) => a.grupo === grupo).map((a) => (
+                      {atajos.filter((a) => a.grupo === grupo).map((a) => (
                         <div
                           key={a.id}
                           className="flex items-center justify-between gap-3 text-[13.5px]"
@@ -292,7 +340,7 @@ export default function AyudaPage() {
               <Icon icon="ph:check-circle-light" className="size-3" />
               Estás al día
             </span>
-            <span>TodoConta Desktop{version ? ` · versión ${version}` : ''}</span>
+            <span>TodoConta Desktop{version ? `, versión ${version}` : ''}</span>
           </div>
         </div>
       </div>

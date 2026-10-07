@@ -22,7 +22,7 @@ import {
 import { diasDesdeHoy } from '@/lib/tareas';
 import { useAuth } from '@/providers/auth-provider';
 
-/** "Miércoles · 8 de julio de 2026" (capitalizado, con separador del diseño). */
+/** "Miércoles 8 de julio de 2026" (capitalizado). */
 function fechaDeHoy(): string {
   const texto = new Date().toLocaleDateString('es-MX', {
     weekday: 'long',
@@ -32,7 +32,7 @@ function fechaDeHoy(): string {
   });
   const [dia, ...resto] = texto.split(', ');
   const capitalizado = dia.charAt(0).toUpperCase() + dia.slice(1);
-  return resto.length > 0 ? `${capitalizado} · ${resto.join(', ')}` : capitalizado;
+  return resto.length > 0 ? `${capitalizado} ${resto.join(', ')}` : capitalizado;
 }
 
 /** Primer nombre a partir del email de la cuenta ("israel.castro@…" → "Israel"). */
@@ -83,23 +83,23 @@ export default function InicioPage() {
     (t) => t.fecha && diasDesdeHoy(t.fecha) < 0,
   ).length;
 
+  const resumenOperacion = [
+    nActivas > 0 && `${nActivas} ${nActivas === 1 ? 'empresa activa' : 'empresas activas'}`,
+    tareasAbiertas.length > 0 &&
+      `${tareasAbiertas.length} ${tareasAbiertas.length === 1 ? 'tarea abierta' : 'tareas abiertas'}`,
+  ].filter(Boolean) as string[];
+
   return (
     <div className="space-y-5">
       {/* Saludo */}
       <div>
-        <div className="mb-3 font-mono text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-          {hoy || ' '}
-        </div>
+        <div className="mb-3 text-[12.5px] font-medium text-ghost">{hoy || ' '}</div>
         <h1 className="text-[27px] font-extrabold leading-tight tracking-tight">
           Hola{nombre ? `, ${nombre}` : ''}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Resumen de tu operación
-          {nActivas > 0 &&
-            ` · ${nActivas} ${nActivas === 1 ? 'empresa activa' : 'empresas activas'}`}
-          {tareasAbiertas.length > 0 &&
-            ` · ${tareasAbiertas.length} ${tareasAbiertas.length === 1 ? 'tarea abierta' : 'tareas abiertas'}`}
-          .
+          {resumenOperacion.length > 0 && `: ${resumenOperacion.join(' y ')}`}.
         </p>
       </div>
 

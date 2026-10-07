@@ -39,7 +39,7 @@ export function StatsCards({ stats, loading }: Props) {
       value: stats?.cfdis_edos ?? 0,
       icon: 'ph:files-light',
       tone: 'rojo',
-      hint: 'CFDIs cuyo emisor es EFOS — riesgo fiscal directo',
+      hint: 'CFDIs cuyo emisor es EFOS: riesgo fiscal directo',
     },
     {
       label: 'Emisor aclarado',
@@ -66,7 +66,7 @@ export function StatsCards({ stats, loading }: Props) {
       value: stats?.cfdis_sin_validar ?? 0,
       icon: 'ph:circle-light',
       tone: 'gris',
-      hint: 'No han pasado por consulta — usa "Validar" arriba',
+      hint: 'No han pasado por consulta. Usa "Validar" arriba',
     },
   ];
 
@@ -79,7 +79,7 @@ export function StatsCards({ stats, loading }: Props) {
             <Icon icon={c.icon} className={cn('size-4 shrink-0', TONOS[c.tone])} />
           </div>
           <div className={cn('mt-2 text-2xl font-semibold tabular-nums', TONOS[c.tone])}>
-            {loading ? '—' : c.value.toLocaleString('es-MX')}
+            {loading ? '–' : c.value.toLocaleString('es-MX')}
           </div>
         </Card>
       ))}

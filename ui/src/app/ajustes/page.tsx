@@ -17,12 +17,21 @@ import { Icon } from '@/components/ui/icon';
 import { getNotifPrefs, setNotifPrefs, type NotifPrefs } from '@/lib/notify/prefs';
 import { esWeb } from '@/lib/modo';
 import { useUpdates } from '@/hooks/use-updates';
+import { useNavegacion } from '@/providers/navegacion-provider';
+import { esMac, formatearAtajo } from '@/lib/atajos';
+import type { ModoNavegacion } from '@/lib/navegacion-modo';
 
 const TEMAS = [
   { value: 'light', label: 'Claro' },
   { value: 'dark', label: 'Oscuro' },
   { value: 'system', label: 'Sistema' },
 ] as const;
+
+/** Navegación (F3): clásica o espacios, por instalación (`tc:navegacion`). */
+const NAVEGACIONES: readonly { value: ModoNavegacion; label: string }[] = [
+  { value: 'clasica', label: 'Clásica' },
+  { value: 'espacios', label: 'Espacios (beta)' },
+];
 
 /** Selector de carpeta nativo del SO (solo en Electron); null en navegador. */
 function elegirCarpetaNativo(): Promise<string | null> | null {
@@ -84,7 +93,7 @@ function VersionRow({ version }: { version: string | undefined }) {
       control={
         <div className="flex items-center gap-3">
           <span className="font-mono text-[13px] text-foreground/80">
-            {version || '—'}
+            {version || '–'}
           </span>
           {conUpdater &&
             (updates?.estado === 'lista' ? (
@@ -152,6 +161,7 @@ export default function AjustesPage() {
   const planLicencia = usePlanLicencia();
   const sinMcp = planesV3 && planLicencia !== null && !planLicencia.capacidades.mcp;
   const { theme, setTheme } = useTheme();
+  const navegacion = useNavegacion();
   const [mounted, setMounted] = useState(false);
   const [esWindows, setEsWindows] = useState(false);
   const [dir, setDir] = useState('');
@@ -219,7 +229,7 @@ export default function AjustesPage() {
 
   const web = esWeb();
   const version = process.env.NEXT_PUBLIC_APP_VERSION;
-  const sistema = mounted ? (web ? 'Web' : esWindows ? 'Windows' : 'macOS') : '—';
+  const sistema = mounted ? (web ? 'Web' : esWindows ? 'Windows' : 'macOS') : '–';
 
   return (
     <div className="max-w-260 space-y-6">
@@ -239,7 +249,7 @@ export default function AjustesPage() {
                 // nube; se bajan a su equipo con el botón Descargar.
                 'Viven en tu espacio seguro en la nube. Bájalas a tu equipo con el botón Descargar del Historial.'
               ) : (
-                <span className="block truncate font-mono">{dir || '—'}</span>
+                <span className="block truncate font-mono">{dir || '–'}</span>
               )
             }
             control={
@@ -276,7 +286,7 @@ export default function AjustesPage() {
           {!web && (
             <AjRow
               label="Sincronizar credenciales con mi espacio en línea"
-              sub="Tu e.firma y Contraseña del SAT viajan cifradas directo a tu espacio privado — nunca a bases de datos compartidas — para que puedas seguir trabajando desde el navegador, y lo que captures en la web aparezca aquí."
+              sub="Tu e.firma y Contraseña del SAT viajan cifradas directo a tu espacio privado (nunca a bases de datos compartidas) para que puedas seguir trabajando desde el navegador, y lo que captures en la web aparezca aquí."
               control={
                 <Switch
                   checked={syncCreds ?? true}
@@ -292,7 +302,7 @@ export default function AjustesPage() {
         <AjCard icon="ph:sun-light" title="Apariencia">
           <AjRow
             label="Tema"
-            sub="«Sistema» sigue lo que use tu computadora."
+            sub='"Sistema" sigue lo que use tu computadora.'
             col
             control={
               <div className="flex gap-2">
@@ -313,6 +323,33 @@ export default function AjustesPage() {
               </div>
             }
           />
+          {/* Navegación por espacios (F3): visible con ?labs=espacios, si ya se
+              eligió una o desde el 2 de noviembre. Vale para esta instalación. */}
+          {navegacion.selectorVisible && (
+            <AjRow
+              label="Navegación"
+              sub={`Espacios ordena la app en 5 espacios con su panel, pone tu empresa activa arriba y te deja pedir cosas con ${formatearAtajo({ tecla: 'K' }, !mounted || esMac())}. Se guarda en ${web ? 'este navegador' : 'este equipo'}.`}
+              col
+              control={
+                <div className="flex gap-2">
+                  {NAVEGACIONES.map((n) => {
+                    const activo = navegacion.listo && navegacion.modo === n.value;
+                    return (
+                      <Button
+                        key={n.value}
+                        size="sm"
+                        variant={activo ? 'default' : 'outline'}
+                        onClick={() => navegacion.setPreferencia(n.value)}
+                        aria-pressed={activo}
+                      >
+                        {n.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              }
+            />
+          )}
         </AjCard>
 
         {/* Notificaciones */}

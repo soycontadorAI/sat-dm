@@ -59,7 +59,7 @@ export function SolicitudesList({
       key: 'tipo',
       header: 'Tipo',
       width: 'w-44',
-      render: (s) => <span>{s.tipo || '—'}</span>,
+      render: (s) => <span>{s.tipo || '–'}</span>,
     },
     {
       key: 'periodo',
@@ -77,7 +77,7 @@ export function SolicitudesList({
       align: 'right',
       render: (s) => (
         <span className="font-mono">
-          {s.numero_cfdis != null ? s.numero_cfdis.toLocaleString('es-MX') : '—'}
+          {s.numero_cfdis != null ? s.numero_cfdis.toLocaleString('es-MX') : '–'}
         </span>
       ),
     },

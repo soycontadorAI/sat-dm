@@ -43,8 +43,8 @@ export function NominaStatsCards({ stats }: Props) {
             {totalRecibos.toLocaleString('es-MX')}
           </div>
           <p className="text-xs text-muted-foreground">
-            {hayFiltros && `de ${totalGlobal.toLocaleString('es-MX')} · `}
-            {ordinarias} ordinarias · {extraordinarias} extraordinarias
+            {hayFiltros && `De ${totalGlobal.toLocaleString('es-MX')}: `}
+            {ordinarias} ordinarias y {extraordinarias} extraordinarias
           </p>
         </CardContent>
       </Card>

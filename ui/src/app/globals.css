@@ -3,26 +3,30 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Custom fonts
-   Inter VARIABLE auto-hospedada en public/fonts/ (eje wght 100–900 + opsz).
-   Antes se cargaba un único woff2 ESTÁTICO de Inter Regular (peso 400) declarado
-   como `font-weight: 100 900`: el navegador asumía que ese archivo cubría todo el
-   rango y NO sintetizaba negritas, así que 600/700/800/900 se veían planos (= 400).
-   Self-host además evita depender de la red en la app empacada (Electron, offline). */
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src: url('/fonts/InterVariable.woff2') format('woff2');
-}
+/* ---------------------------------------------------------------------------
+   Marca Señal (todoconta-apps/DESIGN.md, la única fuente de verdad visual).
+   Tinta y papel; el único color de la marca es la señal cian y solo aparece
+   cuando algo automático está pasando (descarga corriendo, sincronización,
+   validación en curso, IA trabajando). Geist para todo, Geist Mono para cifras,
+   RFC, UUID y fechas. Las fuentes viajan con la app (@fontsource-variable, se
+   importan en app/layout.tsx): nunca Google Fonts (la CSP de la web lo
+   bloquea y la app de escritorio corre sin red).
+   --------------------------------------------------------------------------- */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+  --font-sans: 'Geist Variable', 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Lo automático (cian): gráficos/puntos con `auto`, texto con `auto-text`. */
   --color-accent-ai: var(--accent-ai);
+  --color-auto: var(--accent-ai);
+  --color-auto-text: var(--auto-text);
+  --color-ribbon: var(--ribbon);
+  --color-ghost: var(--ghost);
+  --color-app-bg: var(--app-bg);
+  --color-panel: var(--panel);
+  --color-rule-soft: var(--rule-soft);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -40,6 +44,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-bg: var(--destructive-bg);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -48,113 +53,312 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-success-bg: var(--success-bg);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-warning-bg: var(--warning-bg);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Radios de DESIGN.md: 10 px botones e inputs (lg), 14 px tarjetas (xl),
+     16 px hojas (2xl). */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-2xl: calc(var(--radius) + 6px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+  /* Profundidad plana: tarjeta blanca + regla de 1 px + sombra suave. */
+  --shadow-soft: var(--sombra-soft);
+  --ease-senal: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Paleta de Tailwind remapeada a Señal. Varias pantallas todavía pintan
+   estados con clases de color sueltas (green-*, amber-*, red-*, blue-*,
+   violet-*); en vez de dejar colores fuera de la marca, cada familia cae en su
+   estado fiscal (ok, warn, bad) o en tinta. Los tonos 50 a 200 son fondos y
+   reglas; 300 y 400 son texto sobre tinta (variantes dark:); 500 a 950, texto
+   e íconos sobre papel. Lo nuevo usa los tokens semánticos, no estas clases. */
+@theme {
+  --color-green-50: #E7F2ED;
+  --color-green-100: #E7F2ED;
+  --color-green-200: #C9E2D6;
+  --color-green-300: #7FD1A8;
+  --color-green-400: #5BC294;
+  --color-green-500: #0E7A4E;
+  --color-green-600: #0E7A4E;
+  --color-green-700: #0E7A4E;
+  --color-green-800: #0B5F3D;
+  --color-green-900: #0B5F3D;
+  --color-green-950: #0B3A27;
+  --color-emerald-50: #E7F2ED;
+  --color-emerald-100: #E7F2ED;
+  --color-emerald-200: #C9E2D6;
+  --color-emerald-300: #7FD1A8;
+  --color-emerald-400: #5BC294;
+  --color-emerald-500: #0E7A4E;
+  --color-emerald-600: #0E7A4E;
+  --color-emerald-700: #0E7A4E;
+  --color-emerald-800: #0B5F3D;
+  --color-emerald-900: #0B5F3D;
+  --color-emerald-950: #0B3A27;
+  --color-amber-50: #F5EEE5;
+  --color-amber-100: #F5EEE5;
+  --color-amber-200: #EAD9C2;
+  --color-amber-300: #E6B877;
+  --color-amber-400: #E0A34A;
+  --color-amber-500: #9A5700;
+  --color-amber-600: #9A5700;
+  --color-amber-700: #9A5700;
+  --color-amber-800: #7A4500;
+  --color-amber-900: #5E3500;
+  --color-amber-950: #3A2200;
+  --color-yellow-50: #F5EEE5;
+  --color-yellow-100: #F5EEE5;
+  --color-yellow-200: #EAD9C2;
+  --color-yellow-300: #E6B877;
+  --color-yellow-400: #E0A34A;
+  --color-yellow-500: #9A5700;
+  --color-yellow-600: #9A5700;
+  --color-yellow-700: #9A5700;
+  --color-yellow-800: #7A4500;
+  --color-yellow-900: #5E3500;
+  --color-orange-50: #F5EEE5;
+  --color-orange-100: #F5EEE5;
+  --color-orange-200: #EAD9C2;
+  --color-orange-300: #E6B877;
+  --color-orange-400: #E0A34A;
+  --color-orange-500: #9A5700;
+  --color-orange-600: #9A5700;
+  --color-orange-700: #9A5700;
+  --color-orange-800: #7A4500;
+  --color-orange-900: #5E3500;
+  --color-red-50: #F9E9EA;
+  --color-red-100: #F9E9EA;
+  --color-red-200: #F0CDD0;
+  --color-red-300: #F4A1A7;
+  --color-red-400: #F07A82;
+  --color-red-500: #BE2530;
+  --color-red-600: #BE2530;
+  --color-red-700: #BE2530;
+  --color-red-800: #971D26;
+  --color-red-900: #6E151C;
+  --color-red-950: #3F0C10;
+  --color-rose-50: #F9E9EA;
+  --color-rose-100: #F9E9EA;
+  --color-rose-500: #BE2530;
+  --color-rose-600: #BE2530;
+  --color-rose-700: #BE2530;
+  --color-blue-50: #ECEFF3;
+  --color-blue-100: #E9ECF0;
+  --color-blue-200: #DDE1E7;
+  --color-blue-300: #AEB6C2;
+  --color-blue-400: #AEB6C2;
+  --color-blue-500: #4A5260;
+  --color-blue-600: #10141B;
+  --color-blue-700: #10141B;
+  --color-blue-800: #10141B;
+  --color-blue-900: #1A1F28;
+  --color-blue-950: #1A1F28;
+  --color-sky-50: #ECEFF3;
+  --color-sky-100: #E9ECF0;
+  --color-sky-500: #4A5260;
+  --color-sky-600: #10141B;
+  --color-sky-700: #10141B;
+  --color-indigo-50: #ECEFF3;
+  --color-indigo-100: #E9ECF0;
+  --color-indigo-500: #4A5260;
+  --color-indigo-600: #10141B;
+  --color-indigo-700: #10141B;
+  --color-violet-50: #ECEFF3;
+  --color-violet-100: #E9ECF0;
+  --color-violet-200: #DDE1E7;
+  --color-violet-300: #AEB6C2;
+  --color-violet-400: #AEB6C2;
+  --color-violet-500: #4A5260;
+  --color-violet-600: #10141B;
+  --color-violet-700: #10141B;
+  --color-violet-800: #10141B;
+  --color-violet-900: #1A1F28;
+  --color-purple-100: #E9ECF0;
+  --color-purple-600: #10141B;
+  --color-purple-700: #10141B;
+  /* Cian solo para lo automático: los tonos que ya se usaban para "corriendo"
+     caen en el cian de DESIGN.md (auto sobre papel, auto-dark sobre tinta). */
+  --color-cyan-50: #E6F4F7;
+  --color-cyan-100: #E6F4F7;
+  --color-cyan-300: #22D3EE;
+  --color-cyan-400: #22D3EE;
+  --color-cyan-500: #008CAB;
+  --color-cyan-600: #008CAB;
+  --color-cyan-700: #077388;
+  --color-cyan-800: #077388;
+  --color-teal-500: #008CAB;
+  --color-teal-600: #008CAB;
+  --color-teal-700: #077388;
+  --color-slate-400: #8B94A3;
+  --color-slate-500: #626A78;
+  --color-slate-600: #4A5260;
+  --color-gray-400: #8B94A3;
+  --color-gray-500: #626A78;
+  --color-gray-600: #4A5260;
+  --color-zinc-500: #626A78;
 }
 
 :root {
-  --radius: 0.5rem;
+  --radius: 0.625rem;
   /* Hover del botón cerrar en el titlebar custom de Windows: rojo del chrome
-   * nativo del SO (no es un token del design system — excepción documentada). */
+   * nativo del SO (no es un token del design system; excepción documentada). */
   --win-close: #e81123;
-  /* TodoConta — Light (superficie web "cool gray"), sincronizado con todoconta-apps */
-  --background: #F7F9FC;
-  --foreground: #0A1628;
+
+  /* Papel */
+  --background: #F0F2F5; /* app-bg */
+  --app-bg: #F0F2F5;
+  --panel: #F7F8FA; /* panel del espacio: entre la tarjeta y el fondo */
+  --foreground: #10141B; /* ink */
   --card: #FFFFFF;
-  --card-foreground: #0A1628;
+  --card-foreground: #10141B;
   --popover: #FFFFFF;
-  --popover-foreground: #0A1628;
-  /* Primary — Azul Legal */
-  --primary: #0B5FFF;
+  --popover-foreground: #10141B;
+  /* Toda acción va en tinta. */
+  --primary: #10141B;
+  --primary-hover: #272D37;
   --primary-foreground: #FFFFFF;
-  /* Accent IA — cian (reservado: IA/automatización; nunca decorativo) */
-  --accent-ai: #06B6D4;
-  /* Semánticos */
-  --success: #059669;
+  /* La señal (lo automático) */
+  --accent-ai: #008CAB; /* auto */
+  --auto-text: #077388;
+  --ribbon: #00B4D6;
+  /* Estados fiscales */
+  --success: #0E7A4E;
   --success-foreground: #FFFFFF;
-  --warning: #B45309;
+  --success-bg: #E7F2ED;
+  --warning: #9A5700;
   --warning-foreground: #FFFFFF;
-  --destructive: #B91C1C;
+  --warning-bg: #F5EEE5;
+  --destructive: #BE2530;
   --destructive-foreground: #FFFFFF;
+  --destructive-bg: #F9E9EA;
   /* Neutrales */
-  --secondary: #F0F3F8;
-  --secondary-foreground: #0A1628;
-  --muted: #F0F3F8;
-  --muted-foreground: #56677F;
-  --accent: #EFF4FF;
-  --accent-foreground: #0848CC;
-  --border: #E5ECF4;
-  --input: #CFD9E6;
-  --ring: #0B5FFF;
-  /* Charts */
-  --chart-1: #0B5FFF;
-  --chart-2: #059669;
-  --chart-3: #B45309;
-  --chart-4: #06B6D4;
-  --chart-5: #0848CC;
-  /* Sidebar */
+  --secondary: #E9ECF0; /* muted */
+  --secondary-foreground: #10141B;
+  --muted: #E9ECF0;
+  --muted-foreground: #4A5260; /* soft */
+  --ghost: #626A78;
+  --accent: #E9ECF0;
+  --accent-foreground: #10141B;
+  --border: #DDE1E7; /* rule */
+  --rule-soft: #ECEFF3;
+  --input: #DDE1E7;
+  --ring: #10141B;
+  /* Gráficas: tinta y estados; el cian solo si la serie es automática. */
+  --chart-1: #10141B;
+  --chart-2: #0E7A4E;
+  --chart-3: #9A5700;
+  --chart-4: #008CAB;
+  --chart-5: #626A78;
+  /* Menú lateral (navegación clásica) */
   --sidebar: #FFFFFF;
-  --sidebar-foreground: #0A1628;
-  --sidebar-primary: #0B5FFF;
+  --sidebar-foreground: #10141B;
+  --sidebar-primary: #10141B;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #EFF4FF;
-  --sidebar-accent-foreground: #0848CC;
-  --sidebar-border: #E5ECF4;
-  --sidebar-ring: #0B5FFF;
+  --sidebar-accent: #E9ECF0;
+  --sidebar-accent-foreground: #10141B;
+  --sidebar-border: #DDE1E7;
+  --sidebar-ring: #10141B;
+  --sombra-soft: 0 1px 2px rgba(16, 20, 27, 0.05), 0 14px 34px -16px rgba(16, 20, 27, 0.18);
 }
 
 .dark {
-  /* TodoConta — Dark (compartido) */
-  --background: #101922;
-  --foreground: #FFFFFF;
-  --card: #1a2632;
-  --card-foreground: #FFFFFF;
-  --popover: #1a2632;
-  --popover-foreground: #FFFFFF;
-  --primary: #3b82f6;
-  --primary-foreground: #FFFFFF;
-  --accent-ai: #22D3EE;
-  --success: #34d399;
-  --success-foreground: #0A1628;
-  --warning: #fbbf24;
-  --warning-foreground: #0A1628;
-  --destructive: #f87171;
-  --destructive-foreground: #0A1628;
-  --secondary: #2a3b4d;
-  --secondary-foreground: #FFFFFF;
-  --muted: #2a3b4d;
-  --muted-foreground: #9fb3c8;
-  --accent: #21304a;
-  --accent-foreground: #cfe0ff;
-  --border: #2a3b4d;
-  --input: #374151;
-  --ring: #3b82f6;
-  --chart-1: #3b82f6;
-  --chart-2: #34d399;
-  --chart-3: #fbbf24;
-  --chart-4: #22d3ee;
-  --chart-5: #60a5fa;
-  --sidebar: #1a2632;
-  --sidebar-foreground: #FFFFFF;
-  --sidebar-primary: #3b82f6;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #21304a;
-  --sidebar-accent-foreground: #cfe0ff;
-  --sidebar-border: #2a3b4d;
-  --sidebar-ring: #3b82f6;
+  /* Tema oscuro: los valores de tinta de DESIGN.md (texto on-dark, tarjetas
+     card-dark, reglas rule-dark; los botones se invierten a papel). */
+  --background: #10141B;
+  --app-bg: #10141B;
+  --panel: #141922;
+  --foreground: #EEF1F5;
+  --card: #1A1F28;
+  --card-foreground: #EEF1F5;
+  --popover: #1A1F28;
+  --popover-foreground: #EEF1F5;
+  --primary: #EEF1F5;
+  --primary-hover: #FFFFFF;
+  --primary-foreground: #10141B;
+  --accent-ai: #22D3EE; /* auto-dark */
+  --auto-text: #22D3EE;
+  --ribbon: #00B4D6;
+  --success: #5BC294;
+  --success-foreground: #10141B;
+  --success-bg: rgba(14, 122, 78, 0.22);
+  --warning: #E0A34A;
+  --warning-foreground: #10141B;
+  --warning-bg: rgba(154, 87, 0, 0.24);
+  --destructive: #F07A82;
+  --destructive-foreground: #10141B;
+  --destructive-bg: rgba(190, 37, 48, 0.24);
+  --secondary: #232934;
+  --secondary-foreground: #EEF1F5;
+  --muted: #232934;
+  --muted-foreground: #AEB6C2; /* on-dark-soft */
+  --ghost: #8B94A3; /* on-dark-ghost */
+  --accent: #262C37;
+  --accent-foreground: #EEF1F5;
+  --border: rgba(238, 241, 245, 0.12); /* rule-dark */
+  --rule-soft: rgba(238, 241, 245, 0.07);
+  --input: rgba(238, 241, 245, 0.16);
+  --ring: #EEF1F5;
+  --chart-1: #EEF1F5;
+  --chart-2: #5BC294;
+  --chart-3: #E0A34A;
+  --chart-4: #22D3EE;
+  --chart-5: #8B94A3;
+  --sidebar: #1A1F28;
+  --sidebar-foreground: #EEF1F5;
+  --sidebar-primary: #EEF1F5;
+  --sidebar-primary-foreground: #10141B;
+  --sidebar-accent: #262C37;
+  --sidebar-accent-foreground: #EEF1F5;
+  --sidebar-border: rgba(238, 241, 245, 0.12);
+  --sidebar-ring: #EEF1F5;
+  --sombra-soft: inset 0 0 0 1px rgba(238, 241, 245, 0.04), 0 18px 40px -24px rgba(0, 0, 0, 0.55);
+
+  /* Remapeo de la paleta sobre tinta: los tonos claros que se usan como
+     fondo (50 a 200) pasan a velos del estado; los oscuros que se usan como
+     texto (600 a 900) pasan al tono legible sobre tinta. */
+  --color-green-50: rgba(14, 122, 78, 0.22);
+  --color-green-100: rgba(14, 122, 78, 0.22);
+  --color-green-200: rgba(14, 122, 78, 0.4);
+  --color-green-600: #5BC294;
+  --color-green-700: #5BC294;
+  --color-green-800: #7FD1A8;
+  --color-emerald-50: rgba(14, 122, 78, 0.22);
+  --color-emerald-100: rgba(14, 122, 78, 0.22);
+  --color-emerald-600: #5BC294;
+  --color-emerald-700: #5BC294;
+  --color-amber-50: rgba(154, 87, 0, 0.24);
+  --color-amber-100: rgba(154, 87, 0, 0.24);
+  --color-amber-200: rgba(154, 87, 0, 0.4);
+  --color-amber-600: #E0A34A;
+  --color-amber-700: #E0A34A;
+  --color-amber-800: #E6B877;
+  --color-red-50: rgba(190, 37, 48, 0.24);
+  --color-red-100: rgba(190, 37, 48, 0.24);
+  --color-red-200: rgba(190, 37, 48, 0.4);
+  --color-red-600: #F07A82;
+  --color-red-700: #F07A82;
+  --color-red-800: #F4A1A7;
+  --color-blue-50: #232934;
+  --color-blue-100: #232934;
+  --color-blue-600: #EEF1F5;
+  --color-blue-700: #EEF1F5;
+  --color-violet-100: #232934;
+  --color-violet-800: #EEF1F5;
+  --color-cyan-500: #22D3EE;
+  --color-cyan-600: #22D3EE;
+  --color-cyan-700: #22D3EE;
 }
 
 @layer base {
@@ -163,7 +367,63 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: var(--font-sans);
+    /* Texto de la app: Geist 400, 15 px, interlínea 1.5 (DESIGN.md). Las
+       pantallas que fijan su tamaño con utilidades (text-sm, text-[13px]) se
+       quedan como están. */
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  /* Cifras, RFC, UUID, folios y fechas: Geist Mono con números tabulares. */
+  .font-mono,
+  code,
+  kbd,
+  samp {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Foco visible: contorno de 2 px en tinta con 3 px de separación. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+  /* Toasts (sonner) con los estados de Señal: tarjeta blanca y los colores
+   * ok / warn / bad de DESIGN.md en vez de la paleta propia de sonner. El
+   * `html` sube la especificidad sobre la hoja que sonner inyecta. */
+  html [data-sonner-toaster][data-sonner-theme='light'] {
+    --normal-bg: #ffffff;
+    --normal-border: #dde1e7;
+    --normal-text: #10141b;
+    --success-bg: #e7f2ed;
+    --success-border: #c9e2d6;
+    --success-text: #0e7a4e;
+    --info-bg: #ffffff;
+    --info-border: #dde1e7;
+    --info-text: #10141b;
+    --warning-bg: #f5eee5;
+    --warning-border: #e8dac7;
+    --warning-text: #9a5700;
+    --error-bg: #f9e9ea;
+    --error-border: #efcfd2;
+    --error-text: #be2530;
+  }
+  html [data-sonner-toaster][data-sonner-theme='dark'] {
+    --normal-bg: #1a1f28;
+    --normal-bg-hover: #232934;
+    --normal-border: rgba(238, 241, 245, 0.12);
+    --normal-border-hover: rgba(238, 241, 245, 0.2);
+    --normal-text: #eef1f5;
+    --success-bg: #17291f;
+    --success-border: rgba(91, 194, 148, 0.28);
+    --success-text: #5bc294;
+    --info-bg: #1a1f28;
+    --info-border: rgba(238, 241, 245, 0.12);
+    --info-text: #eef1f5;
+    --warning-bg: #2a2317;
+    --warning-border: rgba(224, 163, 74, 0.28);
+    --warning-text: #e0a34a;
+    --error-bg: #2c1b1f;
+    --error-border: rgba(240, 122, 130, 0.28);
+    --error-text: #f07a82;
   }
   /* En Electron la Titlebar tiene -webkit-app-region:drag y captura los
    * clicks de cualquier elemento encima (incluso con z-index alto). Los
@@ -183,5 +443,38 @@
   [data-slot='dialog-content'],
   [data-slot='dialog-content'] * {
     -webkit-app-region: no-drag;
+  }
+}
+
+@layer utilities {
+  /* Punto de "trabajando" (lo automático en movimiento): cian con su brillo. */
+  .senal-pulso {
+    background: var(--accent-ai);
+    box-shadow: 0 0 10px 1px color-mix(in srgb, var(--accent-ai) 55%, transparent);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .senal-pulso {
+      animation: senal-pulso 1.6s var(--ease-senal) infinite;
+    }
+  }
+}
+
+@keyframes senal-pulso {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }

@@ -80,7 +80,6 @@ export default function ComprobantesPage() {
                 <Button variant="outline" size="sm" asChild>
                   <Link href={p.href}>
                     Abrir
-                    <Icon icon="ph:arrow-right-light" className="size-4" />
                   </Link>
                 </Button>
               ) : (

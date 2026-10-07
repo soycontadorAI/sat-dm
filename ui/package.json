@@ -6,10 +6,13 @@
     "dev": "next dev --port 3001 --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/ordenes.test.ts src/lib/navegacion-modo.test.ts",
+    "test:ordenes": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/ordenes.test.ts"
   },
   "dependencies": {
-    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
     "@iconify-icons/ph": "^1.2.5",
     "@iconify/react": "^6.0.2",
     "@radix-ui/react-dialog": "^1.1.15",

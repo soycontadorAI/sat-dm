@@ -90,7 +90,7 @@ export function EmpresaDetalle() {
       <div className="space-y-4">
         <div className="flex items-start gap-4">
           <span
-            className="flex size-11.5 shrink-0 items-center justify-center rounded-[11px] font-mono text-[15px] font-bold text-white"
+            className="flex size-11.5 shrink-0 items-center justify-center rounded-[11px] font-mono text-[15px] font-bold text-background"
             style={{ background: colorEmpresa(empresa.rfc) }}
           >
             {tipoPersona(empresa.rfc)}
@@ -330,7 +330,7 @@ function OpinionSection({
             <p className="text-xs text-muted-foreground">
               {empresa.opinion_status === 'otro'
                 ? 'El sentido de esta opinión no es positiva ni negativa. Abre el PDF para revisarla.'
-                : 'Esta opinión se descargó antes del análisis automático. Usa «Re-analizar opinión» para conocer su sentido.'}
+                : 'Esta opinión se descargó antes del análisis automático. Usa "Re-analizar opinión" para conocer su sentido.'}
             </p>
           )}
         </>
@@ -597,9 +597,9 @@ function FielSection({
           >
             <AlertDescription className="text-xs">
               {sem.vencida
-                ? `Esta e.firma venció el ${fechaLarga(sem.fecha)}. Renuévala con el nuevo .cer y .key — o quítala y sigue trabajando con tu Contraseña del SAT mientras la renuevas.`
+                ? `Esta e.firma venció el ${fechaLarga(sem.fecha)}. Renuévala con el nuevo .cer y .key, o quítala y sigue trabajando con tu Contraseña del SAT mientras la renuevas.`
                 : RENOVACION_EFIRMA_HABILITADA
-                  ? `${sem.estado === 'rojo' ? 'Vence muy pronto.' : 'Está por vencer.'} Renuévala en línea desde aquí — no necesitas ir al SAT.`
+                  ? `${sem.estado === 'rojo' ? 'Vence muy pronto.' : 'Está por vencer.'} Renuévala en línea desde aquí, sin ir al SAT.`
                   : `${sem.estado === 'rojo' ? 'Vence muy pronto.' : 'Está por vencer.'} Renuévala en el SAT y actualiza aquí los archivos nuevos (.cer/.key).`}
             </AlertDescription>
           </Alert>

@@ -12,15 +12,14 @@ const statusBadgeVariants = cva(
   {
     variants: {
       tone: {
-        success:
-          'bg-success/10 text-success border-success/20 dark:bg-success/15 dark:border-success/30',
-        warning:
-          'bg-warning/10 text-warning border-warning/20 dark:bg-warning/15 dark:border-warning/30',
-        error:
-          'bg-destructive/10 text-destructive border-destructive/20 dark:bg-destructive/15 dark:border-destructive/30',
-        info: 'bg-primary/10 text-primary border-primary/20 dark:bg-primary/15 dark:border-primary/30',
-        neutral: 'bg-muted text-muted-foreground border-border',
-        ai: 'bg-accent-ai/10 text-accent-ai border-accent-ai/20 dark:bg-accent-ai/15 dark:border-accent-ai/30',
+        // Estados fiscales de Señal: fondo *-bg y la palabra en su color.
+        success: 'border-transparent bg-success-bg text-success',
+        warning: 'border-transparent bg-warning-bg text-warning',
+        error: 'border-transparent bg-destructive-bg text-destructive',
+        info: 'border-border bg-card text-foreground',
+        neutral: 'border-transparent bg-muted text-muted-foreground',
+        // Lo automático: texto cian (auto-text), sin fondo de color.
+        ai: 'border-transparent bg-transparent px-0 text-auto-text',
       },
       size: {
         sm: 'px-2 py-0.5 text-[10px]',

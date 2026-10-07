@@ -2,7 +2,6 @@ import Link from 'next/link';
 
 import { PanelInicio, PanelVacio } from '@/components/inicio/panel-inicio';
 import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
 import { formatNumber } from '@/lib/formatting';
 import type { HistorialItem } from '@/lib/types';
 
@@ -49,7 +48,6 @@ export function DescargasRecientes({
         <Button variant="ghost" size="sm" asChild>
           <Link href="/historial">
             Ver historial
-            <Icon icon="ph:arrow-right-light" className="size-3.5" />
           </Link>
         </Button>
       }
@@ -75,7 +73,7 @@ export function DescargasRecientes({
                 <td className="py-2.5 pr-3">
                   <div className="text-[13px] font-medium">{d.descripcion}</div>
                   <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                    {d.nombre || d.rfc || '—'}
+                    {d.nombre || d.rfc || '–'}
                   </div>
                 </td>
                 <td className="whitespace-nowrap py-2.5 pr-3 text-right font-mono text-[11px] text-muted-foreground">
@@ -91,7 +89,7 @@ export function DescargasRecientes({
                       </span>
                     </>
                   ) : (
-                    <span className="text-muted-foreground">—</span>
+                    <span className="text-muted-foreground">–</span>
                   )}
                 </td>
               </tr>

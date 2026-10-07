@@ -188,7 +188,7 @@ export default function TareasPage() {
     <div className="space-y-5">
       <PageHeading
         title="Tareas"
-        description="Tu centro de mando: pendientes fiscales, recordatorios y lo que tengas en mente — con o sin empresa."
+        description="Tu centro de mando: pendientes fiscales, recordatorios y lo que tengas en mente, con o sin empresa."
         action={
           <Button onClick={() => setNuevaAbierta(true)}>
             <Icon icon="ph:plus-light" className="size-4" />
@@ -345,7 +345,7 @@ export default function TareasPage() {
 
       <div className="flex items-center gap-2 text-[12.5px] text-muted-foreground/70">
         <Icon icon="ph:user-light" className="size-3.5" />
-        {abiertas} {abiertas === 1 ? 'tarea abierta · asignada' : 'tareas abiertas · asignadas'} a ti.
+        {abiertas} {abiertas === 1 ? 'tarea abierta asignada' : 'tareas abiertas asignadas'} a ti.
       </div>
 
       <NuevaTareaDialog

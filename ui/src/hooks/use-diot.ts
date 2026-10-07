@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useServer } from '@/providers/server-provider';
 import { useEmpresas } from '@/hooks/use-empresas';
 import { mensajeDeError } from '@/lib/errores';
+import { usePrefill } from '@/lib/prefill';
 import type {
   CatalogosDiot,
   EstadoDiot,
@@ -76,7 +77,11 @@ export function useDiot(): UseDiotState {
 
   const rfcActivo = empresas.find((e) => e.default)?.rfc ?? null;
 
-  const [periodo, setPeriodoState] = useState<string>(periodoAnterior());
+  // Orden de ⌘K ("DIOT de agosto de ..."): la pantalla abre en ese periodo.
+  const { inicial: prefillInicial, nuevo: prefillNuevo } = usePrefill('diot');
+  const [periodo, setPeriodoState] = useState<string>(
+    () => prefillInicial?.periodo ?? periodoAnterior(),
+  );
   const [filas, setFilas] = useState<FilaDiot[]>([]);
   const [errores, setErrores] = useState<HallazgoDiot[]>([]);
   const [advertencias, setAdvertencias] = useState<HallazgoDiot[]>([]);
@@ -180,6 +185,11 @@ export function useDiot(): UseDiotState {
     epochRef.current += 1;
     setPeriodoState(p);
   }, []);
+
+  // Otra orden de ⌘K con la pantalla ya abierta.
+  useEffect(() => {
+    if (prefillNuevo?.periodo) setPeriodo(prefillNuevo.periodo);
+  }, [prefillNuevo, setPeriodo]);
 
   const marcarEdicion = useCallback(() => {
     epochRef.current += 1;

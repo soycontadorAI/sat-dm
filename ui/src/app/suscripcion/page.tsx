@@ -118,7 +118,7 @@ function SuscripcionActual() {
       const { url } = await apiClient.authSubscribe('anual');
       window.open(url, '_blank', 'noopener,noreferrer');
       toast.info(
-        'Te abrimos el navegador para pagar. Cuando termines, vuelve y toca "Ya pagué — actualizar estado".',
+        'Te abrimos el navegador para pagar. Cuando termines, vuelve y toca "Ya pagué, actualizar estado".',
       );
     } catch (e) {
       toast.error(mensajeDeError(e));
@@ -134,7 +134,7 @@ function SuscripcionActual() {
       const { url } = await apiClient.authSubscribe('anual_ia');
       window.open(url, '_blank', 'noopener,noreferrer');
       toast.info(
-        'Te abrimos el navegador para pagar. Cuando termines, vuelve y toca "Ya pagué — actualizar estado".',
+        'Te abrimos el navegador para pagar. Cuando termines, vuelve y toca "Ya pagué, actualizar estado".',
       );
     } catch (e) {
       toast.error(mensajeDeError(e));
@@ -245,7 +245,7 @@ function SuscripcionActual() {
                 <div className="flex flex-col">
                   <InfoRow
                     label={cancela ? 'Termina el' : 'Próxima renovación'}
-                    value={license.expires_at ? formatDate(license.expires_at) : '—'}
+                    value={license.expires_at ? formatDate(license.expires_at) : '–'}
                   />
                   <InfoRow label="Acceso premium en línea" value="Incluido" />
                   {tieneIa && <InfoRow label="Asistente con IA (Abacus + MCP)" value="Incluido" />}
@@ -341,7 +341,7 @@ function SuscripcionActual() {
               )}
 
               {/* separador */}
-              <div className="flex items-center gap-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <div className="flex items-center gap-3 text-xs font-semibold text-ghost">
                 <span className="h-px flex-1 bg-border" />
                 Elige cómo pagar
                 <span className="h-px flex-1 bg-border" />
@@ -431,7 +431,7 @@ function SuscripcionActual() {
                 className="inline-flex items-center gap-1.5 self-start text-xs font-semibold text-muted-foreground transition-colors hover:text-primary"
               >
                 <Icon icon="ph:arrows-clockwise-light" className="size-3.5" />
-                Ya pagué — actualizar estado
+                Ya pagué, actualizar estado
               </button>
             </PlanCard>
             <IaUpsellCard
@@ -448,7 +448,7 @@ function SuscripcionActual() {
         <aside className="flex flex-col gap-4">
           {esPrueba && dias !== null && (
             <div className="rounded-xl border bg-card p-5 text-card-foreground shadow-sm">
-              <div className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-ghost">
                 <Icon icon="ph:hourglass-medium-light" className="size-4 text-muted-foreground/70" />
                 Periodo de prueba
               </div>
@@ -468,7 +468,7 @@ function SuscripcionActual() {
           )}
 
           <div className="rounded-xl border bg-card p-5 text-card-foreground shadow-sm">
-            <div className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-ghost">
               <Icon icon="ph:gear-light" className="size-4 text-muted-foreground/70" />
               Tu cuenta
             </div>

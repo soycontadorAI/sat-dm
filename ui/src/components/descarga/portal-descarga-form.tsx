@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@/components/ui/icon';
 import { useServer } from '@/providers/server-provider';
@@ -21,6 +21,8 @@ import { JobProgress } from '@/components/descarga/job-progress';
 import { NavegadorStatusBanner } from '@/components/shared/navegador-status';
 import { metodoPortalPreferido, etiquetaMetodo } from '@/lib/empresa-metodo';
 import type { Empresa } from '@/lib/types';
+import { usePrefill, type PrefillPortal } from '@/lib/prefill';
+import { cn } from '@/lib/utils';
 
 type TipoComprobante = 'R' | 'E' | 'RE';
 
@@ -45,14 +47,56 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
   const { apiClient } = useServer();
   const job = useCiecJob();
 
-  const hoy = useMemo(() => new Date(), []);
-  const [tipo, setTipo] = useState<TipoComprobante>('E');
-  const [desde, setDesde] = useState(ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1)));
-  const [hasta, setHasta] = useState(ymd(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)));
+  // Orden de ⌘K: el primer Enter llena el formulario y deja el foco en
+  // "Iniciar descarga"; el segundo Enter la arranca (con Contraseña, el
+  // captcha aparece aquí mismo).
+  const { inicial, nuevo } = usePrefill('portal');
 
-  const metodo = metodoPortalPreferido(empresa);
+  const hoy = useMemo(() => new Date(), []);
+  const [tipo, setTipo] = useState<TipoComprobante>(() => inicial?.tipo ?? 'E');
+  const [desde, setDesde] = useState(
+    () => inicial?.desde ?? ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1)),
+  );
+  const [hasta, setHasta] = useState(
+    () => inicial?.hasta ?? ymd(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)),
+  );
+
+  // Una orden de ⌘K puede fijar el acceso ("con contraseña"); vale solo para
+  // la empresa de la orden y si la empresa lo tiene.
+  const [metodoOrden, setMetodoOrden] = useState<{ rfc: string; metodo: 'fiel' | 'ciec' } | null>(
+    () => (inicial?.metodo ? { rfc: inicial.rfc, metodo: inicial.metodo } : null),
+  );
+  const metodo =
+    metodoOrden && metodoOrden.rfc === empresa.rfc && empresa.metodos.includes(metodoOrden.metodo)
+      ? metodoOrden.metodo
+      : metodoPortalPreferido(empresa);
   const corriendo = job.estado !== 'idle' && job.estado !== 'done'
     && job.estado !== 'error' && job.estado !== 'cancelled';
+
+  const [deOrden, setDeOrden] = useState<PrefillPortal | null>(inicial);
+  // El aviso de la orden solo vale mientras su empresa sea la activa.
+  const ordenVigente = deOrden && deOrden.rfc === empresa.rfc ? deOrden : null;
+  const [enfocarPendiente, setEnfocarPendiente] = useState(!!inicial);
+  const iniciarRef = useRef<HTMLButtonElement>(null);
+  const listoDesde = useRef(0);
+
+  // Otra orden con la pantalla ya abierta.
+  useEffect(() => {
+    if (!nuevo) return;
+    setDesde(nuevo.desde);
+    setHasta(nuevo.hasta);
+    setTipo(nuevo.tipo);
+    setMetodoOrden(nuevo.metodo ? { rfc: nuevo.rfc, metodo: nuevo.metodo } : null);
+    setDeOrden(nuevo);
+    setEnfocarPendiente(true);
+  }, [nuevo]);
+
+  useEffect(() => {
+    if (!enfocarPendiente || !metodo || corriendo) return;
+    listoDesde.current = Date.now() + 400;
+    iniciarRef.current?.focus();
+    setEnfocarPendiente(false);
+  }, [enfocarPendiente, metodo, corriendo]);
 
   // Refresca al padre cuando el job pasa a 'done' (p. ej. para actualizar la
   // lista de descargas recientes sin recargar la página).
@@ -62,6 +106,8 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
 
   function iniciar() {
     if (!metodo) return;
+    if (Date.now() < listoDesde.current) return;
+    setDeOrden(null);
     if (metodo === 'fiel') {
       job.iniciar(
         () =>
@@ -103,6 +149,15 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
+            {ordenVigente && (
+              <div className="flex items-start gap-2.5 rounded-[10px] border border-border bg-background px-3.5 py-2.5 text-[13px] text-muted-foreground">
+                <Icon icon="ph:arrow-elbow-down-left-light" className="mt-0.5 size-4 shrink-0 text-foreground" />
+                <span>
+                  <span className="font-semibold text-foreground">Lo llenó tu orden:</span>{' '}
+                  {ordenVigente.etiqueta}. Revisa y confirma con Enter.
+                </span>
+              </div>
+            )}
             {/* Rango de fechas */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -155,7 +210,7 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
                       icon={metodo === 'fiel' ? 'ph:shield-check-light' : 'ph:key-light'}
                       className="size-3.5"
                     />
-                    Usando: {etiquetaMetodo(metodo)}
+                    Usando {etiquetaMetodo(metodo)}
                   </div>
                 </div>
               )}
@@ -163,9 +218,17 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
 
             {/* Submit */}
             <Button
+              ref={iniciarRef}
               onClick={iniciar}
               disabled={!metodo || corriendo}
-              className="w-full sm:w-auto"
+              // Después de una orden, el contorno marca dónde cae el segundo Enter.
+              className={cn(
+                'w-full sm:w-auto',
+                ordenVigente && 'focus:outline-solid focus:outline-2 focus:outline-offset-3 focus:outline-ring',
+              )}
+              onKeyDown={(e) => {
+                if (e.repeat && e.key === 'Enter') e.preventDefault();
+              }}
             >
               <Icon
                 icon={metodo === 'fiel' ? 'ph:shield-check-light' : 'ph:key-light'}
@@ -182,6 +245,7 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
         log={job.log}
         resultado={job.resultado}
         error={job.error}
+        progreso={job.progreso}
       />
 
       <CaptchaModal captcha={job.captcha} onResolver={job.responderCaptcha} />

@@ -14,7 +14,7 @@ Sheets (en orden):
 10. IMSS — Alertas           — solo si hay alertas (rojo destructive).
 11. Periodo vs Periodo       — solo si hay datos suficientes.
 
-Reusa los tokens TodoConta `#0B5FFF + Calibri` y `_ALERT_FILL` (rojo destructive).
+Reusa los tokens de Señal (tinta `#10141B` + Calibri) y `_ALERT_FILL` (el `bad` de Señal).
 """
 
 from __future__ import annotations

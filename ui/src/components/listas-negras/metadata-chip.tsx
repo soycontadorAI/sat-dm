@@ -58,7 +58,7 @@ export function MetadataChip({ metadata, className }: Props) {
       )}
       title={
         stale
-          ? `Las listas no se actualizan desde hace ${dias} días — el cron normal es mensual.`
+          ? `Las listas no se actualizan desde hace ${dias} días (normalmente se actualizan cada mes).`
           : `Listas 69-B actualizadas el ${fecha} (hace ${dias ?? '?'} días).`
       }
     >

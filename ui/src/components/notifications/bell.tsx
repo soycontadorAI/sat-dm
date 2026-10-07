@@ -6,6 +6,7 @@ import { Icon } from '@/components/ui/icon';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { useAnuncios } from '@/lib/anuncios';
+import { useServer } from '@/providers/server-provider';
 import { NotificationItem } from './notification-item';
 
 const NO_DRAG: CSSProperties & { WebkitAppRegion?: string } = {
@@ -20,7 +21,13 @@ const NO_DRAG: CSSProperties & { WebkitAppRegion?: string } = {
  * Titlebar y necesita su propio `no-drag` inline.
  */
 export function Bell() {
-  const { anuncios, unreadCount, isRead, markRead, markAllRead, loading } = useAnuncios();
+  const feed = useAnuncios();
+  const { isRead, markRead, markAllRead, loading } = feed;
+  // Modo de grabación (tutoriales): la campana sin anuncios ni punto de no
+  // leídos; envejecen el video. No se anuncia en pantalla.
+  const { modoGrabacion } = useServer();
+  const anuncios = modoGrabacion ? [] : feed.anuncios;
+  const unreadCount = modoGrabacion ? 0 : feed.unreadCount;
 
   const label =
     unreadCount > 0

@@ -48,7 +48,7 @@ const PERIODICIDAD_LABEL: Record<string, string> = {
 };
 
 function formatoFecha(iso: string): string {
-  if (!iso) return '—';
+  if (!iso) return '–';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('es-MX', {
@@ -160,12 +160,12 @@ export function NominaRecibosTable({ rfc, data, page, pageSize, loading, onPage 
                     </div>
                   </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
-                    {r.nss || '—'}
+                    {r.nss || '–'}
                   </TableCell>
                   <TableCell className="text-xs">
                     {PERIODICIDAD_LABEL[r.periodicidad_pago ?? ''] ??
                       r.periodicidad_pago ??
-                      '—'}
+                      '–'}
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge
@@ -177,7 +177,7 @@ export function NominaRecibosTable({ rfc, data, page, pageSize, loading, onPage 
                           : 'bg-blue-50 text-blue-700',
                       )}
                     >
-                      {r.tipo_nomina ?? '—'}
+                      {r.tipo_nomina ?? '–'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-mono text-sm">
@@ -305,7 +305,7 @@ function ConceptosDrilldown({
       <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground sm:grid-cols-4">
         <div>
           <span className="font-medium">CURP:</span>{' '}
-          <span className="font-mono">{recibo.curp || '—'}</span>
+          <span className="font-mono">{recibo.curp || '–'}</span>
         </div>
         <div>
           <span className="font-medium">SBC:</span>{' '}
@@ -316,7 +316,7 @@ function ConceptosDrilldown({
           <span className="font-mono">{formatoMXN(recibo.salario_diario_integrado)}</span>
         </div>
         <div>
-          <span className="font-medium">Puesto:</span> {recibo.puesto || '—'}
+          <span className="font-medium">Puesto:</span> {recibo.puesto || '–'}
         </div>
       </div>
       <Table>
@@ -341,12 +341,12 @@ function ConceptosDrilldown({
                   {CLASE_LABEL[c.clase] ?? c.clase}
                 </TableCell>
                 <TableCell className="font-mono text-xs">{c.tipo_concepto}</TableCell>
-                <TableCell className="text-xs">{c.concepto ?? '—'}</TableCell>
+                <TableCell className="text-xs">{c.concepto ?? '–'}</TableCell>
                 <TableCell className="text-right font-mono text-xs">
-                  {c.clase === 'Percepcion' ? formatoMXN(c.importe_gravado) : '—'}
+                  {c.clase === 'Percepcion' ? formatoMXN(c.importe_gravado) : '–'}
                 </TableCell>
                 <TableCell className="text-right font-mono text-xs">
-                  {c.clase === 'Percepcion' ? formatoMXN(c.importe_exento) : '—'}
+                  {c.clase === 'Percepcion' ? formatoMXN(c.importe_exento) : '–'}
                 </TableCell>
                 <TableCell className="text-right font-mono text-xs">
                   {formatoMXN(importe)}

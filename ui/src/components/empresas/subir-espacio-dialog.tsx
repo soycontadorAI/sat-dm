@@ -92,7 +92,7 @@ export function SubirEspacioDialog({
               <p className="rounded-md border border-border bg-secondary/50 px-3 py-2">
                 <Icon icon="ph:shield-check-light" className="mr-1 inline size-3.5 align-[-2px]" />
                 Viajan <span className="font-semibold text-foreground">cifradas y directo a tu espacio
-                privado</span> — el mismo lugar seguro donde quedan cuando las capturas en la
+                privado</span>, el mismo lugar seguro donde quedan cuando las capturas en la
                 versión web. Nadie más puede usarlas: no pasan por bases de datos compartidas
                 ni por terceros, y puedes quitarlas de la web cuando quieras.
               </p>

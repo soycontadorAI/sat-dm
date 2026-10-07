@@ -45,7 +45,7 @@ function efirmaItem(empresa: Empresa | null): EfirmaItem | null {
   }
   if (sem.estado === 'verde') {
     const dias = `${sem.dias} ${sem.dias === 1 ? 'día' : 'días'}`;
-    return { tono: 'green', icono: 'ph:key-light', texto: `e.firma vigente · ${dias}` };
+    return { tono: 'green', icono: 'ph:key-light', texto: `e.firma vigente, ${dias}` };
   }
   return {
     tono: sem.estado === 'rojo' ? 'red' : 'amber',
@@ -89,7 +89,7 @@ function chipDeVersion(
   version: string | undefined,
   conUpdater: boolean,
 ): VersionChip {
-  const v = version ? `v${version}` : '—';
+  const v = version ? `v${version}` : '–';
 
   // Sin updater (navegador/dev): solo la versión, sin acción.
   if (!conUpdater) {
@@ -115,7 +115,7 @@ function chipDeVersion(
         tono: 'muted',
         icono: 'ph:check-circle-light',
         texto: v,
-        tooltip: 'Estás en la última versión · clic para volver a buscar',
+        tooltip: 'Estás en la última versión. Clic para volver a buscar.',
         accion: 'check',
       };
     case 'descargando':

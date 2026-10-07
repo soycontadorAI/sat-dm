@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
-// JetBrains Mono servida desde la app: la CSP de la web no deja cargar Google Fonts.
-import '@fontsource-variable/jetbrains-mono';
+// Geist y Geist Mono (marca Señal) servidas desde la app: la CSP de la web no
+// deja cargar Google Fonts y la app de escritorio corre sin red.
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
 import './globals.css';
 import { AuthProvider } from '@/providers/auth-provider';
+import { NavegacionProvider } from '@/providers/navegacion-provider';
 import { ServerProvider } from '@/providers/server-provider';
 import { ThemeProvider } from '@/providers/theme-provider';
 import { SonnerProvider } from '@/components/providers/sonner-provider';
@@ -13,7 +16,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 
 export const metadata: Metadata = {
   title: 'TodoConta',
-  description: 'TodoConta — descarga masiva de CFDIs y trámites del SAT',
+  description: 'TodoConta: descarga masiva de CFDIs y trámites del SAT',
 };
 
 export default function RootLayout({
@@ -27,11 +30,16 @@ export default function RootLayout({
         <ThemeProvider>
           <ServerProvider>
             <AuthProvider>
-              <TooltipProvider>
-                <AppShell>{children}</AppShell>
-                {/* Una sesión activa a la vez (F1.1): pantalla de cierre encima de todo. */}
-                <SesionUnica />
-              </TooltipProvider>
+              {/* Clásica o espacios (F3): dentro de Auth porque la regla del
+                  2 de noviembre mira el plan, y arriba del login para que
+                  ?labs=espacios se capture aunque no haya sesión. */}
+              <NavegacionProvider>
+                <TooltipProvider>
+                  <AppShell>{children}</AppShell>
+                  {/* Una sesión activa a la vez (F1.1): pantalla de cierre encima de todo. */}
+                  <SesionUnica />
+                </TooltipProvider>
+              </NavegacionProvider>
             </AuthProvider>
           </ServerProvider>
           <SonnerProvider />

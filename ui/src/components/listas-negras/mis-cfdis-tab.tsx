@@ -99,8 +99,8 @@ export function MisCfdisTab() {
         setInfo('Todos los RFCs ya están verificados (válidos por 30 días). Usa "Forzar revalidación" si necesitas volver a consultar.');
       } else {
         setInfo(
-          `Validados ${r.validados} RFCs · EFOS ${r.efos} · Aclarados ${r.aclarados} · ` +
-          `En 69 ${r.lista_69} · Limpios ${r.limpios}`,
+          `Validados ${r.validados} RFCs: EFOS ${r.efos}, aclarados ${r.aclarados}, ` +
+          `en 69 ${r.lista_69} y limpios ${r.limpios}.`,
         );
       }
       await refrescar(filtro);
@@ -236,7 +236,7 @@ export function MisCfdisTab() {
                   const etiqueta = (emisor.emisor_en_lista_negra ?? 'Limpio') as EtiquetaLista;
                   return (
                     <TableRow key={emisor.emisor_rfc}>
-                      <TableCell className="text-sm">{emisor.emisor_nombre || '—'}</TableCell>
+                      <TableCell className="text-sm">{emisor.emisor_nombre || '–'}</TableCell>
                       <TableCell className="font-mono text-xs">{emisor.emisor_rfc}</TableCell>
                       <TableCell>
                         {emisor.emisor_en_lista_negra ? (

@@ -36,7 +36,7 @@ export function NotificationItem({ anuncio, read, onRead }: Props) {
       />
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span className="text-[11px] font-medium text-muted-foreground">
             {CATEGORIA_LABEL[anuncio.category]}
           </span>
           <span className="shrink-0 text-[10px] text-muted-foreground">{fecha}</span>

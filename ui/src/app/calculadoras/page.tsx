@@ -83,10 +83,6 @@ export default function CalculadorasPage() {
             </p>
             <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary">
               Abrir
-              <Icon
-                icon="ph:arrow-right-light"
-                className="size-4 transition-transform group-hover:translate-x-0.5"
-              />
             </span>
           </Link>
         ))}

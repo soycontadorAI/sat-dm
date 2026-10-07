@@ -168,8 +168,8 @@ export function ValidarRfcsTab() {
                 <CardTitle className="text-base">Resultados</CardTitle>
                 <CardDescription>
                   {matches.length} RFC{matches.length === 1 ? '' : 's'} consultado
-                  {matches.length === 1 ? '' : 's'} · EFOS {conteos.EFOS} · Aclarado{' '}
-                  {conteos.Aclarado} · En 69 {conteos['69']} · Limpios {conteos.Limpio}
+                  {matches.length === 1 ? '' : 's'}: EFOS {conteos.EFOS}, aclarados{' '}
+                  {conteos.Aclarado}, en 69 {conteos['69']} y limpios {conteos.Limpio}.
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
@@ -200,15 +200,15 @@ export function ValidarRfcsTab() {
                       <MatchBadge etiqueta={etiquetaDeMatch(m)} />
                     </TableCell>
                     <TableCell className="text-sm">
-                      {m.situacion_69b ?? <span className="text-muted-foreground">—</span>}
+                      {m.situacion_69b ?? <span className="text-muted-foreground">–</span>}
                     </TableCell>
                     <TableCell className="text-sm">
                       {m.supuestos_69.length > 0
                         ? m.supuestos_69.join(', ')
-                        : <span className="text-muted-foreground">—</span>}
+                        : <span className="text-muted-foreground">–</span>}
                     </TableCell>
                     <TableCell className="text-sm tabular-nums">
-                      {m.fecha_publicacion_69b ?? <span className="text-muted-foreground">—</span>}
+                      {m.fecha_publicacion_69b ?? <span className="text-muted-foreground">–</span>}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -45,7 +45,7 @@ export function GraficaCfdisMes({ meses, cargando }: GraficaCfdisMesProps) {
                   </span>
                 </div>
               </div>
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <span className="text-[11px] font-medium capitalize text-muted-foreground">
                 {m.etiqueta}
               </span>
             </div>

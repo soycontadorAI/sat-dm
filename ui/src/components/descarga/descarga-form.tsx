@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -14,6 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { usePrefill, type PrefillDescarga } from '@/lib/prefill';
+import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Parámetros que emite el form (la página expande "A" en dos solicitudes E + R).
@@ -55,20 +57,58 @@ interface DescargaFormProps {
   onSubmit: (params: DescargaFormParams) => void;
   isLoading: boolean;
   disabled: boolean;
+  /** RFC de la empresa activa: el aviso de una orden de ⌘K solo vale para la suya. */
+  rfcActivo?: string | null;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProps) {
-  const [fechaInicio, setFechaInicio] = useState(firstDayOfMonth);
-  const [fechaFin, setFechaFin] = useState(lastDayOfMonth);
+export function DescargaForm({ onSubmit, isLoading, disabled, rfcActivo }: DescargaFormProps) {
+  // Orden de ⌘K ("descargar recibidos de septiembre de ..."): el primer Enter
+  // llena el formulario y deja el foco en "Solicitar descarga"; el segundo
+  // Enter la manda. Nada sale al SAT sin ese segundo Enter (el SAT limita las
+  // solicitudes repetidas con el mismo criterio).
+  const { inicial, nuevo } = usePrefill('descarga');
+
+  const [fechaInicio, setFechaInicio] = useState(() => inicial?.desde ?? firstDayOfMonth());
+  const [fechaFin, setFechaFin] = useState(() => inicial?.hasta ?? lastDayOfMonth());
   const [tipoSolicitud, setTipoSolicitud] = useState<'CFDI' | 'Metadata'>('CFDI');
-  const [tipoComprobante, setTipoComprobante] = useState<ComprobanteSeleccion>('E');
+  const [tipoComprobante, setTipoComprobante] = useState<ComprobanteSeleccion>(
+    () => inicial?.comprobante ?? 'E',
+  );
+
+  const [deOrden, setDeOrden] = useState<PrefillDescarga | null>(inicial);
+  const [enfocarPendiente, setEnfocarPendiente] = useState(!!inicial);
+  const submitRef = useRef<HTMLButtonElement>(null);
+  // Un Enter sostenido no debe mandar la solicitud: ignorar el submit en los
+  // primeros instantes después de llenar.
+  const listoDesde = useRef(0);
+
+  // Otra orden con la pantalla ya abierta.
+  useEffect(() => {
+    if (!nuevo) return;
+    setFechaInicio(nuevo.desde);
+    setFechaFin(nuevo.hasta);
+    setTipoSolicitud('CFDI');
+    setTipoComprobante(nuevo.comprobante);
+    setDeOrden(nuevo);
+    setEnfocarPendiente(true);
+  }, [nuevo]);
+
+  const isDisabledPrefill = disabled || isLoading;
+  useEffect(() => {
+    if (!enfocarPendiente || isDisabledPrefill) return;
+    listoDesde.current = Date.now() + 400;
+    submitRef.current?.focus();
+    setEnfocarPendiente(false);
+  }, [enfocarPendiente, isDisabledPrefill]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (Date.now() < listoDesde.current) return;
+    setDeOrden(null);
     onSubmit({
       fecha_inicio: fechaInicio,
       fecha_fin: fechaFin,
@@ -78,6 +118,8 @@ export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProp
   }
 
   const isDisabled = disabled || isLoading;
+  // Si después cambiaste de empresa, el aviso ya no es de la empresa activa.
+  const ordenVigente = deOrden && (!rfcActivo || deOrden.rfc === rfcActivo) ? deOrden : null;
 
   return (
     <Card>
@@ -87,12 +129,21 @@ export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProp
           Solicitar descarga
         </CardTitle>
         <CardDescription>
-          Elige el periodo, el tipo de descarga y de qué facturas. «Ambas» pide
+          Elige el periodo, el tipo de descarga y de qué facturas. "Ambas" pide
           las emitidas y las recibidas al mismo tiempo.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {ordenVigente && (
+            <div className="flex items-start gap-2.5 rounded-[10px] border border-border bg-background px-3.5 py-2.5 text-[13px] text-muted-foreground">
+              <Icon icon="ph:arrow-elbow-down-left-light" className="mt-0.5 size-4 shrink-0 text-foreground" />
+              <span>
+                <span className="font-semibold text-foreground">Lo llenó tu orden:</span>{' '}
+                {ordenVigente.etiqueta}. Revisa y confirma con Enter.
+              </span>
+            </div>
+          )}
           {/* Date range — se queda como está, nativo */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -156,7 +207,19 @@ export function DescargaForm({ onSubmit, isLoading, disabled }: DescargaFormProp
           </div>
 
           {/* Submit */}
-          <Button type="submit" disabled={isDisabled} className="w-full sm:w-auto">
+          <Button
+            ref={submitRef}
+            type="submit"
+            disabled={isDisabled}
+            // Después de una orden, el contorno marca dónde cae el segundo Enter.
+            className={cn(
+              'w-full sm:w-auto',
+              ordenVigente && 'focus:outline-solid focus:outline-2 focus:outline-offset-3 focus:outline-ring',
+            )}
+            onKeyDown={(e) => {
+              if (e.repeat && e.key === 'Enter') e.preventDefault();
+            }}
+          >
             {isLoading ? (
               <>
                 <Icon icon="ph:circle-notch-light" className="size-4 animate-spin" />

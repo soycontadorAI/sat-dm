@@ -1,13 +1,38 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
 import { PageHeading } from '@/components/layout/page-heading';
 import { OrganizadorForm } from '@/components/organizador/organizador-form';
 import { OrganizadorResults } from '@/components/organizador/organizador-results';
+import { OrganizadorWeb } from '@/components/organizador/organizador-web';
 import { useOrganizador } from '@/hooks/use-organizador';
+import { esWeb } from '@/lib/modo';
+import { useEspacios } from '@/providers/navegacion-provider';
 
 export default function OrganizadorPage() {
   const { organizar, renombrar, deduplicar, result, isLoading, error, reset } =
     useOrganizador();
+  // Con la navegación por espacios, en la web el Organizador se explica en vez
+  // de mostrar el formulario (trabaja sobre carpetas de la computadora). La
+  // clásica se queda como estaba.
+  const espacios = useEspacios();
+  const [web, setWeb] = useState(false);
+  useEffect(() => {
+    setWeb(esWeb());
+  }, []);
+
+  if (espacios && web) {
+    return (
+      <div className="space-y-6">
+        <PageHeading
+          title="Organizador de archivos"
+          description="Ordena en carpetas, renombra y quita duplicados de las facturas que descargaste."
+        />
+        <OrganizadorWeb />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

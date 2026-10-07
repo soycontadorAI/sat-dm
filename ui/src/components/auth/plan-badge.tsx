@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 
 import { useAuth, usePlanesV3, usePlanLicencia, type PlanLicencia } from '@/providers/auth-provider';
+import { useServer } from '@/providers/server-provider';
 import type { LicenseStatus } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/components/ui/icon';
@@ -32,6 +33,7 @@ import { formatDate } from '@/lib/formatting';
  */
 export function PlanBadge() {
   const { license } = useAuth();
+  const { modoGrabacion } = useServer();
   const router = useRouter();
   const planesV3 = usePlanesV3();
   const planLicencia = usePlanLicencia();
@@ -43,6 +45,7 @@ export function PlanBadge() {
       <PlanBadgeV3
         plan={planLicencia}
         license={license}
+        sinDias={modoGrabacion}
         onClick={() => router.push('/suscripcion')}
       />
     );
@@ -53,7 +56,8 @@ export function PlanBadge() {
     return <FounderBadge />;
   }
 
-  const dias = license.days_remaining ?? null;
+  // En modo de grabación, sin días: "Tu prueba termina en 3 días" envejece el video.
+  const dias = modoGrabacion ? null : (license.days_remaining ?? null);
   const diasLabel = dias === null ? '' : dias === 1 ? '1 día' : `${dias} días`;
   const ir = () => router.push('/suscripcion');
 
@@ -64,21 +68,21 @@ export function PlanBadge() {
         <TooltipTrigger asChild>
           <button type="button" onClick={ir} className="appearance-none bg-transparent p-0">
             <Badge
-              variant="secondary"
-              className="gap-1 bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300"
+              variant="chip"
+              className="gap-1"
               tabIndex={0}
             >
               <Icon
                 icon="ph:crown-simple-fill"
-                className="size-3 text-violet-600 dark:text-violet-400"
+                className="size-3"
               />
-              {diasLabel ? `Premium · ${diasLabel}` : 'Premium'}
+              {diasLabel ? `Premium, ${diasLabel}` : 'Premium'}
             </Badge>
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="end" className="w-64 rounded-xl p-3.5 text-left">
           <span className="flex items-center gap-1.5 text-[13.5px] font-extrabold tracking-tight">
-            <Icon icon="ph:crown-simple-fill" className="size-3.5 text-violet-400" />
+            <Icon icon="ph:crown-simple-fill" className="size-3.5" />
             Suscripción activa
           </span>
           <span className="mt-1.5 block text-xs leading-relaxed text-background/80">
@@ -97,15 +101,15 @@ export function PlanBadge() {
         <TooltipTrigger asChild>
           <button type="button" onClick={ir} className="appearance-none bg-transparent p-0">
             <Badge
-              variant="secondary"
-              className="gap-1 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+              variant="chip"
+              className="gap-1"
               tabIndex={0}
             >
               <Icon
                 icon="ph:hourglass-medium-light"
-                className="size-3 text-blue-600 dark:text-blue-400"
+                className="size-3"
               />
-              {diasLabel ? `Prueba · ${diasLabel}` : 'Prueba'}
+              {diasLabel ? `Prueba, ${diasLabel}` : 'Prueba'}
             </Badge>
           </button>
         </TooltipTrigger>
@@ -127,7 +131,7 @@ export function PlanBadge() {
     <Tooltip>
       <TooltipTrigger asChild>
         <button type="button" onClick={ir} className="appearance-none bg-transparent p-0">
-          <Badge variant="secondary" className="gap-1" tabIndex={0}>
+          <Badge variant="chip" className="gap-1" tabIndex={0}>
             Gratis
           </Badge>
         </button>
@@ -154,33 +158,33 @@ const PLANES_V3_PAGO: readonly string[] = ['esencial', 'pro', 'completo', 'medid
 function PlanBadgeV3({
   plan,
   license,
+  sinDias = false,
   onClick,
 }: {
   plan: PlanLicencia;
   license: LicenseStatus;
+  /** Modo de grabación: el plan sin cuenta regresiva. */
+  sinDias?: boolean;
   onClick: () => void;
 }) {
   if (plan.codigo === 'fundador') return <FounderBadge />;
 
-  const dias = license.days_remaining ?? null;
+  const dias = sinDias ? null : (license.days_remaining ?? null);
   const cancela = license.subscription_cancel_at_period_end === true;
   const vence = license.expires_at ? formatDate(license.expires_at) : null;
 
   let etiqueta = plan.nombre;
-  let clase = 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300';
   let icono: string | null = 'ph:crown-simple-fill';
   let titulo = `Plan ${plan.nombre}`;
   let texto: string;
 
   if (plan.codigo === 'trial') {
     etiqueta = dias === null ? 'Prueba' : `Prueba: ${dias === 1 ? '1 día' : `${dias} días`}`;
-    clase = 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
     icono = 'ph:hourglass-medium-light';
     titulo = 'Periodo de prueba';
     texto =
       'Tienes lo del plan Pro mientras dura la prueba: hasta 50 empresas, exportaciones y la conexión con tu IA (MCP). Toca para ver los planes.';
   } else if (plan.codigo === 'gratis') {
-    clase = '';
     icono = null;
     titulo = 'Plan Gratis';
     texto =
@@ -201,7 +205,8 @@ function PlanBadgeV3({
     <Tooltip>
       <TooltipTrigger asChild>
         <button type="button" onClick={onClick} className="appearance-none bg-transparent p-0">
-          <Badge variant="secondary" className={`gap-1 ${clase}`} tabIndex={0}>
+          {/* Señal: el plan es un chip neutro (píldora blanca con regla). */}
+          <Badge variant="chip" className="gap-1" tabIndex={0}>
             {icono && <Icon icon={icono} className="size-3" />}
             {etiqueta}
           </Badge>

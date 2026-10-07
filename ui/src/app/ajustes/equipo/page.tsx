@@ -325,7 +325,7 @@ export default function AjustesEquipoPage() {
     <div className="max-w-4xl space-y-6">
       {backLink}
       <PageHeading
-        title={data.team.name ? `Equipo — ${data.team.name}` : 'Equipo'}
+        title={data.team.name ? `Equipo: ${data.team.name}` : 'Equipo'}
         description="Gestiona los miembros de tu equipo"
       />
 

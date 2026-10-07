@@ -39,6 +39,12 @@ interface ResourceListProps<T> {
    * golpe congela equipos modestos. Sin esta prop, renderiza todo (igual que antes).
    */
   pageSize?: number;
+  /**
+   * Abre (expande) esta fila desde fuera y la trae a la vista. Cada cambio de
+   * valor la vuelve a abrir (p. ej. el acceso directo "Constancia y Opinión
+   * 32-D", que abre la fila de la empresa activa).
+   */
+  abrirKey?: { key: string } | null;
   className?: string;
 }
 
@@ -53,9 +59,30 @@ export function ResourceList<T>({
   activeId,
   dimmed = false,
   pageSize,
+  abrirKey,
   className,
 }: ResourceListProps<T>) {
   const [expandedKeys, setExpandedKeys] = React.useState<Set<string>>(new Set());
+  const listaRef = React.useRef<HTMLUListElement>(null);
+
+  React.useEffect(() => {
+    if (!abrirKey) return;
+    setExpandedKeys((prev) => new Set(prev).add(abrirKey.key));
+    // Página donde vive la fila (listas paginadas).
+    if (pageSize) {
+      const idx = items.findIndex((it) => getKey(it) === abrirKey.key);
+      if (idx >= 0) setPage(Math.floor(idx / pageSize));
+    }
+    const t = setTimeout(() => {
+      const fila = Array.from(
+        listaRef.current?.querySelectorAll<HTMLElement>('[data-resource-key]') ?? [],
+      ).find((el) => el.dataset.resourceKey === abrirKey.key);
+      // Lo justo para que la fila abierta se vea completa (sin esconder el encabezado si ya cabe).
+      fila?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, 60);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abrirKey]);
 
   const [page, setPage] = React.useState(0);
   const totalPages = pageSize ? Math.max(1, Math.ceil(items.length / pageSize)) : 1;
@@ -107,7 +134,7 @@ export function ResourceList<T>({
         </div>
       )}
 
-      <ul className="divide-y divide-border">
+      <ul ref={listaRef} className="divide-y divide-border">
         {visibles.map((item) => {
           const key = getKey(item);
           const isExpanded = expandedKeys.has(key);
@@ -116,7 +143,7 @@ export function ResourceList<T>({
           const clickable = Boolean(onRowClick);
 
           return (
-            <li key={key}>
+            <li key={key} data-resource-key={key} className="scroll-mt-4">
               <div
                 className={cn(
                   'flex items-center px-3 py-2.5 transition-colors',

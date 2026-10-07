@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Toaster } from 'sonner';
 import { useTheme } from 'next-themes';
 
+import { Icon } from '@/components/ui/icon';
+
 /**
  * Monta el contenedor global de toasts (sonner). Coordina el tema visual
  * con next-themes para que claros/oscuros del toast hagan match con la app.
@@ -23,6 +25,10 @@ export function SonnerProvider() {
       position="top-right"
       richColors
       closeButton
+      // Un toast "cargando" es trabajo automático en curso: gira en cian
+      // (DESIGN.md, la regla del cian). Sonner no pinta el `icon` propio de
+      // un toast.loading, así que va aquí.
+      icons={{ loading: <Icon icon="ph:circle-notch-light" className="size-4 animate-spin text-auto" /> }}
     />
   );
 }

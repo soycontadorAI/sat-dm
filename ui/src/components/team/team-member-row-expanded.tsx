@@ -17,7 +17,7 @@ export function TeamMemberRowExpanded({ member, empresas }: TeamMemberRowExpande
   return (
     <div className="grid gap-4 text-sm sm:grid-cols-2">
       <section className="space-y-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h4 className="text-xs font-semibold text-ghost">
           Historial
         </h4>
         <dl className="space-y-1">
@@ -35,7 +35,7 @@ export function TeamMemberRowExpanded({ member, empresas }: TeamMemberRowExpande
       </section>
 
       <section className="space-y-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h4 className="text-xs font-semibold text-ghost">
           Acceso a empresas
         </h4>
         {member.role === 'admin' ? (

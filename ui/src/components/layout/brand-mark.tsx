@@ -7,7 +7,7 @@ interface BrandMarkProps {
   size?: number;
   /** Tamaño tipográfico del wordmark en px. Default 17. */
   wordmarkSize?: number;
-  /** Oculta el wordmark; deja solo el icono (sidebar colapsado). */
+  /** Oculta el wordmark; deja solo el icono (sidebar colapsado, riel). */
   iconOnly?: boolean;
   /** `priority` de next/image (above-the-fold, p. ej. login). */
   priority?: boolean;
@@ -18,8 +18,9 @@ interface BrandMarkProps {
 }
 
 /**
- * Lockup de marca TodoConta: icono + wordmark con el punto en cian (`--accent-ai`),
- * igual que el BrandMark canónico de todoconta-apps. Reutilizable (sidebar, login, …).
+ * Lockup de marca TodoConta (Señal): el Libro Mayor (cuadro en tinta con el
+ * mark en claro y el ribbon cian en la costura) + wordmark en Geist 800. El
+ * ribbon es el único cian del logo; el wordmark va en tinta, sin punto de color.
  */
 export function BrandMark({
   size = 34,
@@ -27,7 +28,7 @@ export function BrandMark({
   iconOnly = false,
   priority = false,
   className,
-  iconClassName = 'rounded-lg shadow-sm',
+  iconClassName = 'rounded-lg',
 }: BrandMarkProps) {
   return (
     <span className={cn('inline-flex items-center gap-2.5', className)}>
@@ -41,10 +42,10 @@ export function BrandMark({
       />
       {!iconOnly && (
         <span
-          className="truncate font-extrabold tracking-tight text-foreground"
+          className="truncate font-extrabold tracking-[-0.03em] text-foreground"
           style={{ fontSize: wordmarkSize }}
         >
-          TodoConta<span className="text-accent-ai">.</span>
+          TodoConta
         </span>
       )}
     </span>

@@ -126,7 +126,7 @@ export function TablaDiot({
                       {(fila.nombre || fila.num_cfdis) && (
                         <p className="mt-0.5 max-w-40 truncate text-xs text-muted-foreground">
                           {fila.nombre}
-                          {fila.num_cfdis ? ` · ${fila.num_cfdis} CFDIs` : ''}
+                          {fila.num_cfdis ? `, ${fila.num_cfdis} CFDIs` : ''}
                         </p>
                       )}
                     </div>

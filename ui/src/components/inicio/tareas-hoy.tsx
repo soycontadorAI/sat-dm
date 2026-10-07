@@ -74,7 +74,6 @@ export function TareasHoy({ empresas }: TareasHoyProps) {
         <Button variant="ghost" size="sm" asChild>
           <Link href="/tareas">
             Ver todas
-            <Icon icon="ph:arrow-right-light" className="size-3.5" />
           </Link>
         </Button>
       </div>

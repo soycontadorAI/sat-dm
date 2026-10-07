@@ -226,7 +226,7 @@ function RespaldoFielTooltip() {
         Tu e.firma se queda en tu equipo; nunca la subimos a ningún servidor.
         Guardamos una copia de respaldo de tu .cer/.key en tu carpeta de descargas.{' '}
         <strong className="font-semibold">Tu contraseña no se guarda en texto plano</strong>{' '}
-        — resguárdala, no podemos recuperarla.
+        Resguárdala: no podemos recuperarla.
       </TooltipContent>
     </Tooltip>
   );

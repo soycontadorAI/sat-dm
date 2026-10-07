@@ -230,7 +230,7 @@ function ContrapartesList({ titulo, items }: { titulo: string; items: TopContrap
             {items.map((r) => (
               <TableRow key={r.rfc}>
                 <TableCell>
-                  <div className="font-medium leading-tight">{r.nombre || '—'}</div>
+                  <div className="font-medium leading-tight">{r.nombre || '–'}</div>
                   <div className="font-mono text-xs text-muted-foreground">{r.rfc}</div>
                 </TableCell>
                 <TableCell className="text-right font-mono">{r.comprobantes}</TableCell>

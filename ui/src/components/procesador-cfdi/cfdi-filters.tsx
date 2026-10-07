@@ -48,11 +48,11 @@ const ESTADOS_DIOT: { value: CfdiEstadoDiot | 'todos'; label: string }[] = [
   { value: 'noaplica', label: 'No aplica' },
 ];
 
-/** Bloque de filtros con etiqueta-eyebrow (Clasificación / Periodo / Importe). */
+/** Bloque de filtros con su etiqueta (Clasificación / Periodo / Importe). */
 function FiltroGrupo({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2.5">
-      <div className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground/70">
+      <div className="text-xs font-semibold text-ghost">
         {label}
       </div>
       {children}
@@ -89,9 +89,7 @@ export function CfdiFiltersPanel({
           )}
           {!open && (
             <span className="whitespace-nowrap text-xs font-medium text-muted-foreground">
-              {filtrosActivos > 0
-                ? '· el listado está filtrado'
-                : '· mostrando todas las facturas'}
+              {filtrosActivos > 0 ? 'El listado está filtrado' : 'Mostrando todas las facturas'}
             </span>
           )}
         </span>
