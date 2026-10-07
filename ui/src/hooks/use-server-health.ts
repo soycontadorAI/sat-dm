@@ -67,6 +67,14 @@ export function useServerHealth(
   // Counter to force an immediate check (bumped by `refresh()`).
   const [refreshCounter, setRefreshCounter] = useState(0);
 
+  const marcarDesconectado = useCallback(() => {
+    setIsConnected(false);
+    setRfcCargado(null);
+    setEfirmaLista(false);
+    setEfirmaVencimiento(null);
+    setNavegador(null);
+  }, []);
+
   const checkHealth = useCallback(async () => {
     if (!enabled || checkingRef.current) return;
     checkingRef.current = true;
@@ -82,21 +90,22 @@ export function useServerHealth(
       setModoGrabacion(data.modo_grabacion === true);
     } catch {
       if (!mountedRef.current) return;
-
-      setIsConnected(false);
-      setRfcCargado(null);
-      setEfirmaLista(false);
-      setEfirmaVencimiento(null);
-      setNavegador(null);
+      marcarDesconectado();
     } finally {
       checkingRef.current = false;
     }
-  }, [apiClient, enabled]);
+  }, [apiClient, enabled, marcarDesconectado]);
 
-  // Run on mount and whenever refreshCounter changes (manual refresh).
+  // Run on mount and whenever refreshCounter changes (manual refresh). Apagado
+  // (p. ej. la web al olvidar la conexión) se marca desconectado aunque antes
+  // estuviera conectado: lo que depende de `isConnected` deja de llamar.
   useEffect(() => {
+    if (!enabled) {
+      marcarDesconectado();
+      return;
+    }
     checkHealth();
-  }, [checkHealth, refreshCounter]);
+  }, [checkHealth, enabled, marcarDesconectado, refreshCounter]);
 
   // Periodic polling. Con la ventana oculta (minimizada / en background) no
   // tiene caso pollear — se salta el tick y, al volver a ser visible, se
