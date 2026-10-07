@@ -22,6 +22,7 @@ from ...webservice.solicitud import solicitar_descarga
 from ...webservice.verificacion import verificar_solicitud, consultar_solicitud
 from ...core.config import TIPO_CFDI, TIPO_EMITIDO
 from .. import cupo_descargas
+from ..uso import rango, tipo_cfdi, tipo_de_solicitud, track
 from ..state import (
     _session,
     _get_fiel,
@@ -230,7 +231,7 @@ def solicitar(req: SolicitudRequest):
     al llegar al tope). Bajar sus paquetes después no vuelve a contar.
     """
     fiel = _get_fiel()
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=fiel.rfc)
     token = _renovar_token()
 
     try:
@@ -252,8 +253,11 @@ def solicitar(req: SolicitudRequest):
         )
         _guardar_solicitud_ws(fiel.rfc, id_solicitud, req)
         cupo_descargas.registrar(
-            "metadata" if str(req.tipo_solicitud).lower() == "metadata" else "cfdi"
+            "metadata" if str(req.tipo_solicitud).lower() == "metadata" else "cfdi",
+            rfc=fiel.rfc,
         )
+        track("descarga_solicitada", canal="web_service", credencial="efirma",
+              tipo=tipo_cfdi(req.tipo_comprobante, req.tipo_solicitud))
         return {"ok": True, "id_solicitud": id_solicitud}
     except ErrorTransitorioSAT:
         raise  # error interno del SAT → lo traduce @_sat_disponible a 503
@@ -398,6 +402,9 @@ def descargar(
             _actualizar_solicitud_ws(
                 fiel.rfc, id_solicitud, "descargada", package_ids=estado.package_ids,
             )
+            track("descarga_completada", canal="web_service", credencial="efirma",
+                  tipo=_tipo_guardado(fiel.rfc, id_solicitud),
+                  tamano=rango(estado.numero_cfdis), segundo_plano=False)
             return {
                 "ok": True,
                 "archivos": [str(z) for z in zips],
@@ -428,7 +435,7 @@ def descarga_completa(req: DescargaCompletaRequest):
     """
     from ...webservice.client import descargar_cfdi
 
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=_session["rfc"])
     try:
         zips = descargar_cfdi(
             cer_path=_session["cer_path"],
@@ -446,7 +453,12 @@ def descarga_completa(req: DescargaCompletaRequest):
             descripcion=f"Descarga WS completa · {req.fecha_inicio} a {req.fecha_fin}",
             ruta=req.directorio_salida,
         )
-        cupo_descargas.registrar("cfdi")
+        cupo_descargas.registrar("cfdi", rfc=_session["rfc"])
+        # Solicitud y descarga en una sola llamada: cuenta como las dos acciones.
+        track("descarga_solicitada", canal="web_service", credencial="efirma",
+              tipo=tipo_cfdi(req.tipo_comprobante))
+        track("descarga_completada", canal="web_service", credencial="efirma",
+              tipo=tipo_cfdi(req.tipo_comprobante), segundo_plano=False)
         return {
             "ok": True,
             "archivos": [str(z) for z in zips],
@@ -474,7 +486,7 @@ def solicitar_folio(req: SolicitudFolioRequest):
     from ...webservice.client import descargar_por_uuid
 
     _get_fiel()
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=_session["rfc"])
 
     try:
         zips = descargar_por_uuid(
@@ -486,7 +498,10 @@ def solicitar_folio(req: SolicitudFolioRequest):
             tipo_solicitud=req.tipo_solicitud,
             extraer=req.extraer,
         )
-        cupo_descargas.registrar("cfdi")
+        cupo_descargas.registrar("cfdi", rfc=_session["rfc"])
+        track("descarga_solicitada", canal="web_service", credencial="efirma", tipo="por_uuid")
+        track("descarga_completada", canal="web_service", credencial="efirma",
+              tipo="por_uuid", segundo_plano=False)
         return {
             "ok": True,
             "archivos": [str(z) for z in zips],
@@ -524,7 +539,7 @@ def descarga_inteligente(req: DescargaInteligente):
     from ...webservice.client import descargar_cfdi_inteligente
 
     _get_fiel()  # Verificar que hay e-firma
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=_session["rfc"])
 
     try:
         resultado = descargar_cfdi_inteligente(
@@ -538,7 +553,9 @@ def descarga_inteligente(req: DescargaInteligente):
             ciec=req.ciec,
             umbral_ciec=req.umbral_ciec,
         )
-        cupo_descargas.registrar("cfdi")
+        cupo_descargas.registrar("cfdi", rfc=_session["rfc"])
+        track("descarga_solicitada", tipo=tipo_cfdi(req.tipo_comprobante),
+              **_canal_inteligente(resultado))
         return resultado
     except (requests.RequestException, ErrorTransitorioSAT):
         raise  # red/SSL o error interno del SAT → @_sat_disponible lo hace 503
@@ -549,6 +566,22 @@ def descarga_inteligente(req: DescargaInteligente):
 # ---------------------------------------------------------------------------
 # Helpers: persistencia de solicitudes WS por empresa
 # ---------------------------------------------------------------------------
+
+
+def _tipo_guardado(rfc: str, id_solicitud: str):
+    """emitidos | recibidos | metadata de una solicitud WS guardada (uso por acción)."""
+    try:
+        from ...cli import config_store
+        return tipo_de_solicitud(config_store.get_solicitud(rfc, id_solicitud))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _canal_inteligente(resultado) -> dict:
+    """Canal y credencial que eligió /descarga-inteligente (uso por acción)."""
+    if isinstance(resultado, dict) and resultado.get("metodo") == "ciec":
+        return {"canal": "rapida", "credencial": "contrasena"}
+    return {"canal": "web_service", "credencial": "efirma"}
 
 
 def _estado_catalogo(cod_estado: str) -> str:

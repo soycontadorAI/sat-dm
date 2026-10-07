@@ -30,6 +30,7 @@ from ...core import paths
 from ...core.errores import ErrorEsperado
 from .. import jobs
 from ..state import _descargas_base
+from ..uso import track
 from .certifica import _credenciales_keychain, _lanzar_job_certifica
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,8 @@ def ce_enviar(req: CeEnviarRequest):
         from ...portal.contabilidad_electronica import RE_ERROR_TRANSITORIO
         from ...cli.config_store import save_envio_pendiente
 
+        track("contabilidad_electronica_enviada",
+              modo="envio" if req.confirmar and not req.solo_validar else "validacion")
         if not isinstance(resultado, dict):
             return
         transitorios = [f for f in resultado.get("fallidos", [])

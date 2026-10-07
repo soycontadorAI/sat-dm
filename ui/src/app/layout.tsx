@@ -11,11 +11,12 @@ import { ThemeProvider } from '@/providers/theme-provider';
 import { SonnerProvider } from '@/components/providers/sonner-provider';
 import { Telemetria } from '@/components/providers/telemetria';
 import { AppShell } from '@/components/layout/app-shell';
+import { SesionUnica } from '@/components/auth/sesion-unica';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 export const metadata: Metadata = {
   title: 'TodoConta',
-  description: 'TodoConta — descarga masiva de CFDIs y trámites del SAT',
+  description: 'TodoConta: descarga masiva de CFDIs y trámites del SAT',
 };
 
 export default function RootLayout({
@@ -35,6 +36,8 @@ export default function RootLayout({
               <NavegacionProvider>
                 <TooltipProvider>
                   <AppShell>{children}</AppShell>
+                  {/* Una sesión activa a la vez (F1.1): pantalla de cierre encima de todo. */}
+                  <SesionUnica />
                 </TooltipProvider>
               </NavegacionProvider>
             </AuthProvider>

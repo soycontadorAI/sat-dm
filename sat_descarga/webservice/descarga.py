@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List
 from lxml import etree
 
+from .. import demo
 from ..core.config import ENDPOINTS, SOAP_ACTIONS
 from ..core.fiel import FIEL
 from ..core.http_client import make_request
@@ -51,6 +52,29 @@ def descargar_paquete(
     Returns:
         Path al archivo ZIP descargado.
     """
+    logger.info("[Descarga] Descargando paquete %s ...", package_id)
+
+    if demo.aplica(rfc_solicitante):  # modo de grabación: empresa de demo, sin SAT
+        from ..demo import sat as sat_demo
+        zip_bytes = sat_demo.paquete_zip(rfc_solicitante, package_id)
+    else:
+        zip_bytes = _pedir_paquete(token, rfc_solicitante, package_id, fiel)
+
+    out_dir = Path(directorio_salida)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = out_dir / f"{package_id}.zip"
+    zip_path.write_bytes(zip_bytes)
+    logger.info("[Descarga] ZIP guardado: %s (%d bytes)", zip_path, len(zip_bytes))
+
+    if extraer:
+        _extraer_zip(zip_bytes, out_dir, package_id)
+
+    return zip_path
+
+
+def _pedir_paquete(token: str, rfc_solicitante: str, package_id: str,
+                   fiel: FIEL = None) -> bytes:
+    """PeticionDescargaMasivaTercerosEntrada: el ZIP del paquete, del SAT."""
     envelope_xml = (
         f'<s:Envelope xmlns:s="{_SOAP_NS}" xmlns:des="{_DES_NS}">'
         f'<s:Header/>'
@@ -76,8 +100,6 @@ def descargar_paquete(
         "Authorization": f'WRAP access_token="{token}"',
     }
 
-    logger.info("[Descarga] Descargando paquete %s ...", package_id)
-
     resp_xml = make_request(
         url=ENDPOINTS["descarga_masiva"],
         body=body,
@@ -85,18 +107,7 @@ def descargar_paquete(
         operation="DescargaMasiva",
     )
 
-    zip_bytes = _extraer_zip_del_response(resp_xml, package_id)
-
-    out_dir = Path(directorio_salida)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    zip_path = out_dir / f"{package_id}.zip"
-    zip_path.write_bytes(zip_bytes)
-    logger.info("[Descarga] ZIP guardado: %s (%d bytes)", zip_path, len(zip_bytes))
-
-    if extraer:
-        _extraer_zip(zip_bytes, out_dir, package_id)
-
-    return zip_path
+    return _extraer_zip_del_response(resp_xml, package_id)
 
 
 def descargar_todos(

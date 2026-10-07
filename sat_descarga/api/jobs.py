@@ -96,9 +96,14 @@ class JobRegistry:
 
     def hay_activo(self) -> bool:
         """True si hay algún job en curso (la sesión del agente es de un usuario)."""
+        return self.activo() is not None
+
+    def activo(self) -> Optional[Job]:
+        """El job en curso, si hay uno (solo corre uno a la vez). Lo usa el modo
+        de grabación para mandar el avance de una descarga simulada por SSE."""
         with self._lock:
-            return any(j.estado in ("pending", "running", "captcha")
-                       for j in self._jobs.values())
+            return next((j for j in self._jobs.values()
+                         if j.estado in ("pending", "running", "captcha")), None)
 
     # ---- emisión de eventos (SSE) ----
     def emitir(self, job: Job, tipo: str, **data) -> None:
@@ -160,7 +165,14 @@ class JobRegistry:
         bien (p. ej. para registrar la descarga en el historial). Sus errores se
         registran pero NO tumban el job ni se propagan al front.
         """
+        # El hilo nuevo no hereda el contexto de la petición: el origen de la
+        # acción (uso por acción) se pasa a mano para los eventos del job.
+        from .uso import fijar_origen, origen_actual
+
+        origen = origen_actual()
+
         def _run():
+            fijar_origen(origen)
             job.estado = "running"
             self.emitir(job, "estado", estado="running")
             try:

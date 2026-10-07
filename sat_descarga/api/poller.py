@@ -28,6 +28,17 @@ Notas de diseño:
 - Dedup de descargas contra el endpoint /descargar vía
   `state._iniciar_descarga_ws` (candado en memoria del proceso).
 - Kill switch: variable de entorno SAT_DM_SIN_POLLER=1 (útil en tests/debug).
+- Sesión única (F1.1, `api/sesion_unica.py`): si otra instalación reclamó la
+  cuenta (escritorio, modo exigir), se PAUSA lo que arranca trabajo nuevo: los
+  reenvíos de contabilidad electrónica (abren el portal con la e.firma) y la
+  sincronización periódica. Se reanuda solo en la primera pasada después de
+  "Continuar aquí". Lo que NO se pausa: terminar las solicitudes del Web
+  Service que ya se hicieron (verificar y bajar sus paquetes). El SAT las
+  resuelve en un máximo de 72 h y limita las solicitudes idénticas por rango
+  (5002 «agotadas de por vida»); pausarlas puede perderlas sin remedio, y
+  terminarlas no da uso de la app a nadie: solo deja en esta computadora los
+  XML que se pidieron cuando tenía la sesión. Las solicitudes viven en el
+  catálogo local, así que la otra instalación no puede terminarlas.
 """
 
 import logging
@@ -49,6 +60,7 @@ from .state import (
     _salida_descarga_ws,
     _terminar_descarga_ws,
 )
+from .uso import rango, tipo_de_solicitud, track
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +97,7 @@ def _loop() -> None:
     if _stop.wait(ARRANQUE_DELAY_S):
         return
     pasadas = 0
+    sync_pendiente = False
     while not _stop.is_set():
         try:
             _una_pasada()
@@ -93,8 +106,12 @@ def _loop() -> None:
         # Sync del catálogo de empresas y de las tareas al arrancar y luego
         # cada ~30 min: converge cambios hechos en la otra instalación
         # (desktop ⇄ online) aunque el usuario no toque nada. Best-effort,
-        # cada uno en su propio hilo.
+        # cada uno en su propio hilo. Pausado si otra instalación reclamó la
+        # cuenta: queda pendiente y corre en la primera pasada al reanudar.
         if pasadas % 30 == 0:
+            sync_pendiente = True
+        if sync_pendiente and not _sesion_cerrada():
+            sync_pendiente = False
             try:
                 from .sync_empresas import sincronizar_async
                 from .sync_tareas import sincronizar_async as sincronizar_tareas
@@ -119,8 +136,10 @@ def _una_pasada() -> None:
             continue
         rfc = emp["rfc"]
         try:
+            # Lo ya solicitado al Web Service se termina siempre (ver docstring).
             _procesar_empresa(rfc, emp)
-            _reanudar_envios_ce(rfc, emp)
+            if not _sesion_cerrada():
+                _reanudar_envios_ce(rfc, emp)
         except (requests.RequestException, ErrorEsperado) as e:
             # SAT caído/lento (timeouts, SSL, su «Error no controlado»): condición
             # transitoria esperada — la siguiente pasada reintenta. Warning para
@@ -128,6 +147,17 @@ def _una_pasada() -> None:
             logger.warning("[poller] SAT no disponible procesando %s: %s", rfc, e)
         except Exception:  # noqa: BLE001 — una empresa con problemas no frena a las demás
             logger.exception("[poller] Error procesando %s", rfc)
+
+
+def _sesion_cerrada() -> bool:
+    """True si otra instalación reclamó la cuenta (sesión única, F1.1).
+    Cualquier falla = False: la sesión única nunca frena al poller por error."""
+    try:
+        from .sesion_unica import cerrada
+
+        return cerrada()
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _procesar_empresa(rfc: str, emp: dict) -> None:
@@ -206,6 +236,8 @@ def _descargar_lista(rfc: str, fiel: FIEL, sol: dict) -> None:
                 rfc, id_sol, "descargada",
                 mensaje="Sin CFDIs para el periodo.", numero_cfdis=numero_cfdis or 0,
             )
+            track("descarga_completada", canal="web_service", credencial="efirma",
+                  tipo=tipo_de_solicitud(sol), tamano="0", segundo_plano=True)
             return
         salida = _salida_descarga_ws(rfc, id_sol)
         descargar_todos(
@@ -224,6 +256,8 @@ def _descargar_lista(rfc: str, fiel: FIEL, sol: dict) -> None:
         config_store.update_solicitud(
             rfc, id_sol, "descargada", package_ids=package_ids,
         )
+        track("descarga_completada", canal="web_service", credencial="efirma",
+              tipo=tipo_de_solicitud(sol), tamano=rango(numero_cfdis), segundo_plano=True)
         logger.info("[poller] %s: solicitud %s descargada en %s", rfc, id_sol, salida)
     except Exception as e:  # noqa: BLE001 — reintenta en la siguiente pasada (sigue en 3)
         logger.warning("[poller] %s: descarga de %s falló: %s", rfc, id_sol, e)

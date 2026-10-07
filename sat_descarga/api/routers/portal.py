@@ -14,7 +14,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from ... import demo
 from .. import cupo_descargas, jobs
+from ..uso import rango, tipo_cfdi, track
 from ...core.config import TIPO_RECIBIDO
 from ..state import _session, _get_fiel, _descargas_base, _registrar_descarga
 
@@ -78,7 +80,7 @@ def descargar_ciec(req: CIECDescargaRequest):
     """
     from ...portal.cfdi import descargar_cfdi_ciec
 
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=req.rfc)
     try:
         archivos = descargar_cfdi_ciec(
             rfc=req.rfc,
@@ -89,7 +91,11 @@ def descargar_ciec(req: CIECDescargaRequest):
             directorio_salida=req.directorio_salida,
             max_registros=req.max_registros,
         )
-        cupo_descargas.registrar("cfdi")
+        cupo_descargas.registrar("cfdi", rfc=req.rfc)
+        track("descarga_solicitada", canal="rapida", credencial="contrasena",
+              tipo=tipo_cfdi(req.tipo_comprobante))
+        track("descarga_completada", canal="rapida", credencial="contrasena",
+              tipo=tipo_cfdi(req.tipo_comprobante), tamano=rango(len(archivos)))
         return {
             "ok": True,
             "metodo": "ciec",
@@ -122,7 +128,7 @@ def descargar_constancia(req: ConstanciaRequest):
     """
     from ...portal.constancia import descargar_constancia_ciec
 
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=req.rfc)
     try:
         pdf = descargar_constancia_ciec(
             rfc=req.rfc,
@@ -134,7 +140,8 @@ def descargar_constancia(req: ConstanciaRequest):
                 status_code=502,
                 detail="No se pudo generar/descargar la constancia.",
             )
-        cupo_descargas.registrar("constancia")
+        cupo_descargas.registrar("constancia", rfc=req.rfc)
+        track("constancia_descargada", credencial="contrasena")
         return {"ok": True, "archivo": str(pdf)}
     except ImportError as e:
         raise HTTPException(
@@ -180,7 +187,7 @@ def _resolver_ciec(rfc: str, ciec: Optional[str]) -> str:
     return guardada
 
 
-def _lanzar_job_portal(fn_factory, al_completar=None, *, tipo: str):
+def _lanzar_job_portal(fn_factory, al_completar=None, *, tipo: str, rfc: Optional[str] = None):
     """
     Crea un job de scraping del portal (CIEC o FIEL), inyecta el callback de captcha
     del bridge y lo corre en un worker thread. `fn_factory(pedir_captcha)` devuelve
@@ -192,22 +199,29 @@ def _lanzar_job_portal(fn_factory, al_completar=None, *, tipo: str):
     Toda descarga del portal cuenta como descarga del mes (`tipo`: cfdi,
     constancia, opinion): sin cupo (plan gratis) → 402 antes de abrir el
     navegador; al terminar bien se suma al contador.
+
+    `rfc`: la empresa del job. En modo de grabación, una empresa de demo no
+    abre navegador (no hay portal que visitar) ni cuenta descargas.
     """
     if jobs.registry.hay_activo():
         raise HTTPException(
             status_code=409,
             detail="Ya hay una operación en curso. Espera a que termine o cancélala.",
         )
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=rfc)
 
     def al_completar_y_contar(resultado):
-        cupo_descargas.registrar(tipo)
+        cupo_descargas.registrar(tipo, rfc=rfc)
         if al_completar is not None:
             al_completar(resultado)
 
     job = jobs.registry.crear()
     pedir_captcha = jobs.registry.pedir_captcha_callback(job)
     fn = fn_factory(pedir_captcha)
+
+    if demo.aplica(rfc):
+        jobs.registry.ejecutar(job, fn, al_completar=al_completar_y_contar)
+        return {"job_id": job.id}
 
     def fn_con_navegador():
         # Si el navegador del portal aún no está en disco (primera vez o tras
@@ -329,8 +343,13 @@ def ciec_cfdi(req: CIECDescargaRequest):
     def al_completar(resultado):
         _registrar_descarga(req.rfc, "ciec", "cfdi", descripcion=desc,
                             ruta=salida, total=(resultado or {}).get("total"))
+        track("descarga_completada", canal="rapida", credencial="contrasena",
+              tipo=tipo_cfdi(req.tipo_comprobante), tamano=rango((resultado or {}).get("total")))
 
-    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="cfdi")
+    respuesta = _lanzar_job_portal(factory, al_completar=al_completar, tipo="cfdi", rfc=req.rfc)
+    track("descarga_solicitada", canal="rapida", credencial="contrasena",
+          tipo=tipo_cfdi(req.tipo_comprobante))
+    return respuesta
 
 
 @router.post("/ciec/constancia")
@@ -362,8 +381,10 @@ def ciec_constancia(req: ConstanciaRequest):
             from ...cli import config_store
             config_store.set_csf_descargada(req.rfc, archivo)
             _actualizar_empresa_desde_csf(req.rfc, archivo)
+        track("constancia_descargada", credencial="contrasena")
 
-    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="constancia")
+    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="constancia",
+                              rfc=req.rfc)
 
 
 @router.post("/ciec/opinion")
@@ -395,8 +416,10 @@ def ciec_opinion(req: OpinionRequest):
             from ...cli import config_store
             config_store.set_opinion_descargada(req.rfc, archivo)
             _actualizar_empresa_desde_opinion(req.rfc, archivo)
+        track("opinion_32d_descargada", credencial="contrasena")
 
-    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="opinion")
+    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="opinion",
+                              rfc=req.rfc)
 
 
 @router.post("/jobs/{job_id}/captcha")
@@ -443,7 +466,7 @@ def constancia_fiel_endpoint():
     from ...core import paths
 
     _get_fiel()
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=_session["rfc"])
     salida = str(paths.dir_documento(paths.TIPO_CONSTANCIA, _session["rfc"] or "", salida_base=_descargas_base()))
     try:
         pdf = descargar_constancia_fiel(
@@ -454,7 +477,8 @@ def constancia_fiel_endpoint():
             raise HTTPException(status_code=502, detail="No se pudo descargar la constancia.")
         _registrar_descarga(_session["rfc"] or "", "fiel", "constancia",
                             descripcion="Constancia de Situación Fiscal", ruta=str(pdf))
-        cupo_descargas.registrar("constancia")
+        cupo_descargas.registrar("constancia", rfc=_session["rfc"])
+        track("constancia_descargada", credencial="efirma")
         if _session["rfc"]:
             from ...cli import config_store
             config_store.set_csf_descargada(_session["rfc"], str(pdf))
@@ -473,7 +497,7 @@ def opinion_fiel_endpoint():
     from ...core import paths
 
     _get_fiel()
-    cupo_descargas.exigir()
+    cupo_descargas.exigir(rfc=_session["rfc"])
     salida = str(paths.dir_documento(paths.TIPO_OPINION, _session["rfc"] or "", salida_base=_descargas_base()))
     try:
         pdf = descargar_opinion_fiel(
@@ -484,7 +508,8 @@ def opinion_fiel_endpoint():
             raise HTTPException(status_code=502, detail="No se pudo descargar la opinión 32-D.")
         _registrar_descarga(_session["rfc"] or "", "fiel", "opinion",
                             descripcion="Opinión de Cumplimiento 32-D", ruta=str(pdf))
-        cupo_descargas.registrar("opinion")
+        cupo_descargas.registrar("opinion", rfc=_session["rfc"])
+        track("opinion_32d_descargada", credencial="efirma")
         if _session["rfc"]:
             from ...cli import config_store
             config_store.set_opinion_descargada(_session["rfc"], str(pdf))
@@ -529,5 +554,10 @@ def cfdi_fiel(req: FIELCfdiRequest):
     def al_completar(resultado):
         _registrar_descarga(rfc, "fiel", "cfdi", descripcion=desc,
                             ruta=salida, total=(resultado or {}).get("total"))
+        track("descarga_completada", canal="rapida", credencial="efirma",
+              tipo=tipo_cfdi(req.tipo_comprobante), tamano=rango((resultado or {}).get("total")))
 
-    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="cfdi")
+    respuesta = _lanzar_job_portal(factory, al_completar=al_completar, tipo="cfdi", rfc=rfc)
+    track("descarga_solicitada", canal="rapida", credencial="efirma",
+          tipo=tipo_cfdi(req.tipo_comprobante))
+    return respuesta

@@ -2,9 +2,10 @@
 // Planes v3 (F1 de docs/operacion/plan-app-v3.md en todoconta-apps): catálogo
 // que muestra la app y reglas del tope de empresas.
 //
-// Precios con IVA, idénticos al seed de la migración 038 (`CATALOGO_PLANES` en
-// apps/web/src/lib/desktop/planes.ts). Si cambian allá, cámbialos aquí. El
-// cobro lo decide siempre el servidor: esto solo es lo que se enseña.
+// Precios con IVA, idénticos a la tabla `planes` (`CATALOGO_PLANES` en
+// apps/web/src/lib/desktop/planes.ts): mensual de la opción B (2026-10-06),
+// "paga 8 meses, úsalo 12". Si cambian allá, cámbialos aquí. El cobro lo decide
+// siempre el servidor: esto solo es lo que se enseña.
 // ---------------------------------------------------------------------------
 
 import type { IntervaloPlan, PlanCodigo, PlanV3Venta, TopeEmpresas } from '@/lib/api-client';
@@ -13,7 +14,7 @@ import type { PlanLicencia } from '@/providers/auth-provider';
 export interface PlanV3Catalogo {
   codigo: PlanV3Venta;
   nombre: string;
-  /** Anual = 10 mensualidades. */
+  /** Anual = menos de 8 mensualidades (35% de ahorro; 34% en Completo). */
   precioAnual: number;
   precioMensual: number;
   empresas: number;
@@ -38,7 +39,7 @@ export const CATALOGO_V3: readonly PlanV3Catalogo[] = [
     codigo: 'esencial',
     nombre: 'Esencial',
     precioAnual: 3490,
-    precioMensual: 349,
+    precioMensual: 449,
     empresas: 10,
     usuarios: 1,
     lema: 'La app completa para llevar tus empresas.',
@@ -48,7 +49,7 @@ export const CATALOGO_V3: readonly PlanV3Catalogo[] = [
     codigo: 'pro',
     nombre: 'Pro',
     precioAnual: 6990,
-    precioMensual: 699,
+    precioMensual: 899,
     empresas: 50,
     usuarios: 3,
     lema: 'Más empresas y tu IA trabajando con tus datos.',
@@ -58,7 +59,7 @@ export const CATALOGO_V3: readonly PlanV3Catalogo[] = [
     codigo: 'completo',
     nombre: 'Completo',
     precioAnual: 14990,
-    precioMensual: 1499,
+    precioMensual: 1899,
     empresas: 100,
     usuarios: 5,
     lema: 'Para el despacho grande: Abacus y la API.',
@@ -80,6 +81,39 @@ export function sufijoIntervalo(intervalo: IntervaloPlan): string {
 
 export function empresasTexto(n: number): string {
   return n === 1 ? '1 empresa' : `${n} empresas`;
+}
+
+export function usuariosTexto(n: number): string {
+  return n === 1 ? '1 usuario' : `${n} usuarios`;
+}
+
+// ---------------------------------------------------------------------------
+// Usuarios adicionales (decidido por Israel 2026-10-06): solo Pro y Completo,
+// $990 al año o $129 al mes cada uno, en el mismo intervalo que el plan. Cada
+// uno suma un lugar al tope del plan (Pro 3 + N, Completo 5 + N). Esencial no
+// los tiene: para invitar al equipo se cambia a Pro.
+// ---------------------------------------------------------------------------
+
+export const PRECIO_USUARIO_ADICIONAL: Readonly<Record<IntervaloPlan, number>> = {
+  anual: 990,
+  mensual: 129,
+};
+
+/** Tope de seguridad por pedido (el servicio lo valida igual). */
+export const MAX_USUARIOS_ADICIONALES = 50;
+
+export function admiteUsuariosAdicionales(codigo: string | null | undefined): boolean {
+  return codigo === 'pro' || codigo === 'completo';
+}
+
+export function adicionalesTexto(n: number): string {
+  return n === 1 ? '1 usuario adicional' : `${n} usuarios adicionales`;
+}
+
+/** Los usuarios adicionales que trae la licencia (sin el campo = 0). */
+export function adicionalesDeLicencia(license: { usuarios_adicionales?: number } | null | undefined): number {
+  const n = license?.usuarios_adicionales;
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : 0;
 }
 
 /** Planes que se venden con tope de empresas (aplica aunque falte el interruptor). */

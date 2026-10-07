@@ -24,6 +24,7 @@ from typing import Iterable, Optional
 
 import requests
 
+from .. import demo
 from ..api import license_client
 
 logger = logging.getLogger(__name__)
@@ -163,6 +164,28 @@ def consultar_rfcs(
     if not rfcs_norm:
         return [], ListasMetadata(None, None)
 
+    if demo.activo():
+        # Modo de grabación: los RFC inventados del escenario (y cualquiera con
+        # fecha imposible) se contestan aquí; solo los reales van a la red.
+        from ..demo import sat as sat_demo
+
+        de_demo = [r for r in rfcs_norm if sat_demo.es_rfc_de_demo(r)]
+        if de_demo:
+            apartados = frozenset(de_demo)
+            reales = [r for r in rfcs_norm if r not in apartados]
+            por_rfc = {m.rfc: m for m in sat_demo.consultar_listas(de_demo)}
+            if reales:
+                matches_reales, metadata = _consultar_rfcs_red(reales)
+                por_rfc.update({m.rfc: m for m in matches_reales})
+            else:
+                metadata = consultar_metadata()
+            return [por_rfc[r] for r in rfcs_norm], metadata
+
+    return _consultar_rfcs_red(rfcs_norm)
+
+
+def _consultar_rfcs_red(rfcs_norm: list[str]) -> tuple[list[MatchListaNegra], ListasMetadata]:
+    """Consulta (ya normalizada) contra el endpoint batch de todoconta-apps."""
     headers = _bearer_headers()
     url = f"{license_client.API_BASE_URL}/api/desktop/listas-negras/batch"
 
@@ -223,7 +246,20 @@ def consultar_metadata() -> ListasMetadata:
 
     Usa el endpoint dedicado `/api/desktop/listas-negras/metadata`, que no
     toca las tablas grandes de listas — solo lee `sat_listas_metadata`.
+
+    En modo de grabación, si no hay sesión o red, se usa el corte de ejemplo
+    (día 5 del mes, como el cron) para que la pantalla no truene en cuadro.
     """
+    try:
+        return _consultar_metadata_red()
+    except RuntimeError:
+        if demo.activo():
+            from ..demo import sat as sat_demo
+            return sat_demo.metadata_listas()
+        raise
+
+
+def _consultar_metadata_red() -> ListasMetadata:
     headers = _bearer_headers()
     url = f"{license_client.API_BASE_URL}/api/desktop/listas-negras/metadata"
     try:

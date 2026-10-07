@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 
 from .. import jobs
 from ..state import _session, _descargas_base, _registrar_descarga, _cargar_fiel_empresa
+from ..uso import track
 from ...core import paths, secretos
 from ...core.fiel import FIEL
 from ...cli import config_store
@@ -407,6 +408,8 @@ def renovar_efirma(req: RenovarRequest):
                 descripcion="Renovación de e.firma en línea",
                 ruta=(resultado or {}).get("acuse_pdf") or salida,
             )
+        track("efirma_renovada",
+              certificado="emitido" if (resultado or {}).get("renovada") else "pendiente")
 
     return _lanzar_job_certifica(factory, al_completar=al_completar)
 
@@ -680,6 +683,8 @@ def csd_solicitar(req: CsdRequest):
             descripcion=f"Solicitud de CSD «{uso}»",
             ruta=(resultado or {}).get("carpeta") or salida,
         )
+        track("csd_solicitado",
+              certificado="pendiente" if (resultado or {}).get("cert_pendiente") else "emitido")
 
     return _lanzar_job_certifica(factory, al_completar=al_completar)
 

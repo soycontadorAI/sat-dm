@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir \
     "fastapi==0.139.2" "starlette==1.3.1" "pydantic==2.13.4" \
     "uvicorn[standard]==0.51.0" "requests==2.34.2" "docker==7.2.0" "mcp==1.28.1"
 
-COPY main.py oauth.py capacidades.py ./
+COPY main.py oauth.py capacidades.py uso.py ./
 
 EXPOSE 8795
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \

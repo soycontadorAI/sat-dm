@@ -16,6 +16,11 @@
 #   LICENCIA_GATEWAY_SECRET=     # secreto propio del gateway para GET /api/admin/license
 #                                # (el mismo valor en Vercel de todoconta-apps; nunca CRON_SECRET)
 #   LICENCIA_ADMIN_URL=          # default https://api.todoconta.com/api/admin/license
+# Uso por acción (uso.py): llamadas MCP/REST y mensajes de Abacus por cuenta.
+#   EVENTOS_GATEWAY_SECRET=      # secreto propio para POST /api/desktop/eventos
+#                                # (el mismo valor en Vercel de todoconta-apps). Sin él no se envía nada.
+#   EVENTOS_URL=                 # default https://api.todoconta.com/api/desktop/eventos
+#   USO_GATEWAY=0                # kill switch (default encendido)
 #
 # Despliegue: docker compose up -d --build
 
