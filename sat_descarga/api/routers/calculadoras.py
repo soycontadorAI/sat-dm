@@ -42,6 +42,7 @@ from ...calculadoras import (
 )
 from ...calculadoras import store
 from ...calculadoras.isr import validar_salario_minimo
+from ..uso import track
 
 router = APIRouter()
 
@@ -170,6 +171,8 @@ class GuardadoRequest(BaseModel):
 
 def _responder(calculadora: str, req: CalculoBase, resultado: dict, anio: int) -> dict:
     """Arma la respuesta estándar y auto-guarda el estado si viene RFC."""
+    # Recalcula con cada tecla (debounce de la UI): cuenta una vez cada 30 min.
+    track("calculadora_usada", calculadora=calculadora.replace("-", "_"))
     try:
         advertencias = list(get_indicadores(anio).advertencias)
     except ValueError:
@@ -432,6 +435,7 @@ def calcular_ptu_endpoint(req: PTURequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    track("calculadora_usada", calculadora="ptu")
     # El auto-guardado usa el año de PAGO como referencia del estado.
     anio_pago = resultado["config"]["anio_pago"]
     inputs = req.model_dump(mode="json", exclude={"rfc"})
@@ -648,6 +652,8 @@ def exportar_endpoint(formato: str, req: ExportarRequest):
             media = _MEDIA_PDF
         filename = _nombre_archivo(req.rfc, req.calculadora, anio_nombre, formato)
 
+    track("calculadora_exportada", calculadora=req.calculadora.replace("-", "_"),
+          formato=formato.replace("-", "_"))
     return StreamingResponse(
         iter([data]),
         media_type=media,

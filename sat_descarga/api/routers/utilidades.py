@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from ...utils.validacion import validar_masivo, EstadoCFDI  # noqa: F401
 from ..state import _session, _get_fiel, SolicitudRequest
+from ..uso import rango, track
 
 router = APIRouter()
 
@@ -63,6 +64,9 @@ def descargar_metadata_endpoint(req: SolicitudRequest):
             rfc_receptor=req.rfc_receptor,
         )
         cupo_descargas.registrar("metadata", rfc=fiel.rfc)
+        track("descarga_solicitada", canal="web_service", credencial="efirma", tipo="metadata")
+        track("descarga_completada", canal="web_service", credencial="efirma",
+              tipo="metadata", tamano=rango(len(records)), segundo_plano=False)
         return {
             "ok": True,
             "total": len(records),
@@ -103,6 +107,7 @@ def validar_cfdis(req: ValidarRequest):
 
     try:
         resultados = validar_masivo(cfdis, concurrency=req.concurrency)
+        track("estatus_validado", origen="directo", tamano=rango(len(resultados)))
         return {
             "results": [
                 {
@@ -157,6 +162,7 @@ def organizar_endpoint(req: OrganizarRequest):
         result = organizar(
             req.origen, req.destino, req.estructura, req.copiar, rfc=req.rfc
         )
+        track("organizador_usado", accion="organizar")
         return {
             "archivos_procesados": result.archivos_procesados,
             "archivos_movidos": result.archivos_movidos,
@@ -177,6 +183,7 @@ def renombrar_endpoint(req: RenombrarRequest):
         result = renombrar(
             req.directorio, req.patron, partes=req.partes, separador=req.separador
         )
+        track("organizador_usado", accion="renombrar")
         return {
             "archivos_procesados": result.archivos_procesados,
             "archivos_movidos": result.archivos_movidos,
@@ -194,6 +201,7 @@ def deduplicar_endpoint(req: DeduplicarRequest):
 
     try:
         result = eliminar_duplicados(req.directorio, dry_run=req.dry_run)
+        track("organizador_usado", accion="deduplicar")
         return {
             "archivos_analizados": result.archivos_analizados,
             "duplicados_encontrados": result.duplicados_encontrados,

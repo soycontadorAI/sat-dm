@@ -39,6 +39,14 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   de licencia nunca bloquea. El resumen del mes viaja con la sincronización del catálogo.
 - `app.todoconta.com/planes` lleva a Suscripción con el plan y el intervalo de la liga
   (`?plan=pro&intervalo=mensual`) ya elegidos.
+- **Uso de la app por acción.** El agente registra qué función se usa y cuándo (una
+  descarga, una consulta de listas negras, un Excel exportado), nunca con qué datos: las
+  propiedades salen de una lista cerrada por evento, sin RFC, nombres, UUID, montos ni
+  archivos. Se manda en lotes cada 5 minutos a la API de servicios con la sesión de la
+  cuenta; sin internet se guarda y se manda después. Mismo código en escritorio y en la
+  web; el gateway cuenta además las tools MCP, la API y los mensajes de Abacus, y cada evento
+  dice si la acción llegó por la app, la MCP, la API o Abacus. Se apaga con
+  `SAT_DM_SIN_USO=1` y en desarrollo no se envía nada.
 - **Una sesión activa a la vez (gana la más reciente), en modo observar.** Al abrir la app o
   iniciar sesión, esta computadora (o este navegador) reclama la cuenta; cada una tiene un
   id estable y una etiqueta ("macOS · nombre-del-equipo", "Chrome en Windows"). La app
@@ -67,6 +75,8 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 - **La campana ya no cuenta como pendientes los anuncios viejos.** Un anuncio con más de
   90 días de publicado se da por leído: sigue en la lista, pero no suma al contador ni se
   marca como nuevo. Para quitarlo de la lista sigue estando `expiresAt`.
+- **Presentar la DIOT y bajar su acuse ya no truenan.** Al router de la DIOT le faltaba un
+  import y `/diot/presentar` y `/diot/acuse` respondían 500.
 
 ### Tooling
 

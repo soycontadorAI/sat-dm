@@ -60,6 +60,22 @@ def licencia_en_tmp(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def uso_apagado_y_aislado(tmp_path, monkeypatch):
+    """
+    Uso por acción (api/uso.py) APAGADO en todas las pruebas (`SAT_DM_SIN_USO=1`)
+    y con la cola en tmp: ni las pruebas en modo hosted escriben la cola real ni
+    se manda nada. Las pruebas de uso lo encienden a mano.
+    """
+    from sat_descarga.api import uso
+
+    monkeypatch.setenv("SAT_DM_SIN_USO", "1")
+    monkeypatch.setattr(uso, "_ruta", lambda: tmp_path / "uso-pendiente-aislado.jsonl")
+    monkeypatch.setattr(uso, "_conteo", None)
+    monkeypatch.setattr(uso, "_ultimos", {})
+    monkeypatch.setattr(uso, "_pausa_hasta", 0.0)
+
+
+@pytest.fixture(autouse=True)
 def sin_instalacion_de_navegador(monkeypatch):
     """
     Los tests nunca deben descargar Chromium: se desactiva el warm-up del

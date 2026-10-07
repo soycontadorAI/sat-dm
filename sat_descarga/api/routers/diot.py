@@ -10,11 +10,14 @@ agente local es del usuario y no re-valida licencia por endpoint.
 """
 
 import logging
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+from ..uso import track
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +102,7 @@ def diot_prellenar(req: PrellenarDiotRequest):
     mi_rfc = _rfc_requerido(req.rfc)
     _validar_periodo_http(req.periodo)
     estado = prellenar_y_guardar(mi_rfc, req.periodo)
+    track("diot_generada")
     respuesta = _estado_con_validaciones(estado)
     respuesta["resumen"] = estado.get("resumen")
     return respuesta
@@ -127,6 +131,7 @@ def diot_exportar(rfc: str, periodo: str):
         )
 
     filename = nombre_archivo(mi_rfc, periodo)
+    track("diot_txt_exportado")
     return StreamingResponse(
         iter([data]),
         media_type="text/plain; charset=utf-8",
@@ -262,7 +267,10 @@ def diot_presentar(req: DiotPresentarRequest):
             )
         return fn
 
-    return _lanzar_job_certifica(fn_factory)
+    modo = "envio" if req.confirmar and not req.solo_validar else "validacion"
+    return _lanzar_job_certifica(
+        fn_factory, al_completar=lambda _resultado: track("diot_presentada", modo=modo),
+    )
 
 
 @router.post("/diot/acuse")

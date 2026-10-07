@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from ...core.config import es_modo_hosted
 from ..state import _cargar_fiel_empresa
 from ..sync_empresas import sincronizar_async
+from ..uso import track
 from ..tope_empresas import (
     TopeEmpresasAlcanzado,
     exigir_cupo_para_alta,
@@ -34,6 +35,17 @@ router = APIRouter()
 def _respuesta_tope(e: TopeEmpresasAlcanzado) -> JSONResponse:
     """402 Payment Required: el plan no tiene lugar para otra empresa activa."""
     return JSONResponse(status_code=402, content=e.respuesta())
+
+
+def _rfcs_del_catalogo() -> set:
+    """RFCs ya registrados (uso por acción: ¿el alta es una empresa nueva o una
+    credencial más para una que ya estaba?)."""
+    from ...cli import config_store
+
+    try:
+        return set(config_store.load_empresas().get("empresas", {}))
+    except Exception:  # noqa: BLE001
+        return set()
 
 # ---------------------------------------------------------------------------
 # Modelos de request/response
@@ -106,6 +118,7 @@ async def empresas_add_fiel(
     key_data = await key_file.read()
     cer_tmp = tempfile.NamedTemporaryFile(suffix=".cer", delete=False)
     key_tmp = tempfile.NamedTemporaryFile(suffix=".key", delete=False)
+    antes = _rfcs_del_catalogo()
     try:
         cer_tmp.write(cer_data); cer_tmp.flush(); cer_tmp.close()
         key_tmp.write(key_data); key_tmp.flush(); key_tmp.close()
@@ -118,6 +131,7 @@ async def empresas_add_fiel(
             antes_de_guardar=exigir_cupo_para_alta,
         )
         sincronizar_async("alta-fiel")
+        track("empresa_agregada", metodo="efirma", nueva=rfc not in antes)
         return {"ok": True, "rfc": rfc}
     except TopeEmpresasAlcanzado as e:
         return _respuesta_tope(e)
@@ -151,8 +165,10 @@ def empresas_add_ciec(req: EmpresaCiecRequest):
         exigir_cupo_para_alta(req.rfc)
     except TopeEmpresasAlcanzado as e:
         return _respuesta_tope(e)
+    antes = _rfcs_del_catalogo()
     rfc = config_store.add_empresa_ciec(req.rfc, req.nombre, req.ciec)
     sincronizar_async("alta-ciec")
+    track("empresa_agregada", metodo="contrasena", nueva=rfc not in antes)
     return {"ok": True, "rfc": rfc}
 
 
@@ -226,6 +242,7 @@ def empresas_archive(rfc: str):
     except KeyError:
         raise HTTPException(status_code=404, detail="empresa no encontrada")
     sincronizar_async("archivar")
+    track("empresa_archivada")
     return {"ok": True, "rfc": rfc}
 
 

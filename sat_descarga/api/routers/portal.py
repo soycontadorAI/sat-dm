@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from ... import demo
 from .. import cupo_descargas, jobs
+from ..uso import rango, tipo_cfdi, track
 from ...core.config import TIPO_RECIBIDO
 from ..state import _session, _get_fiel, _descargas_base, _registrar_descarga
 
@@ -91,6 +92,10 @@ def descargar_ciec(req: CIECDescargaRequest):
             max_registros=req.max_registros,
         )
         cupo_descargas.registrar("cfdi", rfc=req.rfc)
+        track("descarga_solicitada", canal="rapida", credencial="contrasena",
+              tipo=tipo_cfdi(req.tipo_comprobante))
+        track("descarga_completada", canal="rapida", credencial="contrasena",
+              tipo=tipo_cfdi(req.tipo_comprobante), tamano=rango(len(archivos)))
         return {
             "ok": True,
             "metodo": "ciec",
@@ -136,6 +141,7 @@ def descargar_constancia(req: ConstanciaRequest):
                 detail="No se pudo generar/descargar la constancia.",
             )
         cupo_descargas.registrar("constancia", rfc=req.rfc)
+        track("constancia_descargada", credencial="contrasena")
         return {"ok": True, "archivo": str(pdf)}
     except ImportError as e:
         raise HTTPException(
@@ -337,8 +343,13 @@ def ciec_cfdi(req: CIECDescargaRequest):
     def al_completar(resultado):
         _registrar_descarga(req.rfc, "ciec", "cfdi", descripcion=desc,
                             ruta=salida, total=(resultado or {}).get("total"))
+        track("descarga_completada", canal="rapida", credencial="contrasena",
+              tipo=tipo_cfdi(req.tipo_comprobante), tamano=rango((resultado or {}).get("total")))
 
-    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="cfdi", rfc=req.rfc)
+    respuesta = _lanzar_job_portal(factory, al_completar=al_completar, tipo="cfdi", rfc=req.rfc)
+    track("descarga_solicitada", canal="rapida", credencial="contrasena",
+          tipo=tipo_cfdi(req.tipo_comprobante))
+    return respuesta
 
 
 @router.post("/ciec/constancia")
@@ -370,6 +381,7 @@ def ciec_constancia(req: ConstanciaRequest):
             from ...cli import config_store
             config_store.set_csf_descargada(req.rfc, archivo)
             _actualizar_empresa_desde_csf(req.rfc, archivo)
+        track("constancia_descargada", credencial="contrasena")
 
     return _lanzar_job_portal(factory, al_completar=al_completar, tipo="constancia",
                               rfc=req.rfc)
@@ -404,6 +416,7 @@ def ciec_opinion(req: OpinionRequest):
             from ...cli import config_store
             config_store.set_opinion_descargada(req.rfc, archivo)
             _actualizar_empresa_desde_opinion(req.rfc, archivo)
+        track("opinion_32d_descargada", credencial="contrasena")
 
     return _lanzar_job_portal(factory, al_completar=al_completar, tipo="opinion",
                               rfc=req.rfc)
@@ -465,6 +478,7 @@ def constancia_fiel_endpoint():
         _registrar_descarga(_session["rfc"] or "", "fiel", "constancia",
                             descripcion="Constancia de Situación Fiscal", ruta=str(pdf))
         cupo_descargas.registrar("constancia", rfc=_session["rfc"])
+        track("constancia_descargada", credencial="efirma")
         if _session["rfc"]:
             from ...cli import config_store
             config_store.set_csf_descargada(_session["rfc"], str(pdf))
@@ -495,6 +509,7 @@ def opinion_fiel_endpoint():
         _registrar_descarga(_session["rfc"] or "", "fiel", "opinion",
                             descripcion="Opinión de Cumplimiento 32-D", ruta=str(pdf))
         cupo_descargas.registrar("opinion", rfc=_session["rfc"])
+        track("opinion_32d_descargada", credencial="efirma")
         if _session["rfc"]:
             from ...cli import config_store
             config_store.set_opinion_descargada(_session["rfc"], str(pdf))
@@ -539,5 +554,10 @@ def cfdi_fiel(req: FIELCfdiRequest):
     def al_completar(resultado):
         _registrar_descarga(rfc, "fiel", "cfdi", descripcion=desc,
                             ruta=salida, total=(resultado or {}).get("total"))
+        track("descarga_completada", canal="rapida", credencial="efirma",
+              tipo=tipo_cfdi(req.tipo_comprobante), tamano=rango((resultado or {}).get("total")))
 
-    return _lanzar_job_portal(factory, al_completar=al_completar, tipo="cfdi", rfc=rfc)
+    respuesta = _lanzar_job_portal(factory, al_completar=al_completar, tipo="cfdi", rfc=rfc)
+    track("descarga_solicitada", canal="rapida", credencial="efirma",
+          tipo=tipo_cfdi(req.tipo_comprobante))
+    return respuesta

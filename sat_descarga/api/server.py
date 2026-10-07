@@ -121,6 +121,11 @@ async def lifespan(app: "FastAPI"):
         logger.exception("No se pudo iniciar el poller de solicitudes WS")
         detener_poller = None
 
+    # Uso por acción (api/uso.py): hilo daemon que manda la cola de eventos
+    # cada 5 min. No toca el keychain al arrancar (solo cuando hay qué mandar).
+    from . import uso
+
+    uso.iniciar()
     # Sesión única (F1.1): en escritorio, un hilo late cada 60 s para enterarse
     # de que otra instalación reclamó la cuenta (y pausar lo de fondo). En la
     # web no corre: ahí late cada navegador.
@@ -136,6 +141,7 @@ async def lifespan(app: "FastAPI"):
         detener_poller()
     if detener_latidos is not None:
         detener_latidos()
+    uso.detener()
 
 
 app = FastAPI(
@@ -206,6 +212,24 @@ async def _verificar_token_del_shell(request: Request, call_next):
                 content={"detail": "Token del agente inválido o ausente."},
             )
     return await call_next(request)
+
+# ---------------------------------------------------------------------------
+# Uso por acción: de dónde viene la petición (app | mcp | api | abacus)
+# ---------------------------------------------------------------------------
+# El gateway del VPS (MCP, REST v1, Abacus) marca sus llamadas con
+# X-Todoconta-Origen; todo lo demás es la app (renderer desktop o web). Solo
+# etiqueta los eventos de `api/uso.py`: no autoriza nada.
+
+
+@app.middleware("http")
+async def _origen_de_la_accion(request: Request, call_next):
+    from .uso import fijar_origen, origen_de_cabecera, restaurar_origen
+
+    marca = fijar_origen(origen_de_cabecera(request.headers.get("x-todoconta-origen")))
+    try:
+        return await call_next(request)
+    finally:
+        restaurar_origen(marca)
 
 # ---------------------------------------------------------------------------
 # Límites del plan (F1): tope de empresas y descargas del mes → HTTP 402 con

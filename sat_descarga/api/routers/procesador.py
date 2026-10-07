@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..state import _descargas_base
+from ..uso import rango, track
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,7 @@ async def procesador_cargar(
             status_code=400,
             detail=f"Demasiados archivos en un batch (máx {MAX_BATCH_SIZE})",
         )
+    track("procesador_usado", tipo="cfdi")
 
     db = abrir_db()
     parseados = []
@@ -206,6 +208,7 @@ def procesador_cargar_desde_empresa(req: CargarDesdeEmpresaRequest):
     from ...core import paths
 
     mi_rfc = _rfc_requerido(req.rfc, del_catalogo=True)
+    track("procesador_usado", tipo="cfdi")
 
     base = paths.dir_cfdi_base(mi_rfc, salida_base=_descargas_base())
     if not base.exists():
@@ -321,6 +324,7 @@ def procesador_validar_sat(req: ValidarSatRequest):
             })
 
     resultados = validar_masivo(payloads, concurrency=10)
+    track("estatus_validado", origen="procesador", tamano=rango(len(resultados)))
 
     contadores = {"vigentes": 0, "cancelados": 0, "no_encontrados": 0, "errores": 0}
     for est in resultados:
@@ -364,6 +368,7 @@ def procesador_listar(
         direccion, emisor_lista_negra, diot,
     )
     db = abrir_db()
+    track("procesador_usado", tipo="cfdi")  # una vez cada 30 min, no por filtro
     return db.listar(filtros, page=page, page_size=page_size)
 
 
@@ -512,6 +517,7 @@ def procesador_exportar(
 
     if formato == "xlsx":
         data = to_xlsx(db, filtros)
+        track("excel_exportado", tipo="cfdi", formato="xlsx")
         return StreamingResponse(
             iter([data]),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -519,6 +525,7 @@ def procesador_exportar(
         )
     if formato == "csv":
         data = to_csv(db, filtros)
+        track("excel_exportado", tipo="cfdi", formato="csv")
         return StreamingResponse(
             iter([data]),
             media_type="text/csv; charset=utf-8",
@@ -591,6 +598,8 @@ def listas_negras_consultar(req: ListasNegrasConsultarRequest):
         msg = str(e)
         status = 401 if "Sesión" in msg or "sesión" in msg else 502
         raise HTTPException(status_code=status, detail=msg)
+    track("listas_negras_consultada", origen="directo",
+          modo="uno" if len(req.rfcs) == 1 else "lote")
     return {
         "matches": [_match_to_payload(m) for m in matches],
         "metadata": _metadata_to_payload(metadata),
@@ -665,6 +674,8 @@ def procesador_validar_listas_negras(req: ValidarListasNegrasRequest):
         msg = str(e)
         status = 401 if "Sesión" in msg or "sesión" in msg else 502
         raise HTTPException(status_code=status, detail=msg)
+    track("listas_negras_consultada", origen="procesador",
+          modo="uno" if len(rfcs) == 1 else "lote")
 
     contadores = {"efos": 0, "aclarados": 0, "lista_69": 0, "limpios": 0}
     for m in matches:
@@ -783,6 +794,7 @@ def procesador_pagos_listar(
 
     filtros = _filtros_pagos_de_query(_rfc_requerido(rfc), desde, hasta, busqueda)
     status_list = [s for s in (status or "").split(",") if s] or None
+    track("procesador_usado", tipo="pagos")  # una vez cada 30 min, no por filtro
     return rep.facturas_ppd(
         abrir_db(), filtros, status_in=status_list, page=page, page_size=page_size,
     )
@@ -867,6 +879,7 @@ def procesador_pagos_exportar(
     from ...procesador.exportar_pagos import to_xlsx
     filtros = _filtros_pagos_de_query(_rfc_requerido(rfc), desde, hasta, busqueda)
     data = to_xlsx(abrir_db(), filtros)
+    track("excel_exportado", tipo="pagos", formato="xlsx")
     return StreamingResponse(
         iter([data]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -935,6 +948,7 @@ def procesador_nomina_listar(
         _rfc_requerido(rfc),
         desde, hasta, busqueda, tipo_nomina, periodicidad, solo_con_errores,
     )
+    track("procesador_usado", tipo="nomina")  # una vez cada 30 min, no por filtro
     return listar_recibos(abrir_db(), filtros, page=page, page_size=page_size)
 
 
@@ -1036,6 +1050,7 @@ def procesador_nomina_exportar(
         desde, hasta, busqueda, tipo_nomina, periodicidad, solo_con_errores,
     )
     data = to_xlsx(abrir_db(), filtros)
+    track("excel_exportado", tipo="nomina", formato="xlsx")
     return StreamingResponse(
         iter([data]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
