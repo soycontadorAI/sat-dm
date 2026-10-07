@@ -1225,12 +1225,23 @@ export class SatApiClient {
    * suscripción v3 el servicio responde la `url` del Checkout de Stripe; con
    * una activa puede cambiar el plan con prorrateo y responder sin `url`.
    * Solo se llama con el interruptor de planes v3 encendido.
+   *
+   * `usuariosAdicionales` (Pro y Completo): en el alta van al Checkout; en un
+   * cambio de plan, sin el campo se conservan los que ya paga.
    */
   async authSubscribePlan(
     plan: PlanV3Venta,
     intervalo: IntervaloPlan,
+    opciones: { usuariosAdicionales?: number; previsualizar?: boolean } = {},
   ): Promise<SubscribePlanResponse> {
-    return this.post<SubscribePlanResponse>('/auth/subscribe', { plan, intervalo });
+    return this.post<SubscribePlanResponse>('/auth/subscribe', {
+      plan,
+      intervalo,
+      ...(opciones.usuariosAdicionales !== undefined
+        ? { usuarios_adicionales: opciones.usuariosAdicionales }
+        : {}),
+      ...(opciones.previsualizar ? { previsualizar: true } : {}),
+    });
   }
 
   /** Descargas al SAT de este mes y el tope del plan (si aplica: gratis con planes v3). */
@@ -1245,10 +1256,32 @@ export class SatApiClient {
 
   /**
    * Registra intención de pago por transferencia; devuelve datos bancarios.
-   * Sin `plan`, el cuerpo vacío de siempre; con un plan v3 (solo anual), `{plan}`.
+   * Sin `plan`, el cuerpo vacío de siempre; con un plan v3 (solo anual), `{plan}`
+   * y, en Pro y Completo, los usuarios adicionales ($990 cada uno).
    */
-  async authTransferIntent(plan?: PlanV3Venta): Promise<TransferIntentResponse> {
-    return this.post<TransferIntentResponse>('/auth/transfer-intent', plan ? { plan } : {});
+  async authTransferIntent(
+    plan?: PlanV3Venta,
+    usuariosAdicionales = 0,
+  ): Promise<TransferIntentResponse> {
+    const body = plan
+      ? { plan, ...(usuariosAdicionales > 0 ? { usuarios_adicionales: usuariosAdicionales } : {}) }
+      : {};
+    return this.post<TransferIntentResponse>('/auth/transfer-intent', body);
+  }
+
+  /**
+   * Usuarios adicionales de Pro y Completo: fija cuántos paga el plan, con
+   * prorrateo de Stripe. Con `previsualizar` solo calcula el cobro de hoy.
+   * Reducir debajo de los usuarios del equipo responde 409 con el motivo.
+   */
+  async cambiarUsuariosAdicionales(
+    usuariosAdicionales: number,
+    previsualizar = false,
+  ): Promise<CambioUsuariosResponse> {
+    return this.post<CambioUsuariosResponse>('/cuenta/usuarios-adicionales', {
+      usuarios_adicionales: usuariosAdicionales,
+      previsualizar,
+    });
   }
 
   /** Cierra sesión local (borra keyring + cache). */
@@ -1654,6 +1687,10 @@ export interface LicenseStatus {
   planes_v3_activo?: boolean;
   /** Intervalo de la suscripción v3 vigente; null en legado y sin suscripción. */
   intervalo?: IntervaloPlan | null;
+  /** Usuarios adicionales pagados (Pro y Completo), ya sumados en `limites.usuarios`. */
+  usuarios_adicionales?: number;
+  /** El plan viene del dueño del equipo: la cuenta es miembro y no lo paga. */
+  plan_de_equipo?: boolean;
   // Flags del cache local del agente.
   from_cache?: boolean;
   stale?: boolean;
@@ -1673,6 +1710,34 @@ export interface SubscribePlanResponse {
   ok?: boolean;
   plan?: string;
   intervalo?: IntervaloPlan;
+  message?: string;
+  /** Total que se cobra (plan + usuarios adicionales) en el alta. */
+  monto_mxn?: number;
+  usuarios_adicionales?: number;
+  /** Respuesta de `previsualizar`: el cobro de hoy de un cambio de plan. */
+  previsualizacion?: boolean;
+  cambio?: {
+    cobro_hoy_mxn?: number;
+    usuarios_adicionales?: number;
+    max_usuarios?: number | null;
+    precio_mxn?: number;
+  };
+}
+
+/** POST /cuenta/usuarios-adicionales (aplicado o vista previa). */
+export interface CambioUsuariosResponse {
+  ok?: boolean;
+  previsualizacion?: boolean;
+  plan?: string;
+  plan_nombre?: string;
+  intervalo?: IntervaloPlan;
+  usuarios_adicionales_antes?: number;
+  usuarios_adicionales: number;
+  max_usuarios: number;
+  usuarios_activos?: number;
+  precio_unitario_mxn?: number;
+  /** Solo en la vista previa: lo que se cobra hoy (negativo = saldo a favor). */
+  cobro_hoy_mxn?: number;
   message?: string;
 }
 
@@ -1734,6 +1799,11 @@ export interface TransferIntentResponse {
   promo: boolean;
   banco: DatosBancarios;
   message?: string;
+  plan?: string;
+  /** Planes v3: usuarios adicionales incluidos en `amount_mxn` y el desglose. */
+  usuarios_adicionales?: number;
+  monto_plan_mxn?: number;
+  monto_usuarios_adicionales_mxn?: number;
 }
 
 // ---------------------------------------------------------------------------

@@ -517,8 +517,18 @@ PLANES_V3_VENTA = ("esencial", "pro", "completo")
 INTERVALOS_V3 = ("anual", "mensual")
 
 
+def usuarios_adicionales_validos(valor) -> bool:
+    """`usuarios_adicionales` que se puede mandar: entero de 0 en adelante (sin bool).
+    El tope y si el plan los admite los decide el servicio."""
+    return isinstance(valor, int) and not isinstance(valor, bool) and valor >= 0
+
+
 def init_subscribe_checkout(
-    session: Session, plan: str = "anual", intervalo: Optional[str] = None
+    session: Session,
+    plan: str = "anual",
+    intervalo: Optional[str] = None,
+    usuarios_adicionales: Optional[int] = None,
+    previsualizar: bool = False,
 ) -> dict:
     """
     POST /api/desktop/subscribe → `{url, session_id, promo, plan}`.
@@ -531,12 +541,20 @@ def init_subscribe_checkout(
     suscripción v3, el backend cambia el plan con prorrateo y puede responder
     sin `url`. El backend SIEMPRE decide el precio: el cliente solo dice qué
     plan quiere.
+
+    Usuarios adicionales (2026-10-06, Pro y Completo): `usuarios_adicionales`
+    viaja solo con un plan v3 (sin el campo, en un cambio de plan se conservan
+    los que ya paga). `previsualizar` pide solo el cobro de un cambio.
     """
     if plan in PLANES_V3_VENTA:
         body = {
             "plan": plan,
             "intervalo": intervalo if intervalo in INTERVALOS_V3 else "anual",
         }
+        if usuarios_adicionales_validos(usuarios_adicionales):
+            body["usuarios_adicionales"] = usuarios_adicionales
+        if previsualizar:
+            body["previsualizar"] = True
     else:
         body = {"plan": "anual_ia"} if plan == "anual_ia" else {"plan": "anual"}
     return _post_desktop(
@@ -555,16 +573,26 @@ def cancel_subscription(session: Session) -> dict:
     )
 
 
-def create_transfer_intent(session: Session, plan: Optional[str] = None) -> dict:
+def create_transfer_intent(
+    session: Session,
+    plan: Optional[str] = None,
+    usuarios_adicionales: Optional[int] = None,
+) -> dict:
     """
     POST /api/desktop/transfer-intent → `{ok, amount_mxn, promo, banco, message}`.
 
     Registra la intención de pago por transferencia y devuelve los datos
     bancarios para el depósito (activación manual). Sin `plan`, el cuerpo
     vacío de siempre (plan anual de antes). Con un plan v3 ('esencial',
-    'pro', 'completo') manda `{plan}`; la transferencia solo es anual.
+    'pro', 'completo') manda `{plan}`; la transferencia solo es anual. Con
+    usuarios adicionales (Pro y Completo) manda también
+    `usuarios_adicionales` y el monto los suma ($990 cada uno).
     """
-    body = {"plan": plan} if plan in PLANES_V3_VENTA else None
+    body = None
+    if plan in PLANES_V3_VENTA:
+        body = {"plan": plan}
+        if usuarios_adicionales_validos(usuarios_adicionales) and usuarios_adicionales > 0:
+            body["usuarios_adicionales"] = usuarios_adicionales
     return _post_desktop(
         session, "/api/desktop/transfer-intent", "create_transfer_intent", body
     )
