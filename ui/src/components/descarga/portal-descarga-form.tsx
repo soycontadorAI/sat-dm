@@ -224,7 +224,7 @@ export function PortalDescargaForm({ empresa, onJobDone }: PortalDescargaFormPro
               // Después de una orden, el contorno marca dónde cae el segundo Enter.
               className={cn(
                 'w-full sm:w-auto',
-                ordenVigente && 'focus:outline-2 focus:outline-offset-3 focus:outline-ring',
+                ordenVigente && 'focus:outline-solid focus:outline-2 focus:outline-offset-3 focus:outline-ring',
               )}
               onKeyDown={(e) => {
                 if (e.repeat && e.key === 'Enter') e.preventDefault();
