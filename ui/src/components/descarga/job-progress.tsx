@@ -47,10 +47,10 @@ function Avance({ actual, total }: { actual: number; total: number }) {
   return (
     <div className="space-y-1.5">
       <p className="text-sm text-auto-text">
-        <span className="font-mono font-medium tabular-nums">
-          {actual.toLocaleString('es-MX')} de {total.toLocaleString('es-MX')}
-        </span>{' '}
-        XML
+        <span className="font-mono font-medium tabular-nums">{actual.toLocaleString('es-MX')}</span>
+        {' de '}
+        <span className="font-mono font-medium tabular-nums">{total.toLocaleString('es-MX')}</span>
+        {' XML'}
       </p>
       <div className="h-1 overflow-hidden rounded-full bg-muted" aria-hidden>
         <div

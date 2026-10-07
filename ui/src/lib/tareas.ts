@@ -141,7 +141,7 @@ export function derivarSugerencias(
   sugerencias.push({
     id: `diot-${clave}`,
     titulo: `Generar la DIOT de ${nombreMes}`,
-    motivo: 'Obligación mensual · vence el 17',
+    motivo: 'Obligación mensual: vence el 17',
     rfc: null,
     tipo: 'recurrente',
     prioridad: 'media',
