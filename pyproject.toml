@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sat-descarga-masiva"
-version = "2.3.1"
+version = "2.4.0"
 description = "Cliente Python para descarga masiva de CFDIs del SAT"
 requires-python = ">=3.10"
 dependencies = [

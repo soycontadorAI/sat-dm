@@ -6,6 +6,8 @@
 
 _Cambios mergeados a `main` aún no etiquetados; el release de la semana los promueve._
 
+## [2.4.0] - 2026-10-07
+
 ### Feature
 
 - **Nueva navegación: Espacios y comando (beta, detrás de `NAV_ESPACIOS`).** Cinco espacios en
@@ -85,6 +87,14 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   vencimiento por inactividad y sin internet nunca cierra. Mientras el servicio esté en
   observar (el default) solo se registra y nadie ve nada.
 
+### Bug fix
+
+- **La campana ya no cuenta como pendientes los anuncios viejos.** Un anuncio con más de
+  90 días de publicado se da por leído: sigue en la lista, pero no suma al contador ni se
+  marca como nuevo. Para quitarlo de la lista sigue estando `expiresAt`.
+- **Presentar la DIOT y bajar su acuse ya no truenan.** Al router de la DIOT le faltaba un
+  import y `/diot/presentar` y `/diot/acuse` respondían 500.
+
 ### Tooling
 
 - **Modo de grabación para los tutoriales.** Con `SAT_DM_MODO_GRABACION=1` en el entorno del
@@ -96,17 +106,6 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   Las empresas reales siguen igual en la misma sesión. `python -m sat_descarga.demo sembrar`
   deja la cuenta de grabación con empresas, semáforos e historial; `perfil` arma un perfil
   aparte (`SAT_DM_CONFIG_DIR`) para no mezclar con el catálogo real. Apagado por default.
-
-### Bug fix
-
-- **La campana ya no cuenta como pendientes los anuncios viejos.** Un anuncio con más de
-  90 días de publicado se da por leído: sigue en la lista, pero no suma al contador ni se
-  marca como nuevo. Para quitarlo de la lista sigue estando `expiresAt`.
-- **Presentar la DIOT y bajar su acuse ya no truenan.** Al router de la DIOT le faltaba un
-  import y `/diot/presentar` y `/diot/acuse` respondían 500.
-
-### Tooling
-
 - **El gateway revisa el plan del dueño de cada credencial (`CAPACIDADES_MODO`).** El scope
   `mcp` y el OAuth de /mcp exigen `capacidades.mcp`; la REST, `capacidades.api` (o Abacus);
   el vínculo de Abacus, `capacidades.abacus`. La licencia sale de `/api/admin/license` con
@@ -129,6 +128,7 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   de e.firma. No se anuncia en pantalla.
 - `pnpm test:ordenes` corre las pruebas del intérprete de órdenes de ⌘K (`node --test`, sin
   dependencias).
+- Bump 2.3.1 → 2.4.0 (3 archivos).
 
 ## [2.3.1] - 2026-10-05
 
