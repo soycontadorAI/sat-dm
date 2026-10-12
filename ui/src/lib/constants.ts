@@ -3,8 +3,9 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Base URL for the Python FastAPI server.
- * Falls back to localhost:8787 when no env var is set.
+ * Agente local de desarrollo (`pnpm dev` en el navegador contra el agente
+ * levantado a mano); sin la env var, localhost:8787. El build web nunca lo
+ * usa (ver `getAgentBaseUrl`).
  */
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_SAT_API_URL ?? 'http://localhost:8787';
@@ -15,17 +16,16 @@ import { getConexion } from './conexion-web';
 /**
  * Base URL efectiva del agente. Dentro de Electron, el preload inyecta
  * `window.satAgent.baseUrl` (puerto efímero); en la versión web viene de la
- * conexión guardada por el provisioner (localStorage); en dev cae a API_BASE_URL.
+ * conexión guardada por el provisioner (localStorage) y, sin ella, es `null`:
+ * la web nunca cae a localhost (no hay agente local y la CSP de
+ * app.todoconta.com bloquea la petición). En dev cae a API_BASE_URL.
  */
-export function getAgentBaseUrl(): string {
+export function getAgentBaseUrl(): string | null {
   if (typeof window !== 'undefined') {
     const injected = (window as unknown as { satAgent?: { baseUrl?: string } }).satAgent?.baseUrl;
     if (injected) return injected;
-    if (esWeb()) {
-      const conexion = getConexion();
-      if (conexion) return conexion.baseUrl;
-    }
   }
+  if (esWeb()) return getConexion()?.baseUrl ?? null;
   return API_BASE_URL;
 }
 

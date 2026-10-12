@@ -108,27 +108,38 @@ def diot_prellenar(req: PrellenarDiotRequest):
     return respuesta
 
 
+def _txt_del_periodo(rfc: str, periodo: str) -> bytes:
+    """TXT de carga masiva del periodo guardado: lo que baja GET /diot/exportar
+    y lo que sube /diot/presentar con usar_generado=true (un solo camino).
+
+    400 si el periodo no tiene renglones, o con la lista de errores si la tabla
+    viola el instructivo del SAT.
+    """
+    from ...diot import DiotInvalida, exportar_txt, get_periodo
+
+    estado = get_periodo(rfc, periodo)
+    if estado is None or not estado.get("filas"):
+        raise HTTPException(status_code=400, detail="No hay renglones en este periodo")
+    try:
+        return exportar_txt(estado["filas"])
+    except DiotInvalida as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"mensaje": str(e), "errores": e.errores},
+        )
+
+
 @router.get("/diot/exportar")
 def diot_exportar(rfc: str, periodo: str):
     """Genera y descarga el TXT de carga masiva del periodo.
 
     400 con la lista de errores si la tabla viola el instructivo del SAT.
     """
-    from ...diot import DiotInvalida, exportar_txt, get_periodo, nombre_archivo
+    from ...diot import nombre_archivo
 
     mi_rfc = _rfc_requerido(rfc)
     _validar_periodo_http(periodo)
-    estado = get_periodo(mi_rfc, periodo)
-    if estado is None or not estado.get("filas"):
-        raise HTTPException(status_code=400, detail="No hay renglones en este periodo")
-
-    try:
-        data = exportar_txt(estado["filas"])
-    except DiotInvalida as e:
-        raise HTTPException(
-            status_code=400,
-            detail={"mensaje": str(e), "errores": e.errores},
-        )
+    data = _txt_del_periodo(mi_rfc, periodo)
 
     filename = nombre_archivo(mi_rfc, periodo)
     track("diot_txt_exportado")
@@ -186,7 +197,18 @@ class DiotAcuseRequest(BaseModel):
     periodo: int
 
 
-def _resolver_txt(req: DiotPresentarRequest) -> str:
+def _carpeta_presentacion(rfc: str, ejercicio: int, periodo: int) -> Path:
+    """{descargas}/diot/presentaciones/{RFC}/{AAAA}/{MM}-{AAAA}: evidencia,
+    acuse y el TXT generado de esa declaración (misma ruta que el CLI)."""
+    from ...cli.config_store import get_descargas_dir
+
+    return (Path(get_descargas_dir()) / "diot" / "presentaciones" / rfc
+            / str(ejercicio) / f"{periodo:02d}-{ejercicio}")
+
+
+def _resolver_txt(req: DiotPresentarRequest, rfc: str, salida: Path) -> str:
+    """Ruta del TXT a subir: el del usuario (`txt_path`) tal cual, o el que
+    genera la app (`usar_generado`), escrito en la carpeta de la presentación."""
     if req.txt_path:
         path = Path(req.txt_path)
         if not path.is_file():
@@ -194,15 +216,13 @@ def _resolver_txt(req: DiotPresentarRequest) -> str:
                                 detail=f"No existe el TXT: {req.txt_path}")
         return str(path)
     if req.usar_generado:
-        # el mismo TXT que produce GET /diot/exportar, materializado a disco
-        from ...cli.config_store import get_descargas_dir
-        from ...diot import exportar_txt, nombre_archivo
+        from ...diot import nombre_archivo
 
-        rfc = _rfc_requerido(req.rfc)
-        periodo = f"{req.ejercicio}-{req.periodo:02d}"
-        destino = Path(get_descargas_dir()) / nombre_archivo(rfc, periodo)
+        periodo = _validar_periodo_http(f"{req.ejercicio}-{req.periodo:02d}")
+        data = _txt_del_periodo(rfc, periodo)
+        destino = salida / nombre_archivo(rfc, periodo)
         destino.parent.mkdir(parents=True, exist_ok=True)
-        destino.write_bytes(exportar_txt(rfc, periodo))
+        destino.write_bytes(data)
         return str(destino)
     raise HTTPException(status_code=400,
                         detail="Falta txt_path o usar_generado=true.")
@@ -238,13 +258,10 @@ def diot_presentar(req: DiotPresentarRequest):
     if not (1 <= req.periodo <= 12):
         raise HTTPException(status_code=400, detail="Periodo inválido (1-12).")
 
-    txt = _resolver_txt(req)
-    empresa = _credenciales_keychain(req.rfc)
     rfc = _rfc_requerido(req.rfc)
-
-    from ...cli.config_store import get_descargas_dir
-    salida = (Path(get_descargas_dir()) / "diot" / "presentaciones" / rfc
-              / str(req.ejercicio) / f"{req.periodo:02d}-{req.ejercicio}")
+    salida = _carpeta_presentacion(rfc, req.ejercicio, req.periodo)
+    txt = _resolver_txt(req, rfc, salida)
+    empresa = _credenciales_keychain(rfc)
 
     def fn_factory(emitir_fase):
         def fn():
@@ -286,9 +303,7 @@ def diot_acuse(req: DiotAcuseRequest):
     empresa = _credenciales_keychain(req.rfc)
     rfc = _rfc_requerido(req.rfc)
     cupo_descargas.exigir()  # el acuse cuenta como descarga del mes (plan gratis)
-    from ...cli.config_store import get_descargas_dir
-    salida = (Path(get_descargas_dir()) / "diot" / "presentaciones" / rfc
-              / str(req.ejercicio) / f"{req.periodo:02d}-{req.ejercicio}")
+    salida = _carpeta_presentacion(rfc, req.ejercicio, req.periodo)
 
     def fn_factory(emitir_fase):
         def fn():

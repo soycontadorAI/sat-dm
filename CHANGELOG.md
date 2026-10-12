@@ -6,6 +6,20 @@
 
 _Cambios mergeados a `main` aún no etiquetados; el release de la semana los promueve._
 
+### Bug fix
+
+- **Presentar la DIOT con el TXT que genera la app ya no truena.** Con `usar_generado=true`,
+  `/diot/presentar` llamaba al export del TXT con argumentos que no le tocaban y respondía
+  500. Ahora sube el mismo TXT que baja "Exportar TXT", guardado en la carpeta de la
+  presentación junto a la evidencia y el acuse; si el periodo no tiene renglones o la tabla
+  tiene errores responde 400 con la lista, igual que el export. Presentar con un TXT propio
+  (`txt_path`) no cambia.
+- **La versión web ya no busca un agente en localhost.** Sin conexión con su agente (antes de
+  iniciar sesión o al olvidar la conexión en `/conectar`), app.todoconta.com intentaba
+  `http://localhost:8787` y la CSP del navegador lo bloqueaba, con errores en la consola.
+  Ahora la web solo habla con el agente de su conexión; el escritorio y el desarrollo local
+  siguen usando el suyo.
+
 ## [2.4.0] - 2026-10-07
 
 ### Feature
