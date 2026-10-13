@@ -24,6 +24,8 @@ _SIN_PILOTO = ("La descarga automática viene en los planes Pro y Completo y en 
 class PilotoConfigRequest(BaseModel):
     activo: Optional[bool] = None
     dia_cierre: Optional[int] = Field(None, ge=1, le=28)
+    # Se normaliza al día 1. Ausente = sin cambio; null = detener el llenado.
+    historial_desde: Optional[date] = None
 
 
 class PilotoEmpresaRequest(BaseModel):
@@ -56,14 +58,19 @@ def piloto_estado():
 
 @router.put("/piloto/config")
 def piloto_config(req: PilotoConfigRequest):
-    """Activa o pausa la descarga automática y fija el día de cierre. Activarla
-    exige la capacidad `piloto` (402 si el plan no la trae)."""
+    """Activa o pausa la descarga automática, fija el día de cierre y desde
+    cuándo se llena el historial. Activarla o fijar el historial exige la capacidad `piloto` (402 si el plan no la trae)."""
     from .. import piloto
 
     if req.activo:
         _exigir_capacidad()
+    historial = {}
+    if "historial_desde" in req.model_fields_set:
+        if req.historial_desde is not None:
+            _exigir_capacidad()  # detener (null) no la pide
+        historial["historial_desde"] = req.historial_desde
     try:
-        return piloto.configurar(activo=req.activo, dia_cierre=req.dia_cierre)
+        return piloto.configurar(activo=req.activo, dia_cierre=req.dia_cierre, **historial)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

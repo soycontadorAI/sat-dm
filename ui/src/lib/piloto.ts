@@ -6,6 +6,7 @@ import type {
   PilotoAviso,
   PilotoEmpresa,
   PilotoEstado,
+  PilotoHistorial,
   PilotoPausadoPor,
   PilotoTipoAviso,
 } from './types.ts';
@@ -145,4 +146,120 @@ export function toastsDeAvisos(nuevos: PilotoAviso[], max = MAX_TOASTS_PILOTO): 
       mensaje: `${deToast.length} avisos nuevos de la descarga automática. Revísalos en el cuadro de control.`,
     },
   ];
+}
+
+// ---------------------------------------------------------------------------
+// Historial ("Llenar historial desde…")
+// ---------------------------------------------------------------------------
+
+export interface OpcionMes {
+  /** "YYYY-MM-01": lo que se manda al agente. */
+  valor: string;
+  /** "ene 2025". */
+  etiqueta: string;
+}
+
+function partesMes(s: string | null | undefined): { a: number; m: number } | null {
+  const r = /^(\d{4})-(\d{2})/.exec(s ?? '');
+  if (!r) return null;
+  const a = Number(r[1]);
+  const m = Number(r[2]);
+  return m >= 1 && m <= 12 ? { a, m } : null;
+}
+
+/** "ene 2025" a partir de "2025-01" o "2025-01-01"; '' si no es válido. */
+export function etiquetaMes(s: string | null | undefined): string {
+  const p = partesMes(s);
+  return p ? `${MESES_CORTO[p.m - 1]} ${p.a}` : '';
+}
+
+/** "julio de 2026" a partir de "2026-07" o "2026-07-01"; '' si no es válido. */
+export function nombreMes(s: string | null | undefined): string {
+  const p = partesMes(s);
+  return p ? `${MESES[p.m - 1].toLowerCase()} de ${p.a}` : '';
+}
+
+/** Meses entre `minimo` y `maximo` (inclusive), del más reciente al más antiguo. */
+export function mesesDisponibles(minimo: string, maximo: string): OpcionMes[] {
+  const a = partesMes(minimo);
+  const b = partesMes(maximo);
+  if (!a || !b) return [];
+  const out: OpcionMes[] = [];
+  let y = b.a;
+  let m = b.m;
+  while (y > a.a || (y === a.a && m >= a.m)) {
+    const valor = `${y}-${pad(m)}-01`;
+    out.push({ valor, etiqueta: etiquetaMes(valor) });
+    m -= 1;
+    if (m === 0) {
+      m = 12;
+      y -= 1;
+    }
+  }
+  return out;
+}
+
+/** Cierres que siguen con trabajo pese a haber detenido el historial; "" si no hay. */
+export function textoEmpezados(h: PilotoHistorial): string {
+  const n = h.empezados ?? 0;
+  if (h.desde || n <= 0) return '';
+  return n === 1 ? 'Se termina 1 mes que ya había empezado.' : `Se terminan ${n} meses que ya habían empezado.`;
+}
+
+/** Ya no queda mes por pedir (todos en la base o en error sin reintento). */
+export function historialTerminado(h: PilotoHistorial): boolean {
+  return !!h.desde && h.siguiente === null && h.meses_total > 0;
+}
+
+/** 0 a 100. */
+export function porcentajeHistorial(h: PilotoHistorial): number {
+  if (!h.meses_total) return 0;
+  // Los que fallaron sin reintento ya no tienen trabajo: cuentan como hechos.
+  const hechos = h.meses_completos + (h.meses_con_error ?? 0);
+  return Math.max(0, Math.min(100, Math.round((hechos / h.meses_total) * 100)));
+}
+
+/** Mes con que arranca el selector al activar: el guardado, o el mínimo si ya no está en la lista. */
+export function desdeInicial(h: PilotoHistorial | undefined): string {
+  if (!h?.desde) return '';
+  return h.desde < h.minimo ? h.minimo : h.desde;
+}
+
+function detallesHistorial(h: PilotoHistorial): string[] {
+  const out: string[] = [];
+  if (h.meses_con_diferencia > 0) out.push(`${h.meses_con_diferencia} con diferencia`);
+  const err = h.meses_con_error ?? 0;
+  if (err > 0) out.push(`${err} no se ${err === 1 ? 'pudo' : 'pudieron'} cerrar`);
+  return out;
+}
+
+/** "3 de 20 meses en la base, 1 con diferencia; va en julio de 2026" o "Terminado". */
+export function textoHistorial(h: PilotoHistorial): string {
+  if (!h.desde) return '';
+  const detalles = detallesHistorial(h);
+  // Con varias empresas el total cuenta cierres (empresa x mes).
+  const empresas = h.empresas ?? 1;
+  const varias = empresas > 1;
+  const unidad = varias ? 'cierre' : 'mes';
+  const plural = (n: number) => `${n} ${n === 1 ? unidad : unidad === 'mes' ? 'meses' : 'cierres'}`;
+  const cuenta = `${h.meses_completos} de ${plural(h.meses_total)}`;
+  const prefijo = varias && h.meses
+    ? `${empresas} empresas, ${h.meses} ${h.meses === 1 ? 'mes' : 'meses'}: `
+    : '';
+  if (historialTerminado(h)) {
+    const extra = detalles.length ? ` (${detalles.join('; ')})` : '';
+    return `Terminado: ${cuenta} en la base${extra}.`;
+  }
+  let t = `${prefijo}${cuenta} en la base`;
+  if (detalles.length) t += `, ${detalles.join(', ')}`;
+  const va = nombreMes(h.siguiente);
+  if (va) t += `; va en ${va}`;
+  return t;
+}
+
+/** "Historial: 3/20"; null si la empresa no tiene historial pedido. */
+export function textoHistorialEmpresa(e: PilotoEmpresa): string | null {
+  const total = e.historial_total ?? 0;
+  if (total <= 0) return null;
+  return `Historial: ${e.historial_completos ?? 0}/${total}`;
 }
