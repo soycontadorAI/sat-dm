@@ -102,7 +102,7 @@ export function DiaDialog({ rfc, fecha, onClose }: Props) {
 
   return (
     <Dialog open={fecha !== null} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="max-h-[85vh] grid-cols-1 overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{fecha ? tituloFecha(fecha) : ''}</DialogTitle>
           <DialogDescription>Lo que hay en la base para este día y cómo llegó.</DialogDescription>
