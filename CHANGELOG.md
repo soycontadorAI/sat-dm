@@ -48,6 +48,15 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   `http://localhost:8787` y la CSP del navegador lo bloqueaba, con errores en la consola.
   Ahora la web solo habla con el agente de su conexión; el escritorio y el desarrollo local
   siguen usando el suyo.
+- **Los CFDI con un namespace mal declarado ya entran al índice.** Hay XML reales que traen
+  `xmlns:schemaLocation` con dos direcciones (en el complemento de registro fiscal) y el lector
+  los rechazaba: no llegaban al procesador ni al organizador, y el conteo de su mes nunca iba
+  a cuadrar con el del SAT. Ahora se leen en modo tolerante, igual que los que traen acentos en
+  Windows-1252 aunque declaren UTF-8: el CFDI entra completo, con su UUID, y queda con un aviso
+  de validación ("XML mal formado…") que sale con el filtro de errores. Si el defecto puede
+  haber borrado datos, el aviso lo dice; si al recuperarlo se pierde el UUID, un RFC o la
+  fecha, se sigue rechazando. Al actualizar, el agente recorre otra vez, una sola vez, la
+  carpeta de descargas de cada empresa para recuperar los que se habían quedado fuera.
 
 ## [2.4.0] - 2026-10-07
 

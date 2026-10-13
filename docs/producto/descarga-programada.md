@@ -221,9 +221,11 @@ ingreso 58 KB de XML (5 KB comprimido), nómina 6 KB, pago 6 KB.
 **Pendientes que salieron de la fase 1:**
 - `raw_json` ya es redundante con XML + `nodos`; quitarlo (regenerando lo que lo lea) baja la
   DB a menos de la mitad.
-- 45 XML reales no se pueden leer: traen un atributo mal formado
-  (`xmlns:schemaLocation`, complemento de registro fiscal). El parser ya los rechazaba antes.
-  Hay que leerlos en modo tolerante, o el conteo del cierre mensual nunca va a cuadrar.
+- ✅ 45 XML reales no se podían leer: traen un atributo mal formado
+  (`xmlns:schemaLocation`, complemento de registro fiscal). Ya se leen en modo tolerante
+  (`core/xml_seguro.py::leer_tolerante`): el CFDI entra completo, con su UUID y un aviso de
+  validación; si al leerlo se pierde el UUID, se sigue rechazando. El indexado inicial de la
+  carpeta subió a la versión 2 (`INDEXADO_CARPETA_VERSION`) para recuperarlos una vez.
 
 ## Abierto
 

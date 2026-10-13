@@ -553,8 +553,12 @@ class ProcesadorDB:
         agregados = 0
         duplicados = 0
         ahora = datetime.now(timezone.utc).isoformat()
-        # Fuera del candado: convertir a `nodos` es lo caro.
-        documentos = _preparar_documentos(cfdis, xmls or {})
+        # Fuera del candado: convertir a `nodos` es lo caro. Se salta lo que ya
+        # tiene documento (un reindexado o una descarga que repite días).
+        con_documento = self._uuids_con_documento(mi_rfc, [c.uuid for c in cfdis if c.uuid])
+        documentos = _preparar_documentos(
+            [c for c in cfdis if c.uuid not in con_documento], xmls or {}
+        )
 
         with self._lock, self._conn:
             for cfdi in cfdis:
@@ -619,7 +623,12 @@ class ProcesadorDB:
                         ahora, origen,
                     ),
                 )
-                self._guardar_documento(cfdi.uuid, mi_rfc, documentos.get(cfdi.uuid))
+                documento = documentos.get(cfdi.uuid)
+                if documento is None and cfdi.uuid in con_documento and (xmls or {}).get(cfdi.uuid):
+                    # Tenía documento al empezar, pero la fila ya no existe: se
+                    # borró entre los dos candados (DELETE del modo grabación).
+                    documento = _preparar_documentos([cfdi], xmls).get(cfdi.uuid)
+                self._guardar_documento(cfdi.uuid, mi_rfc, documento)
 
                 for concepto in cfdi.conceptos:
                     self._conn.execute(
@@ -675,6 +684,21 @@ class ProcesadorDB:
                 agregados += 1
 
         return {"agregados": agregados, "duplicados": duplicados}
+
+    def _uuids_con_documento(self, mi_rfc: str, uuids: list[str]) -> set[str]:
+        """De `uuids`, los que ya tienen XML + nodos guardados bajo la empresa."""
+        encontrados: set[str] = set()
+        with self._lock:
+            for i in range(0, len(uuids), 500):  # bajo el límite de variables de SQLite
+                parte = uuids[i:i + 500]
+                marcas = ",".join("?" for _ in parte)
+                encontrados.update(
+                    r[0] for r in self._conn.execute(
+                        f"SELECT uuid FROM cfdi_documentos WHERE mi_rfc = ? AND uuid IN ({marcas})",
+                        (mi_rfc, *parte),
+                    )
+                )
+        return encontrados
 
     def _guardar_documento(
         self, uuid: str, mi_rfc: str, documento: Optional[tuple[bytes, str]]
