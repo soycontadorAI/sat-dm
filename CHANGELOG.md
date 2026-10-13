@@ -18,8 +18,10 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   renombra columnas (~70 campos, o cualquier dato del XML por su ruta) con vista previa. Sin
   `plantilla`, el endpoint de export sigue igual (API pública y MCP). Diseño:
   `docs/producto/plantillas-export.md`.
-- **Los filtros del procesador de CFDI arrancan cerrados.** Se abren con un clic; cerrados
-  siguen mostrando cuántos hay aplicados ("El listado está filtrado") y el botón "Limpiar".
+- **Los filtros de los procesadores (CFDI, Pagos y Nómina) arrancan cerrados.** Se abren con un
+  clic; cerrados siguen mostrando cuántos hay aplicados ("El listado está filtrado") y el botón
+  "Limpiar". Los tres usan el mismo panel (`components/shared/panel-filtros.tsx`); antes solo el
+  de CFDI se plegaba.
 - **El procesador de comprobantes es ahora el índice permanente de cada empresa.** Lo que se
   descarga del SAT (Web Service, portal con contraseña o con e.firma) se indexa solo al
   terminar, sin "Cargar desde empresa". Al arrancar, el agente indexa una vez por empresa lo
