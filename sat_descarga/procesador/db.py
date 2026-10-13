@@ -767,13 +767,17 @@ class ProcesadorDB:
             items = [_row_to_dict(r) for r in cur.fetchall()]
         return {"total": total, "page": page, "page_size": page_size, "items": items}
 
-    def iter_all(self, filtros: Optional[CfdiFiltros] = None) -> Iterator[dict]:
-        """Itera todos los CFDIs (sin paginación). Útil para export streaming."""
+    def iter_all(
+        self, filtros: Optional[CfdiFiltros] = None, ascendente: bool = False
+    ) -> Iterator[dict]:
+        """Itera todos los CFDIs (sin paginación). Útil para export streaming.
+        Por default del más reciente al más viejo; `ascendente` para reportes."""
         sql, params = _construir_where(filtros)
+        orden = "ASC" if ascendente else "DESC"
         with self._lock:
             cur = self._conn.execute(
                 f"SELECT *, {SQL_ELEGIBLE_DIOT} AS elegible_diot FROM cfdis {sql} "
-                "ORDER BY fecha DESC, uuid",
+                f"ORDER BY fecha {orden}, uuid",
                 params,
             )
             while True:

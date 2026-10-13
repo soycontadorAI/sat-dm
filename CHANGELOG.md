@@ -8,6 +8,20 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Feature
 
+- **Plantillas de exportación del procesador de CFDI.** "Exportar" abre un diálogo: se elige la
+  plantilla (qué columnas, en qué orden y con qué encabezado) y dos opciones apagadas por
+  default, "Una fila por concepto" (repite los datos del CFDI en cada renglón con cantidad,
+  importe e impuestos de cada concepto; útil para inventarios) y "Convertir a MXN". La
+  predeterminada es el **Formato clásico**: las 25 columnas que exportaba la app web, en una
+  hoja, con conceptos, fecha y monto de pago y documentos relacionados. En
+  `/comprobantes/plantillas` cada quien duplica una plantilla y quita, agrega, reordena o
+  renombra columnas (~70 campos, o cualquier dato del XML por su ruta) con vista previa. Sin
+  `plantilla`, el endpoint de export sigue igual (API pública y MCP). Diseño:
+  `docs/producto/plantillas-export.md`.
+- **Los filtros de los procesadores (CFDI, Pagos y Nómina) arrancan cerrados.** Se abren con un
+  clic; cerrados siguen mostrando cuántos hay aplicados ("El listado está filtrado") y el botón
+  "Limpiar". Los tres usan el mismo panel (`components/shared/panel-filtros.tsx`); antes solo el
+  de CFDI se plegaba.
 - **El procesador de comprobantes es ahora el índice permanente de cada empresa.** Lo que se
   descarga del SAT (Web Service, portal con contraseña o con e.firma) se indexa solo al
   terminar, sin "Cargar desde empresa". Al arrancar, el agente indexa una vez por empresa lo
@@ -20,6 +34,9 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Bug fix
 
+- **Los textos del XML ya no se escriben como fórmulas en el Excel ni en el CSV del procesador.**
+  Una descripción de concepto que empezaba con `=` (la escribe el emisor) quedaba como fórmula
+  de Excel en el export; ahora se escribe como texto.
 - **Presentar la DIOT con el TXT que genera la app ya no truena.** Con `usar_generado=true`,
   `/diot/presentar` llamaba al export del TXT con argumentos que no le tocaban y respondía
   500. Ahora sube el mismo TXT que baja "Exportar TXT", guardado en la carpeta de la

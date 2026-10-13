@@ -192,7 +192,8 @@ En la desktop, `procesador.db` sigue existiendo como caché local (y como único
    con metadata, cancelaciones y candado `piloto_ejecuciones`. Gateado por `piloto`.
 5. **Llenado del historial** desde la fecha elegida.
 6. **Solicitud manual inteligente**: servir de la base lo consolidado y pedir solo los huecos.
-7. **Reportes personalizables** sobre `nodos` (plantillas).
+7. **Reportes personalizables** sobre `nodos` (plantillas). ✅ Adelantada: ver
+   [`plantillas-export.md`](plantillas-export.md).
 
 ## Fase 1: lo que se implementó
 

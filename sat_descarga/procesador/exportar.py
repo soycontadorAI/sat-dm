@@ -7,18 +7,28 @@ streaming con bajo uso de memoria.
 
 CSV: una fila por CFDI, con BOM UTF-8 para compatibilidad con Excel para
 Windows. Opcionalmente expande conceptos.
+
+`plantilla_a_xlsx` / `plantilla_a_csv`: el export por plantilla
+(procesador/plantillas.py) — una hoja, columnas a elegir del usuario.
+
+Los textos vienen del XML (los escribe el emisor): ninguno se escribe como
+fórmula de Excel.
 """
 
 from __future__ import annotations
 
 import csv
 import io
-from typing import Iterable, Optional
+from datetime import datetime
+from typing import Any, Iterable, Optional
 
 from openpyxl import Workbook
+from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 
 from .db import CfdiFiltros, ProcesadorDB
+from .plantillas import MAX_TEXTO_EXCEL, Columna, texto
 
 
 # Tokens de la marca Señal (todoconta-apps/DESIGN.md), alineados con
@@ -118,7 +128,7 @@ def to_xlsx(
 
     uuids_cargados: list[str] = []
     for cfdi in map(_enriquecer, db.iter_all(filtros)):
-        ws_cfdis.append([cfdi.get(key) for key, _ in _COLS_CFDI])
+        ws_cfdis.append([_celda(ws_cfdis, cfdi.get(key)) for key, _ in _COLS_CFDI])
         uuids_cargados.append(cfdi["uuid"])
 
     # Sheet Conceptos — cargado a partir de los UUIDs ya filtrados
@@ -145,7 +155,7 @@ def to_xlsx(
                     (mi_rfc, *chunk),
                 )
                 for row in cur.fetchall():
-                    ws_conceptos.append([row[k] for k, _ in _COLS_CONCEPTO])
+                    ws_conceptos.append([_celda(ws_conceptos, row[k]) for k, _ in _COLS_CONCEPTO])
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -169,7 +179,7 @@ def to_csv(
     if not expandir_conceptos:
         writer.writerow([label for _, label in _COLS_CFDI])
         for cfdi in map(_enriquecer, db.iter_all(filtros)):
-            writer.writerow([cfdi.get(key, "") for key, _ in _COLS_CFDI])
+            writer.writerow([_csv_seguro(cfdi.get(key, "")) for key, _ in _COLS_CFDI])
     else:
         headers = (
             [label for _, label in _COLS_CFDI]
@@ -177,22 +187,141 @@ def to_csv(
         )
         writer.writerow(headers)
         for cfdi in map(_enriquecer, db.iter_all(filtros)):
-            base = [cfdi.get(key, "") for key, _ in _COLS_CFDI]
+            base = [_csv_seguro(cfdi.get(key, "")) for key, _ in _COLS_CFDI]
             conceptos = db.conceptos_de(cfdi["uuid"], cfdi["mi_rfc"])
             if not conceptos:
                 writer.writerow(base + [""] * (len(_COLS_CONCEPTO) - 1))
             else:
                 for c in conceptos:
                     writer.writerow(
-                        base + [c.get(key, "") for key, _ in _COLS_CONCEPTO if key != "cfdi_uuid"]
+                        base + [_csv_seguro(c.get(key, ""))
+                                for key, _ in _COLS_CONCEPTO if key != "cfdi_uuid"]
                     )
 
     return buf.getvalue().encode("utf-8")
 
 
 # ---------------------------------------------------------------------------
+# Export por plantilla
+# ---------------------------------------------------------------------------
+
+_FORMATO_XLSX = {"fecha": "dd/mm/yyyy", "importe": "#,##0.00", "tipo_cambio": "#,##0.0000"}
+_ANCHO_TIPO = {"fecha": 12, "importe": 14, "tipo_cambio": 11, "numero": 10}
+_ANCHO_CAMPO = {
+    "uuid": 38, "conceptos": 50, "descripcion": 45, "emisor_nombre": 32,
+    "receptor_nombre": 32, "validacion_local": 30, "docs_relacionados": 40,
+    "cfdi_relacionados": 40, "forma_pago": 26, "metodo_pago": 26, "pago_forma": 26,
+    "uso_cfdi": 28, "tipo_comprobante": 16, "emisor_regimen": 30,
+    "receptor_regimen": 30, "objeto_imp": 24,
+}
+
+
+def plantilla_a_xlsx(columnas: list[Columna], renglones: Iterable[list[Any]]) -> bytes:
+    """Una hoja `CFDIs`: encabezado de marca congelado, autofiltro, fechas e
+    importes como valores de Excel (no texto)."""
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet("CFDIs")
+    for i, col in enumerate(columnas, 1):
+        ancho = _ANCHO_CAMPO.get(col.campo.id) or _ANCHO_TIPO.get(col.campo.tipo, 16)
+        ws.column_dimensions[get_column_letter(i)].width = max(
+            ancho, min(len(col.encabezado) + 2, 40)
+        )
+    ws.freeze_panes = "A2"
+    font, fill = _estilo_encabezado()
+    ws.append(_header_row(ws, [c.encabezado for c in columnas], font=font, fill=fill))
+    celdas = [_CeldasColumna(ws, col.campo.tipo) for col in columnas]
+    total = 0
+    for valores in renglones:
+        ws.append([c.de(v) for c, v in zip(celdas, valores)])
+        total += 1
+    if columnas:
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(columnas))}{total + 1}"
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def plantilla_a_csv(columnas: list[Columna], renglones: Iterable[list[Any]]) -> bytes:
+    """Mismas columnas que el Excel, con BOM UTF-8; fechas dd/mm/aaaa."""
+    buf = io.StringIO()
+    buf.write("\ufeff")  # BOM
+    writer = csv.writer(buf)
+    writer.writerow([texto(c.encabezado, "texto") for c in columnas])
+    for valores in renglones:
+        writer.writerow([texto(v, col.campo.tipo) for v, col in zip(valores, columnas)])
+    return buf.getvalue().encode("utf-8")
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _estilo_encabezado() -> tuple[Font, PatternFill]:
+    font = Font(
+        bold=True,
+        color=_BRAND_PRIMARY_FOREGROUND,
+        name=_BRAND_FONT_NAME,
+        size=_BRAND_FONT_SIZE,
+    )
+    return font, PatternFill("solid", fgColor=_BRAND_PRIMARY)
+
+
+def _celda(ws, valor: Any, tipo: str = "texto") -> Any:
+    """Valor para `ws.append` en modo write_only. Un texto que empieza con «=»
+    se fuerza a texto (openpyxl lo escribiría como fórmula); fechas e importes
+    llevan su formato de número."""
+    if isinstance(valor, str):
+        if valor.startswith("="):
+            c = WriteOnlyCell(ws, value=valor)
+            c.data_type = "s"
+            return c
+        return valor
+    formato = _FORMATO_XLSX.get(tipo)
+    if formato and isinstance(valor, (int, float, datetime)) and not isinstance(valor, bool):
+        c = WriteOnlyCell(ws, value=valor)
+        c.number_format = formato
+        return c
+    return valor
+
+
+class _CeldasColumna:
+    """Celdas de una columna del export por plantilla. openpyxl escribe cada
+    renglón al hacer `append`, así que la celda con formato se reutiliza de
+    renglón en renglón (crear una por valor era lo más lento con cientos de
+    miles de renglones). Los textos se recortan al máximo de una celda de
+    Excel y nunca se escriben como fórmula."""
+
+    def __init__(self, ws, tipo: str):
+        self.ws = ws
+        self.formato = _FORMATO_XLSX.get(tipo)
+        self._con_formato: Optional[WriteOnlyCell] = None
+        self._texto: Optional[WriteOnlyCell] = None
+
+    def de(self, valor: Any) -> Any:
+        if isinstance(valor, str):
+            if len(valor) > MAX_TEXTO_EXCEL:
+                valor = valor[: MAX_TEXTO_EXCEL - 1] + "…"
+            if not valor.startswith("="):
+                return valor
+            if self._texto is None:
+                self._texto = WriteOnlyCell(self.ws)
+            self._texto.value = valor
+            self._texto.data_type = "s"
+            return self._texto
+        if (self.formato and isinstance(valor, (int, float, datetime))
+                and not isinstance(valor, bool)):
+            if self._con_formato is None:
+                self._con_formato = WriteOnlyCell(self.ws)
+                self._con_formato.number_format = self.formato
+            self._con_formato.value = valor
+            return self._con_formato
+        return valor
+
+
+def _csv_seguro(valor: Any) -> Any:
+    """Textos del CSV que Excel tomaría como fórmula llevan «'» al inicio."""
+    return texto(valor, "texto") if isinstance(valor, str) else valor
 
 
 def _chunks(seq: list, size: int) -> Iterable[list]:
@@ -206,12 +335,12 @@ def _header_row(ws, values: list, font: Font, fill: PatternFill) -> list:
     `#10141B`, texto blanco en negritas). El sheet en modo
     write_only requiere `WriteOnlyCell` con referencia explícita al ws.
     """
-    from openpyxl.cell import WriteOnlyCell
-
     align = Alignment(horizontal="left", vertical="center")
     cells = []
     for v in values:
         c = WriteOnlyCell(ws, value=v)
+        if isinstance(v, str) and v.startswith("="):
+            c.data_type = "s"
         c.font = font
         c.fill = fill
         c.alignment = align
