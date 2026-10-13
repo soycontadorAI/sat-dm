@@ -42,6 +42,7 @@ Notas de diseño:
 """
 
 import logging
+from pathlib import Path
 import os
 import threading
 import time
@@ -54,6 +55,7 @@ from ..core.errores import ErrorEsperado
 from ..core.fiel import FIEL
 from ..webservice.auth import obtener_token
 from ..webservice.descarga import descargar_todos
+from ..webservice.errores import trae_codestatus
 from ..webservice.verificacion import consultar_solicitud, ESTADO_TERMINADA
 from .state import (
     _iniciar_descarga_ws,
@@ -306,9 +308,18 @@ def _descargar_lista(rfc: str, fiel: FIEL, sol: dict) -> bool:
         logger.info("[poller] %s: solicitud %s descargada en %s", rfc, id_sol, salida)
         return True
     except Exception as e:  # noqa: BLE001 — reintenta en la siguiente pasada (sigue en 3)
-        if "5008" in str(e):
+        if trae_codestatus(str(e), "5008"):
             # El SAT ya no deja bajar esos paquetes (máximo de descargas): reintentar
-            # cada pasada no sirve de nada.
+            # cada pasada no sirve de nada. Lo que sí bajó de esta solicitud (otros
+            # paquetes; la carpeta es del rango y puede traer de otras) se registra y
+            # se indexa.
+            salida = _salida_descarga_ws(rfc, id_sol)
+            if any((Path(salida) / f"{pid}.zip").is_file() for pid in package_ids or []):
+                _registrar_descarga(
+                    rfc, "ws", "metadata" if es_metadata(sol) else "cfdi",
+                    descripcion=f"Descarga WS · solicitud {id_sol[:8]}… (incompleta, 5008)",
+                    ruta=salida, total=None,
+                )
             config_store.update_solicitud(
                 rfc, id_sol, "vencida",
                 mensaje="El SAT ya no permite bajar estos paquetes otra vez (5008). "

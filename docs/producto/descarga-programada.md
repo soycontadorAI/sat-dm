@@ -272,10 +272,13 @@ ingreso 58 KB de XML (5 KB comprimido), nómina 6 KB, pago 6 KB.
   columna nueva) y avisa las de meses anteriores. Antes de comparar espera al indexado de fondo
   de esa empresa (unos segundos; si sigue, compara en la siguiente vuelta). Compara por día con la
   regla del conteo; lo que falte se pide una vez (por folio si son hasta 10, y si el SAT no acepta
-  esa solicitud, por los días), se indexa en ese momento y se vuelve a comparar. Si el SAT falla
+  esa solicitud, por los días) y, cuando baja y el poller lo indexa, se vuelve a comparar (si
+  ese indexado falla, esos días quedan en diferencia y se pueden reintentar). Si el SAT falla
   al pedir lo que falta, el cierre espera y lo vuelve a pedir (no se cierra en diferencia por
   eso). Una metadata que el SAT no completa se vuelve a pedir; una que bajó y no se puede leer
-  completa (un ZIP que no abre, faltan paquetes, se borró la carpeta) se vuelve a bajar una vez
+  completa (un ZIP que no abre o el de algún paquete que falta, porque en local se conservan; se
+  borró la carpeta)
+  se vuelve a bajar una vez
   (pedirla igual da 5005 y el SAT limita las descargas por paquete) y, si sigue igual, se pide otra;
   en total hasta 3 veces, y la dirección que sí llegó no se vuelve a pedir.
   Resultado con `calendario.cerrar_dias`: consolidado o diferencia con el detalle. Los meses que
@@ -292,9 +295,12 @@ ingreso 58 KB de XML (5 KB comprimido), nómina 6 KB, pago 6 KB.
   haya cambiado el día). 5002, 5001, 301 → error sin reintento (sin el truco de variar los
   segundos, que gasta cuota). 5005 → nunca se varían los segundos: en la pasada diaria los días
   quedan en proceso (el cierre los resuelve); en el cierre se usa la solicitud igual que ya se
-  tenía y, si no hay (la pidió otra instalación), se espera como a una falla del SAT. Se reusan
-  solicitudes sin filtros (las manuales guardan ahora su contraparte); de metadata, solo las del
-  piloto. 5004 → día con 0.
+  tenía y, si no hay (la pidió otra instalación), se espera como a una falla del SAT. El piloto
+  reusa sus propias solicitudes; ante un 5005 de lo que falta, también una manual guardada sin
+  filtros (las manuales guardan ahora su contraparte y `sin_filtros`; las de antes no se toman);
+  si no hay una que sirva, esperar no ayuda (el SAT seguirá contestando 5005): ese rango queda en
+  diferencia, a la vista y con Reintentar por día, y los demás se siguen pidiendo.
+  5004 → día con 0.
 - Avisos (`piloto_avisos`): resumen del cierre cuando todas las empresas lo terminan,
   cancelaciones de meses ya cerrados (una sola por comparación: el primer cierre puede traer las
   de todo un año), e.firma y cierres fallidos. En la app, como notificación (si llegan más de 3 a
@@ -307,8 +313,8 @@ ingreso 58 KB de XML (5 KB comprimido), nómina 6 KB, pago 6 KB.
   con la metadata que ya tenía. Por eso no se puede con la descarga automática en pausa ni en una
   empresa que no está incluida; si el SAT contesta 5005 (ese día ya se pidió igual), se explica.
 - Poller: una solicitud en 3 que no se baja en 72 h vence (`lista_en`), y también una cuyos
-  paquetes el SAT ya no deja bajar (5008); la Metadata va a su carpeta y se registra como metadata;
-  las de folio, a `cfdi/{RFC}/folios/{id}/`.
+  paquetes el SAT ya no deja bajar (5008; lo que sí bajó se registra e indexa); la Metadata va a
+  su carpeta y se registra como metadata; las de folio, a `cfdi/{RFC}/folios/{id}/`.
 - Pendiente fuera de este repo: el candado entre instalaciones (`piloto_ejecuciones` en Supabase,
   migración 044 de todoconta-apps), `empresas_catalogo.piloto_incluida`, el correo del resumen y
   el despertar por agenda del provisioner.

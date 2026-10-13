@@ -116,3 +116,12 @@ class TestReintento5002:
                                          date(2026, 9, 30), tipo_comprobante="E",
                                          reintentar_5002=False)
         assert llamadas == ["2026-09-30T23:59:57"]
+
+
+def test_trae_codestatus_en_cualquier_parte_del_texto():
+    from sat_descarga.webservice.errores import codestatus, trae_codestatus
+
+    texto = "Paquete 1: CodEstatus=5000, ok; paquete 2: CodEstatus=5008, Máximo de descargas"
+    assert codestatus(texto) == "5000"
+    assert trae_codestatus(texto, "5008") and not trae_codestatus(texto, "5004")
+    assert not trae_codestatus("El paquete A1B25008_01 vino vacío", "5008")

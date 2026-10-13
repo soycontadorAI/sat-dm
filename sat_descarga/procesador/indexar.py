@@ -191,12 +191,6 @@ def esperar_indexado(mi_rfc: str, timeout: float) -> bool:
             lambda: not _pendientes.get(mi_rfc) and not _pendientes.get("*"), timeout=timeout)
 
 
-def indexar_carpeta_en_turno(mi_rfc: str, carpeta: Union[str, Path], *, origen: Optional[str]) -> dict:
-    """`indexar_carpeta` en el mismo turno que el indexado de fondo (no pelea con él
-    por el candado de la base)."""
-    with _en_curso:
-        return indexar_carpeta(mi_rfc, carpeta, origen=origen)
-
 
 def _indexar_registrando(rfc: str, ruta: str, origen: str) -> None:
     r = indexar_carpeta(rfc, ruta, origen=origen)

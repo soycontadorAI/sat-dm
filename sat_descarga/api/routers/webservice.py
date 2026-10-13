@@ -626,6 +626,7 @@ def _guardar_solicitud_ws(rfc: str, id_solicitud: str, req: "SolicitudRequest") 
             # (la descarga automática no la toma como suya).
             rfc_emisor=req.rfc_emisor or None,
             rfc_receptor=req.rfc_receptor or None,
+            sin_filtros=True if not (req.rfc_emisor or req.rfc_receptor) else None,
         )
     except Exception:  # noqa: BLE001
         logger.warning("No se pudo guardar la solicitud en el historial", exc_info=True)

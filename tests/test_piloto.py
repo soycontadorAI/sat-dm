@@ -20,6 +20,9 @@ from sat_descarga.procesador import calendario  # noqa: E402
 from sat_descarga.webservice import solicitud as solicitud_mod  # noqa: E402
 
 ORIGINAL_SOLICITAR = solicitud_mod.solicitar_descarga
+from sat_descarga.procesador import indexar as _indexar_mod  # noqa: E402
+
+EN_HILO_REAL = _indexar_mod._en_hilo  # el fixture lo cambia por uno síncrono
 
 RFC = "GACL850312H40"  # Laura García Cervantes: pocos CFDI y con e.firma
 AHORA = datetime(2026, 10, 13, 9, 0, tzinfo=calendario.ZONA_MX)
@@ -201,7 +204,7 @@ def test_la_ventana_salta_dias_cerrados_y_con_solicitud_viva(entorno):
     _activar(entorno)
     calendario.cerrar_dias(RFC, {("2026-10-11", "E"): ("consolidado", 1, None)})
     config_store.save_solicitud(RFC, "VIVA", "2026-10-12", "2026-10-12", "CFDI · recibidos",
-                                tipo_comprobante="R")
+                                tipo_comprobante="R", sin_filtros=True)
     v = piloto.ventana_diaria(RFC, AHORA.date())
     assert v["E"] == [date(2026, 10, 10), date(2026, 10, 12)]
     assert v["R"] == [date(2026, 10, 10), date(2026, 10, 11)]
@@ -520,17 +523,40 @@ def test_el_cierre_espera_los_reintentos_de_las_diarias_del_mes(entorno, monkeyp
     assert len(_del_piloto("cierre_metadata")) == 2
 
 
-def test_el_cierre_indexa_lo_que_bajo_antes_de_comparar(entorno, monkeypatch):
-    """El poller indexa en segundo plano: si el cierre compara antes de que ese
-    hilo termine, lo que ya bajó no debe quedar como diferencia."""
+def test_el_cierre_no_compara_mientras_el_poller_indexa(entorno, monkeypatch):
+    """El poller indexa lo que baja en segundo plano: mientras ese hilo sigue, el
+    cierre no compara (lo que ya bajó quedaría como diferencia); cuando termina, sí."""
+    import threading as th
+
+    from sat_descarga.api import piloto
     from sat_descarga.procesador import indexar as indexar_mod
 
-    monkeypatch.setattr(indexar_mod, "_en_hilo", lambda nombre, fn, *a: None)
+    soltar = th.Event()
+    hilos = []
+
+    def _lento(nombre, fn, *a):
+        def _correr(*args):
+            soltar.wait(10)
+            fn(*args)
+        hilos.append(EN_HILO_REAL(nombre, _correr, *a))
+        return hilos[-1]
+
+    monkeypatch.setattr(piloto, "INDEXADO_ESPERA_S", 0.05)
     _activar(entorno)
-    ej = _cerrar_septiembre(entorno)
+    piloto.evaluar()   # metadata del cierre
+    _procesar()
+    piloto.evaluar()   # faltantes por días
+    monkeypatch.setattr(indexar_mod, "_en_hilo", _lento)
+    _procesar()        # baja los faltantes; su indexado se queda esperando
+    piloto.evaluar()
+    ej = piloto._fila(RFC, "cierre", "2026-09")
+    assert ej["estado"] == "en_curso" and ej["detalle"]["paso"] == "faltantes"
+    soltar.set()
+    for h in hilos:
+        h.join(timeout=10)
+    piloto.evaluar()
+    ej = piloto._fila(RFC, "cierre", "2026-09")
     assert ej["estado"] == "completa" and ej["detalle"]["resumen"]["dias_con_diferencia"] == 0
-    sep = calendario.filas(RFC, date(2026, 9, 1), date(2026, 9, 30))
-    assert {f["estado"] for f in sep.values()} == {"consolidado"}
 
 
 def test_metadata_lista_sin_paquetes_no_es_ilegible(entorno):
@@ -572,10 +598,17 @@ def test_una_manual_no_se_reusa_y_con_filtros_no_cubre_el_dia(entorno):
                                 tipo_comprobante="R", rfc_emisor="AAA010101AAA")
     assert ("2026-10-11", "R") not in piloto._cubiertos_por_vivas(RFC)
     assert piloto._igual(RFC, date(2026, 10, 11), date(2026, 10, 11), "R", "CFDI", None) is None
-    # Una manual de CFDI sin filtros sí se reusa (evita el 5005).
-    config_store.save_solicitud(RFC, "LIBRE", "2026-10-12", "2026-10-12", "CFDI · recibidos",
+    # Una manual de CFDI guardada sin filtros se usa ante un 5005 de lo que falta;
+    # una de antes (que no dice si los tenía), no.
+    dia = date(2026, 10, 12)
+    config_store.save_solicitud(RFC, "VIEJA", "2026-10-12", "2026-10-12", "CFDI · recibidos",
                                 tipo_comprobante="R", tipo_solicitud="CFDI")
-    assert piloto._igual(RFC, date(2026, 10, 12), date(2026, 10, 12), "R", "CFDI", None) == "LIBRE"
+    assert piloto._igual(RFC, dia, dia, "R", "CFDI", None, manuales=True) is None
+    config_store.save_solicitud(RFC, "LIBRE", "2026-10-12", "2026-10-12", "CFDI · recibidos",
+                                tipo_comprobante="R", tipo_solicitud="CFDI", sin_filtros=True)
+    assert piloto._igual(RFC, dia, dia, "R", "CFDI", None, manuales=True) == "LIBRE"
+    assert piloto._igual(RFC, dia, dia, "R", "CFDI", None) is None  # el piloto solo se reusa a sí mismo
+    assert ("2026-10-12", "R") in piloto._cubiertos_por_vivas(RFC)
 
 
 def test_meses_vencidos_con_la_app_cerrada_y_respiro_del_rezago(entorno):
@@ -615,6 +648,9 @@ def test_metadata_ilegible_se_vuelve_a_bajar_una_vez_y_al_tercer_intento_es_erro
     assert ej["estado"] == "error" and "no se pudo leer" in ej["error_mensaje"]
     viejas = [s for s in _del_piloto("cierre_metadata") if s["id_solicitud"] in originales]
     assert all(s.get("rebajada") and s.get("ilegible") for s in viejas)
+    # En el último intento no se gasta otra descarga del paquete.
+    nuevas = [s for s in _del_piloto("cierre_metadata") if s["id_solicitud"] not in originales]
+    assert nuevas and not any(s.get("rebajada") for s in nuevas)
     assert any(a["tipo"] == "error" for a in piloto.avisos())
 
 
@@ -631,6 +667,16 @@ def test_metadata_con_un_zip_danado_no_se_compara(entorno):
     zips[0].write_bytes(b"no es un zip")
     registros, ilegibles = piloto._leer_metadata(RFC, meta)
     assert ilegibles == [meta["R"]] and registros  # los emitidos sí se leyeron
+    # Sin los ZIP (se borraron y quedó lo extraído): tampoco está completa, aunque en
+    # la carpeta (que es del rango) haya ZIP de otra solicitud.
+    carpeta_e = Path(state._salida_descarga_ws(RFC, meta["E"]))
+    for z in carpeta_e.glob("*.zip"):
+        z.unlink()
+    import zipfile
+
+    with zipfile.ZipFile(carpeta_e / "OTRA_SOLICITUD_01.zip", "w"):
+        pass  # un ZIP válido de otra solicitud del mismo rango
+    assert meta["E"] in piloto._leer_metadata(RFC, meta)[1]
 
 
 # ---------------------------------------------------------------------------
@@ -650,6 +696,20 @@ def test_reintentar_un_dia_con_error(entorno):
     assert sol["proposito"] == "reintento" and sol["fecha_inicio"] == "2026-09-03"
     with pytest.raises(ValueError):
         piloto.reintentar(RFC, date(2026, 9, 4), "E")  # no está en error
+
+
+def test_reintentar_no_toma_una_solicitud_manual(entorno):
+    """El cierre solo vuelve a comparar los reintentos del piloto: una manual igual
+    y viva no se reusa (el SAT contestaría 5005 y se explica)."""
+    from sat_descarga.api import piloto
+
+    _activar(entorno)
+    calendario.marcar(RFC, date(2026, 9, 3), date(2026, 9, 3), "E", "error", error_codigo="5002")
+    config_store.save_solicitud(RFC, "MANUAL", "2026-09-03", "2026-09-03", "CFDI · emitidos",
+                                tipo_comprobante="E", tipo_solicitud="CFDI", sin_filtros=True)
+    r = piloto.reintentar(RFC, date(2026, 9, 3), "E")
+    assert r["id_solicitud"] != "MANUAL"
+    assert config_store.get_solicitud(RFC, r["id_solicitud"])["proposito"] == "reintento"
 
 
 def test_reintentar_con_5005_en_pausa_o_fuera_del_piloto_explica_por_que_no(entorno, monkeypatch):
@@ -1260,6 +1320,38 @@ def test_un_paquete_que_el_sat_ya_no_deja_bajar_vence(entorno, monkeypatch):
     assert not any(s["estado"] == "3" for s in sols)
 
 
+def test_un_5008_a_medias_registra_lo_que_si_bajo(entorno, monkeypatch):
+    from sat_descarga.api import piloto, poller
+
+    _activar(entorno)
+    piloto.evaluar()
+
+    def _medio(**kw):
+        # El primer paquete de esta solicitud sí bajó; el segundo ya no.
+        Path(kw["directorio_salida"]).mkdir(parents=True, exist_ok=True)
+        (Path(kw["directorio_salida"]) / f"{kw['package_ids'][0]}.zip").write_bytes(b"PK")
+        raise RuntimeError("Paquete 2: CodEstatus=5008, Máximo de descargas permitidas")
+
+    monkeypatch.setattr(poller, "descargar_todos", _medio)
+    _procesar()
+    assert any("(incompleta, 5008)" in h["descripcion"] for h in config_store.list_descargas(RFC))
+
+
+def test_un_5008_dentro_de_un_id_no_vence_la_solicitud(entorno, monkeypatch):
+    """El 5008 se reconoce por su CodEstatus, no porque "5008" aparezca en el id."""
+    from sat_descarga.api import piloto, poller
+
+    _activar(entorno)
+    piloto.evaluar()
+
+    def _otro(**kw):
+        raise RuntimeError("El paquete A1B25008-0000_01 llegó vacío (CodEstatus=5000)")
+
+    monkeypatch.setattr(poller, "descargar_todos", _otro)
+    _procesar()
+    assert {s["estado"] for s in _del_piloto("diaria") if s.get("package_ids")} == {"3"}
+
+
 def test_un_error_de_la_app_no_se_disfraza_de_falla_del_sat(entorno, monkeypatch):
     from sat_descarga.api import piloto
 
@@ -1288,3 +1380,51 @@ def test_una_solicitud_manual_guarda_sus_filtros(entorno):
                                       rfc_emisor="AAA010101AAA")
     webservice._guardar_solicitud_ws(RFC, "CONFILTRO", req)
     assert config_store.get_solicitud(RFC, "CONFILTRO")["rfc_emisor"] == "AAA010101AAA"
+
+
+
+def test_un_5008_sin_nada_propio_no_inventa_una_descarga(entorno, monkeypatch):
+    """La carpeta es del rango: archivos de otra solicitud no cuentan como lo que bajó."""
+    from sat_descarga.api import piloto, poller
+
+    _activar(entorno)
+    piloto.evaluar()
+
+    def _nada(**kw):
+        Path(kw["directorio_salida"]).mkdir(parents=True, exist_ok=True)
+        (Path(kw["directorio_salida"]) / "OTRA_SOLICITUD_01.zip").write_bytes(b"PK")
+        raise RuntimeError("CodEstatus=5008, Máximo de descargas permitidas")
+
+    monkeypatch.setattr(poller, "descargar_todos", _nada)
+    _procesar()
+    assert not any("incompleta" in h["descripcion"] for h in config_store.list_descargas(RFC))
+
+
+def test_un_5005_de_lo_que_falta_sin_una_propia_queda_en_diferencia(entorno, monkeypatch):
+    """Una manual de antes (sin `sin_filtros`) no se toma y esperar no sirve (el SAT
+    seguirá contestando 5005): ese rango queda en diferencia, a la vista y con
+    Reintentar, y los demás rangos sí se piden."""
+    from sat_descarga.api import piloto
+    from sat_descarga.procesador.db import abrir_db
+    from sat_descarga.webservice import solicitud
+
+    comps = _indexar_mes(2026, 9)
+    perdidos = [c for c in comps if c.direccion == "R"][:11]  # más de 10: se piden los días
+    with abrir_db().transaccion() as conn:
+        conn.executemany("DELETE FROM cfdis WHERE uuid = ? AND mi_rfc = ?",
+                         [(c.uuid, RFC) for c in perdidos])
+    duplicado = min(c.fecha.date() for c in perdidos)
+    original = solicitud.solicitar_descarga
+
+    def _solicitar(**kw):
+        if kw.get("tipo_solicitud") == "CFDI" and kw["fecha_inicio"] == duplicado:
+            raise RuntimeError("CodEstatus=5005, Solicitud duplicada")
+        return original(**kw)
+
+    monkeypatch.setattr(solicitud, "solicitar_descarga", _solicitar)
+    _activar(entorno)
+    ej = _cerrar_septiembre(entorno, vueltas=6)
+    assert ej["estado"] == "completa"
+    assert _del_piloto("cierre_faltantes")  # los demás rangos sí se pidieron
+    estados = {d: _fila(d.isoformat(), "R")["estado"] for d in {c.fecha.date() for c in perdidos}}
+    assert estados[duplicado] == "diferencia" and "consolidado" in estados.values()
