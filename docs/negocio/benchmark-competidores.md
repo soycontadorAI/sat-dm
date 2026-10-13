@@ -286,7 +286,13 @@ SDK comercial SaaS (MPL-2.0). `pip install fiscalapi`. Proxy al SAT, no directo.
 
 ## Qué Nos Falta vs XMLSAT Premium
 
-El gap es enorme en la parte de **análisis y reportes**. sat-descarga-masiva hoy solo descarga; XMLSAT Premium es una suite completa de administración fiscal.
+> Estado actualizado el 2026-10-12 contra el código de `main`. Desde la primera versión de este
+> documento ya se cerraron DIOT, envío de contabilidad electrónica, consulta de declaraciones y
+> DIOT presentadas, el índice permanente de CFDIs y el export con plantillas. Comparativa contra
+> CONTPAQi: [`benchmark-contpaqi.md`](benchmark-contpaqi.md).
+
+La brecha que queda está en **reportes fiscales** (IVA, ISR, IEPS), el **visor XML → PDF**, los
+**complementos** fuera de Pagos y Nómina, y la **auditoría** (catálogo vs balanza).
 
 ---
 
@@ -318,6 +324,8 @@ El gap es enorme en la parte de **análisis y reportes**. sat-descarga-masiva ho
 |---|---|---|
 | **Parser de XML** CFDI v3.3 y 4.0 | ✅ `procesador/cfdi_parser.py` | — |
 | **Export a Excel** de datos de CFDIs | ✅ `/procesador/cfdi/exportar` (xlsx/csv) | — |
+| **Export personalizable** (plantillas, una fila por concepto, convertir a MXN) | ✅ `/comprobantes/plantillas` (docs/producto/plantillas-export.md) | — |
+| **Índice permanente** de CFDIs (XML original + todos los nodos) | ✅ cada descarga se indexa sola (`procesador/indexar.py`) | — |
 | **Catálogo productos/servicios SAT** | 🟡 lookup interno, sin catálogo navegable | Media |
 | **Lectura de complementos** (Pagos, Nómina) | ✅ (parcial) | — |
 | **Lectura de complementos** (Carta Porte, Comercio Ext, Donatarias, etc.) | ❌ | Alta |
@@ -338,11 +346,12 @@ El gap es enorme en la parte de **análisis y reportes**. sat-descarga-masiva ho
 | **Validación RESICO** (retención correcta) | ❌ | Media |
 | **Reporte nómina extendido** (223 columnas) | ❌ | Alta |
 
-### ❌ Fase 5 — DIOT y Contabilidad Electrónica
+### 🟡 Fase 5 — DIOT y Contabilidad Electrónica
 | Feature | Estado | Complejidad |
 |---|---|---|
-| **DIOT automática** + archivo batch DEM | ❌ | Alta |
-| **Contabilidad electrónica 1.3** (catálogo + balanza) | ❌ | Alta |
+| **DIOT automática** + archivo batch | ✅ prellenado desde CFDIs, TXT de carga masiva, presentación y acuse (`/diot/*`) | — |
+| **Contabilidad electrónica 1.3**: envío y acuses | ✅ `/ce/enviar`, `/ce/acuses` | — |
+| **Contabilidad electrónica 1.3**: generar catálogo y balanza | ❌ (salen del sistema contable del usuario) | Alta |
 
 ### ✅ Fase 6 — Herramientas de Organización (CERRADA)
 | Feature | Estado |
@@ -353,12 +362,12 @@ El gap es enorme en la parte de **análisis y reportes**. sat-descarga-masiva ho
 | **Agrupador** Vigentes/Cancelados | 🟡 filtro `estado_sat` en procesador; no en organizador |
 | **Agrupador** por versión y tipo | ✅ filtro `tipo` en procesador |
 
-### ❌ Fase 7 — Auditoría Electrónica
+### 🟡 Fase 7 — Auditoría Electrónica
 | Feature | Estado | Complejidad |
 |---|---|---|
-| Consulta de **declaraciones** (normales + complementarias) | ❌ | Alta |
-| Consulta de **DIOT enviadas** por año | ❌ | Alta |
-| Descarga de **contabilidad electrónica enviada** al SAT | ❌ | Alta |
+| Consulta de **declaraciones** (normales + complementarias) | ✅ CLI `descargar declaraciones` (PDF + acuses); falta UI | Baja |
+| Consulta de **DIOT enviadas** por año | ✅ CLI `descargar diot` (PDF + Excel + acuses); falta UI | Baja |
+| Descarga de **contabilidad electrónica enviada** al SAT | 🟡 acuses (`/ce/acuses`); el XML enviado no | Media |
 | **Analizador** catálogo vs balanza | ❌ | Alta |
 | **Conciliación** sistema interno vs archivos SAT | ❌ | Alta |
 | **Correos apócrifos** del SAT | ❌ | Baja |
