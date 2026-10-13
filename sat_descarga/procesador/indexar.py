@@ -36,6 +36,18 @@ LOTE = 500
 
 # Un indexado en segundo plano a la vez: comparten CPU y el candado de la DB.
 _en_curso = threading.Lock()
+# Indexados de fondo lanzados que no han terminado, por empresa ("*" = todas: el
+# de las descargas existentes al arrancar). Se cuentan al lanzarlos, no al
+# empezar: quien ve una descarga ya registrada sabe que su indexado cuenta.
+_pendientes: dict = {}
+_pendientes_cv = threading.Condition()
+
+
+def _clave(nombre: str) -> str:
+    """Empresa de un hilo de indexado (`indexar-{RFC}`); cualquier otro, "*"."""
+    if nombre.startswith("indexar-") and nombre != "indexar-existentes":
+        return nombre[len("indexar-"):]
+    return "*"
 
 Contenido = Union[bytes, Path]
 
@@ -149,16 +161,35 @@ def indexar_descargas_existentes(base: Union[str, Path]) -> Optional[threading.T
 
 
 def _en_hilo(nombre: str, fn, *args) -> threading.Thread:
+    clave = _clave(nombre)
+    with _pendientes_cv:
+        _pendientes[clave] = _pendientes.get(clave, 0) + 1
+
     def _correr():
-        with _en_curso:
-            try:
-                fn(*args)
-            except Exception:  # noqa: BLE001 — el indexado nunca tumba al agente
-                logger.exception("[indexar] falló %s", nombre)
+        try:
+            with _en_curso:
+                try:
+                    fn(*args)
+                except Exception:  # noqa: BLE001 — el indexado nunca tumba al agente
+                    logger.exception("[indexar] falló %s", nombre)
+        finally:
+            with _pendientes_cv:
+                _pendientes[clave] -= 1
+                _pendientes_cv.notify_all()
 
     hilo = threading.Thread(target=_correr, name=nombre, daemon=True)
     hilo.start()
     return hilo
+
+
+def esperar_indexado(mi_rfc: str, timeout: float) -> bool:
+    """Espera a que termine el indexado de fondo ya lanzado para la empresa (el de
+    las descargas que acaban de bajar, y el de arranque). True si terminó; False
+    si sigue después de `timeout` s."""
+    with _pendientes_cv:
+        return _pendientes_cv.wait_for(
+            lambda: not _pendientes.get(mi_rfc) and not _pendientes.get("*"), timeout=timeout)
+
 
 
 def _indexar_registrando(rfc: str, ruta: str, origen: str) -> None:

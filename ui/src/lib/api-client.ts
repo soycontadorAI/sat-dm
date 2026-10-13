@@ -3,6 +3,7 @@ import { agregarBreadcrumb, capturarExcepcion } from './telemetria';
 import type {
   CalendarioAnio,
   CalendarioDia,
+  PilotoEstado,
   HealthResponse,
   CargarFielResponse,
   DescargarFielResponse,
@@ -719,6 +720,42 @@ export class SatApiClient {
     const qs = new URLSearchParams({ anio: String(anio), mes: String(mes) });
     if (direccion) qs.set('direccion', direccion);
     return this.blob(`/calendario/${encodeURIComponent(rfc)}/zip?${qs.toString()}`);
+  }
+
+  /** Reintenta un día con error o diferencia (pide de nuevo al SAT). */
+  async calendarioReintentar(
+    rfc: string,
+    fecha: string,
+    direccion: 'E' | 'R',
+  ): Promise<{ ok: boolean; id_solicitud: string }> {
+    return this.post(`/calendario/${encodeURIComponent(rfc)}/reintentar`, { fecha, direccion });
+  }
+
+  // -----------------------------------------------------------------------
+  // Descarga automática (piloto)
+  // -----------------------------------------------------------------------
+
+  async pilotoEstado(): Promise<PilotoEstado> {
+    return this.request<PilotoEstado>('/piloto/estado');
+  }
+
+  /** Activa/pausa o cambia el día de cierre. 402 si el plan no la incluye. */
+  async pilotoConfig(cfg: { activo?: boolean; dia_cierre?: number }): Promise<PilotoEstado> {
+    return this.put<PilotoEstado>('/piloto/config', cfg);
+  }
+
+  async pilotoEmpresa(rfc: string, incluida: boolean): Promise<{ ok: boolean; rfc: string; incluida: boolean }> {
+    return this.put(`/empresas/${encodeURIComponent(rfc)}/piloto`, { incluida });
+  }
+
+  /** Adelanta la siguiente evaluación; no espera a que termine. */
+  async pilotoCorrer(): Promise<{ ok: boolean }> {
+    return this.post('/piloto/correr');
+  }
+
+  /** Sin `ids` marca todos como leídos. */
+  async pilotoAvisosLeidos(ids?: number[]): Promise<{ ok: boolean; marcados: number }> {
+    return this.post('/piloto/avisos/leidos', ids ? { ids } : {});
   }
 
   /** Borra una solicitud del catálogo local (no afecta al SAT). */

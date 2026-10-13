@@ -214,7 +214,8 @@ def _aplicar(mi_rfc: str, items: list[dict]) -> int:
                     nuevo["intentos"] = it["intentos"]
                 elif destino in ("provisional", "consolidado"):
                     nuevo["intentos"] = 0  # el día ya salió: los reintentos quedan atrás
-                if destino == "error":
+                if destino in ("error", "diferencia"):
+                    # En una diferencia el "mensaje" es el detalle (qué falta o sobra).
                     nuevo["error_codigo"] = it.get("error_codigo")
                     nuevo["error_mensaje"] = it.get("error_mensaje")
                 else:
@@ -291,6 +292,82 @@ def marcar(
     return _aplicar(mi_rfc, items)
 
 
+def cerrar_dias(mi_rfc: str, resultados: dict) -> int:
+    """Escribe el resultado del cierre mensual: `{(fecha_iso, dir): (estado,
+    total_sat, mensaje)}` con estado consolidado o diferencia. Es la única vía
+    a esos dos estados (con `forzar`); refresca `total_bd` en la misma pasada."""
+    mi_rfc = normalizar_mi_rfc(mi_rfc)
+    if not resultados:
+        return 0
+    fechas = sorted(f for f, _ in resultados)
+    conteos = _conteos(mi_rfc, fechas[0], fechas[-1])
+    items = []
+    for (fecha, direccion), (estado, total_sat, mensaje) in resultados.items():
+        _validar(estado, direccion)
+        if estado not in _CONGELADOS:
+            raise ValueError(f"El cierre solo escribe consolidado o diferencia, no {estado!r}")
+        items.append({
+            "fecha": fecha, "direccion": direccion, "estado": estado, "forzar": True,
+            "bd": conteos.get((fecha, direccion), 0), "total_sat": total_sat,
+            "error_codigo": None, "error_mensaje": mensaje, "intentos": 0,
+        })
+    return _aplicar(mi_rfc, items)
+
+
+def uuids_por_dia(mi_rfc: str, desde: date, hasta: date) -> dict[tuple[str, str], set[str]]:
+    """UUID (en mayúsculas) del índice por (día, dirección), con la regla del
+    conteo: E si la empresa es emisora, R si es receptora, sin cancelados."""
+    mi_rfc = normalizar_mi_rfc(mi_rfc)
+    out: dict[tuple[str, str], set[str]] = {}
+    db = abrir_db()
+    with db.cursor() as cur:
+        filas_ = cur.execute(
+            f"""
+            SELECT UPPER(uuid), substr(fecha,1,10), {_ES_EMISOR}, {_ES_RECEPTOR}
+            FROM cfdis
+            WHERE mi_rfc = ? AND fecha >= ? AND fecha < ? AND {_NO_CANCELADO} AND {_FECHA_BIEN}
+            """,
+            (mi_rfc, mi_rfc, mi_rfc, desde.isoformat(), _siguiente_dia(hasta.isoformat())),
+        ).fetchall()
+    for uuid, dia, es_e, es_r in filas_:
+        if es_e:
+            out.setdefault((dia, "E"), set()).add(uuid)
+        if es_r:
+            out.setdefault((dia, "R"), set()).add(uuid)
+    return out
+
+
+def aplicar_cancelaciones(mi_rfc: str, canceladas: dict) -> list[tuple[str, str]]:
+    """Marca como cancelados (`estado_sat`, `fecha_cancelacion`) los CFDI de la
+    empresa cuyo UUID está en `canceladas` ({uuid: fecha_cancelacion}) y aún no lo
+    estaban. Devuelve `[(uuid, fecha_emision)]` de los recién cancelados."""
+    mi_rfc = normalizar_mi_rfc(mi_rfc)
+    if not canceladas:
+        return []
+    db = abrir_db()
+    ahora = _ahora()
+    nuevas: list[tuple[str, str]] = []
+    with db.transaccion() as conn:
+        claves = {u.upper(): f for u, f in canceladas.items()}
+        lista = list(claves)
+        for i in range(0, len(lista), 500):
+            trozo = lista[i:i + 500]
+            marcas = ",".join("?" * len(trozo))
+            for uuid, fecha in conn.execute(
+                f"SELECT uuid, fecha FROM cfdis WHERE mi_rfc = ? AND UPPER(uuid) IN ({marcas})"
+                f" AND {_NO_CANCELADO}",
+                (mi_rfc, *trozo),
+            ).fetchall():
+                nuevas.append((uuid, fecha or ""))
+        for uuid, _fecha in nuevas:
+            conn.execute(
+                "UPDATE cfdis SET estado_sat = 'Cancelado', fecha_cancelacion = ?, validado_en = ?"
+                " WHERE mi_rfc = ? AND uuid = ?",
+                (claves.get(uuid.upper()) or None, ahora, mi_rfc, uuid),
+            )
+    return nuevas
+
+
 # ---------------------------------------------------------------------------
 # Sincronización con las solicitudes y el índice
 # ---------------------------------------------------------------------------
@@ -316,7 +393,7 @@ def _direccion_de(sol: dict) -> Optional[str]:
 
 
 def _es_metadata(sol: dict) -> bool:
-    return (sol.get("tipo") or "").strip().lower().startswith("metadata")
+    return config_store.es_metadata(sol)
 
 
 def _candidato(sol: dict) -> Optional[tuple[str, Optional[str], Optional[str]]]:
