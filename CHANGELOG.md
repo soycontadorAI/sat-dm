@@ -6,6 +6,18 @@
 
 _Cambios mergeados a `main` aún no etiquetados; el release de la semana los promueve._
 
+### Feature
+
+- **El procesador de comprobantes es ahora el índice permanente de cada empresa.** Lo que se
+  descarga del SAT (Web Service, portal con contraseña o con e.firma) se indexa solo al
+  terminar, sin "Cargar desde empresa". Al arrancar, el agente indexa una vez por empresa lo
+  que ya estaba en la carpeta de descargas. Cada CFDI guarda, además de sus columnas, el XML
+  original y el comprobante completo como JSON (`nodos`: complementos, addendas y todo
+  atributo), base de los reportes personalizables y de la descarga programada
+  (`docs/producto/descarga-programada.md`). Como el índice ya no es temporal, se quitó el
+  botón "Vaciar el procesador". Migración `010_documentos.sql`; kill switch
+  `SAT_DM_SIN_INDEXADO=1`.
+
 ### Bug fix
 
 - **Presentar la DIOT con el TXT que genera la app ya no truena.** Con `usar_generado=true`,

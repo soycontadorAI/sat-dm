@@ -6,7 +6,6 @@ import { PageHeading } from '@/components/layout/page-heading';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { CfdiCargarMasButton } from '@/components/procesador-cfdi/cfdi-cargar-mas-button';
-import { CfdiClearButton } from '@/components/procesador-cfdi/cfdi-clear-button';
 import { CfdiUploader } from '@/components/procesador-cfdi/cfdi-uploader';
 import { CfdiValidarButton } from '@/components/procesador-cfdi/cfdi-validar-button';
 import { NominaExportButton } from '@/components/procesador-nomina/nomina-export-button';
@@ -75,20 +74,6 @@ export default function ProcesadorNominaPage() {
               <CfdiValidarButton rfc={rfcActivo} onValidado={recargar} />
               <CfdiCargarMasButton onCargado={recargar} />
               <NominaExportButton rfc={rfcActivo} filtros={filtros} />
-              <CfdiClearButton
-                rfc={rfcActivo}
-                onBorrado={recargar}
-                descripcion={
-                  <>
-                    Esto vaciará <strong>todo el procesador de comprobantes</strong> de la
-                    empresa <span className="font-mono">{rfcActivo}</span>: los{' '}
-                    {stats.total_global_recibos.toLocaleString('es-MX')} recibos de
-                    nómina, así como las facturas PPD y los CFDIs cargados en los
-                    otros procesadores. Los filtros activos también se restablecen
-                    (las demás empresas no se tocan). La acción no se puede deshacer.
-                  </>
-                }
-              />
             </div>
 
             <NominaFiltersPanel

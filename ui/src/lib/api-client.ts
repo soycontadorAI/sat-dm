@@ -873,14 +873,6 @@ export class SatApiClient {
     );
   }
 
-  /** Vacía el buffer y los filtros de UNA empresa (las demás no se tocan). */
-  async procesadorBorrar(rfc: string): Promise<{ ok: boolean }> {
-    return this.request<{ ok: boolean }>(
-      `/procesador/cfdi?rfc=${encodeURIComponent(rfc)}`,
-      { method: 'DELETE' },
-    );
-  }
-
   /** Descarga el buffer filtrado como Blob (xlsx o csv). */
   async procesadorExportar(
     rfc: string,

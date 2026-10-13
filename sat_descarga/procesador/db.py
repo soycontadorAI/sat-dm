@@ -18,13 +18,15 @@ import logging
 import re
 import sqlite3
 import threading
+import zlib
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Mapping, Optional
 
 from ..cli import config_store
 from .cfdi_parser import CfdiData, ConceptoCfdi, DatosNomina
+from .nodos import NODOS_VERSION, xml_a_nodos
 
 logger = logging.getLogger(__name__)
 
@@ -526,10 +528,17 @@ class ProcesadorDB:
         cfdis: list[CfdiData],
         mi_rfc: str,
         direccion_fija: Optional[str] = None,
+        xmls: Optional[Mapping[str, bytes]] = None,
+        origen: Optional[str] = None,
     ) -> dict[str, int]:
         """
         Inserta CFDIs bajo la empresa `mi_rfc` (deduplicación por UUID
         POR EMPRESA: el mismo CFDI puede vivir bajo dos RFCs del catálogo).
+
+        `xmls` (UUID → bytes del XML original) guarda el documento de cada
+        CFDI: el XML y sus `nodos` (migración 010). Un CFDI que ya estaba
+        pero sin documento (cargado antes de la 010) lo recibe aquí; sigue
+        contando como duplicado. `origen`: ver la migración 010.
 
         `mi_rfc` es obligatorio — levanta ValueError si falta o es inválido.
 
@@ -544,6 +553,8 @@ class ProcesadorDB:
         agregados = 0
         duplicados = 0
         ahora = datetime.now(timezone.utc).isoformat()
+        # Fuera del candado: convertir a `nodos` es lo caro.
+        documentos = _preparar_documentos(cfdis, xmls or {})
 
         with self._lock, self._conn:
             for cfdi in cfdis:
@@ -560,6 +571,7 @@ class ProcesadorDB:
                 )
                 if cur.fetchone() is not None:
                     duplicados += 1
+                    self._guardar_documento(cfdi.uuid, mi_rfc, documentos.get(cfdi.uuid))
                     continue
 
                 # Calcular `direccion`: explícita > inferida (vs mi_rfc) > NULL.
@@ -584,9 +596,9 @@ class ProcesadorDB:
                         base_iva_16, base_iva_8, iva_trasladado_8, base_iva_0, base_exento,
                         forma_pago, metodo_pago, moneda, tipo_cambio, lugar_expedicion,
                         direccion, estado_sat, validado_en,
-                        raw_json, warnings_json, cargado_en
+                        raw_json, warnings_json, cargado_en, origen
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         cfdi.uuid, mi_rfc, cfdi.file_name, cfdi.version, cfdi.tipo_comprobante,
@@ -604,9 +616,10 @@ class ProcesadorDB:
                         direccion, cfdi.estado_sat, cfdi.validado_en,
                         json.dumps(cfdi.to_dict(), ensure_ascii=False),
                         json.dumps(cfdi.warnings, ensure_ascii=False),
-                        ahora,
+                        ahora, origen,
                     ),
                 )
+                self._guardar_documento(cfdi.uuid, mi_rfc, documentos.get(cfdi.uuid))
 
                 for concepto in cfdi.conceptos:
                     self._conn.execute(
@@ -662,6 +675,56 @@ class ProcesadorDB:
                 agregados += 1
 
         return {"agregados": agregados, "duplicados": duplicados}
+
+    def _guardar_documento(
+        self, uuid: str, mi_rfc: str, documento: Optional[tuple[bytes, str]]
+    ) -> None:
+        """Guarda XML + nodos si se tienen y aún no estaban (dentro del candado)."""
+        if documento is None:
+            return
+        xml_zlib, nodos_zlib = documento
+        self._conn.execute(
+            """
+            INSERT OR IGNORE INTO cfdi_documentos
+                (uuid, mi_rfc, xml_zlib, nodos_zlib, nodos_version)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (uuid, mi_rfc, xml_zlib, nodos_zlib, NODOS_VERSION),
+        )
+
+    def meta_get(self, key: str) -> Optional[str]:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM _meta WHERE key = ?", (key,)
+            ).fetchone()
+        return row[0] if row else None
+
+    def meta_set(self, key: str, value: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO _meta (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )
+
+    def documento(self, uuid: str, mi_rfc: str) -> Optional[dict]:
+        """XML original (bytes) y `nodos` (dict) de un CFDI, o None si no hay."""
+        mi_rfc = normalizar_mi_rfc(mi_rfc)
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT xml_zlib, nodos_zlib, nodos_version FROM cfdi_documentos "
+                "WHERE uuid = ? AND mi_rfc = ?",
+                (uuid, mi_rfc),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "xml": zlib.decompress(row["xml_zlib"]),
+            "nodos": json.loads(zlib.decompress(row["nodos_zlib"])),
+            "nodos_version": row["nodos_version"],
+        }
 
     def borrar(self, mi_rfc: str) -> None:
         """Vacía el buffer y los filtros de UNA empresa (no toca las demás)."""
@@ -1104,6 +1167,30 @@ def resetear_singleton_para_tests() -> None:
 # ---------------------------------------------------------------------------
 # Helpers de construcción de queries
 # ---------------------------------------------------------------------------
+
+
+def _preparar_documentos(
+    cfdis: list[CfdiData], xmls: Mapping[str, bytes]
+) -> dict[str, tuple[bytes, str]]:
+    """UUID → (XML, nodos en JSON), ambos comprimidos, de los CFDIs con XML. Un XML que
+    no se puede convertir se omite: el CFDI entra igual, sin documento."""
+    documentos: dict[str, tuple[bytes, str]] = {}
+    for cfdi in cfdis:
+        xml = xmls.get(cfdi.uuid) if cfdi.uuid else None
+        if not xml:
+            continue
+        try:
+            nodos = xml_a_nodos(xml)
+        except Exception:  # noqa: BLE001 — ya lo parseó parse_cfdi; no debería pasar
+            logger.warning("[procesador] no se pudo convertir a nodos el CFDI %s", cfdi.uuid)
+            continue
+        documentos[cfdi.uuid] = (
+            zlib.compress(xml, 6),
+            zlib.compress(
+                json.dumps(nodos, ensure_ascii=False, separators=(",", ":")).encode(), 6
+            ),
+        )
+    return documentos
 
 
 def _construir_where(filtros: Optional[CfdiFiltros]) -> tuple[str, tuple]:

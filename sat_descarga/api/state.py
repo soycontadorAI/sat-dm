@@ -150,7 +150,8 @@ def _descargas_base() -> str:
 
 
 def _registrar_descarga(rfc, canal, tipo, descripcion="", ruta="", total=None):
-    """Registra una descarga completada en el historial. Best-effort: nunca lanza."""
+    """Registra una descarga completada en el historial y, si son CFDIs, los
+    indexa al procesador en segundo plano. Best-effort: nunca lanza."""
     try:
         from ..cli import config_store
         config_store.registrar_descarga(
@@ -158,6 +159,12 @@ def _registrar_descarga(rfc, canal, tipo, descripcion="", ruta="", total=None):
         )
     except Exception:  # noqa: BLE001 - el historial no debe romper una descarga
         logger.warning("No se pudo registrar la descarga en el historial", exc_info=True)
+    if tipo == "cfdi":
+        try:
+            from ..procesador.indexar import indexar_descarga
+            indexar_descarga(rfc, ruta, canal)
+        except Exception:  # noqa: BLE001 - el índice tampoco
+            logger.warning("No se pudo indexar la descarga", exc_info=True)
 
 
 def _salida_descarga_ws(rfc: str, id_solicitud: str) -> str:
