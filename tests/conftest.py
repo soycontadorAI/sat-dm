@@ -88,6 +88,17 @@ def sin_instalacion_de_navegador(monkeypatch):
     monkeypatch.setattr(setup, "_install_checked", True)
 
 
+@pytest.fixture(autouse=True)
+def indexado_apagado(monkeypatch):
+    """
+    Indexado automático al procesador (procesador/indexar.py) APAGADO en todas
+    las pruebas: ni el lifespan indexa la carpeta de descargas real ni una
+    descarga simulada escribe en el `procesador.db` real. Las pruebas del
+    indexado lo encienden a mano.
+    """
+    monkeypatch.setenv("SAT_DM_SIN_INDEXADO", "1")
+
+
 @pytest.fixture
 def fixtures_dir():
     """Ruta al directorio de fixtures."""

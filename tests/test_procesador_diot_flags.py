@@ -60,31 +60,41 @@ def test_migracion_009_columnas_y_defaults(db):
 def test_migracion_008_a_009_preserva_filas(tmp_path):
     """Upgrade real: una DB en v008 poblada sube a v009 sin perder datos y las
     filas existentes quedan con incluir_diot = 1 (pasan a la DIOT)."""
-    mig = db_mod.MIGRATIONS_DIR / "009_diot_deducible.sql"
-    fuera = tmp_path / "009_diot_deducible.sql.bak"
+    ocultas = [
+        (mig, tmp_path / f"{mig.name}.bak")
+        for mig in sorted(db_mod.MIGRATIONS_DIR.glob("*.sql"))
+        if int(mig.name[:3]) > 8
+    ]
     db_path = tmp_path / "procesador.db"
 
     db_mod.resetear_singleton_para_tests()
     try:
-        # 1) DB "vieja" en v008: la 009 no está en el directorio de migraciones.
-        shutil.move(str(mig), str(fuera))
+        # 1) DB "vieja" en v008: nada posterior en el directorio de migraciones.
+        for mig, fuera in ocultas:
+            shutil.move(str(mig), str(fuera))
         vieja = db_mod.ProcesadorDB(db_path)
         try:
             with vieja.cursor() as c:
                 c.execute("SELECT value FROM _meta WHERE key='schema_version'")
                 assert c.fetchone()[0] == "8"
-            vieja.agregar(
-                [validar_y_anotar(parse_cfdi(_cfdi_ingreso_xml()))], mi_rfc=RFC_B
-            )
+                # INSERT como lo haría la app de entonces (sin columnas posteriores).
+                c.execute(
+                    "INSERT INTO cfdis (uuid, mi_rfc, tipo, fecha, emisor_rfc, "
+                    "receptor_rfc, direccion) VALUES ('LEGACY-1', ?, 'I', "
+                    "'2026-05-15T10:00:00', 'AAA010101AAA', ?, 'R')",
+                    (RFC_B, RFC_B),
+                )
+                c.connection.commit()
         finally:
             vieja.close()
     finally:
-        # Restaurar la migración pase lo que pase (crítico para la suite).
-        if fuera.exists():
-            shutil.move(str(fuera), str(mig))
+        # Restaurar las migraciones pase lo que pase (crítico para la suite).
+        for mig, fuera in ocultas:
+            if fuera.exists():
+                shutil.move(str(fuera), str(mig))
         db_mod.resetear_singleton_para_tests()
 
-    # 2) La app nueva reabre la misma DB → aplica la 009.
+    # 2) La app nueva reabre la misma DB → aplica la 009 (y las posteriores).
     nueva = db_mod.ProcesadorDB(db_path)
     try:
         with nueva.cursor() as c:

@@ -6,7 +6,6 @@ import { PageHeading } from '@/components/layout/page-heading';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { CfdiCargarMasButton } from '@/components/procesador-cfdi/cfdi-cargar-mas-button';
-import { CfdiClearButton } from '@/components/procesador-cfdi/cfdi-clear-button';
 import { CfdiUploader } from '@/components/procesador-cfdi/cfdi-uploader';
 import { CfdiValidarButton } from '@/components/procesador-cfdi/cfdi-validar-button';
 import { PagosFiltersPanel } from '@/components/procesador-pagos/pagos-filters';
@@ -79,21 +78,6 @@ export default function ProcesadorPagosPage() {
               <CfdiValidarButton rfc={rfcActivo} onValidado={recargar} />
               <CfdiCargarMasButton onCargado={recargar} />
               <PagosExportButton rfc={rfcActivo} filtros={filtros} />
-              <CfdiClearButton
-                rfc={rfcActivo}
-                onBorrado={recargar}
-                descripcion={
-                  <>
-                    Esto vaciará <strong>todo el procesador de comprobantes</strong> de la
-                    empresa <span className="font-mono">{rfcActivo}</span>: las{' '}
-                    {stats.total_global_ppd.toLocaleString('es-MX')} facturas PPD, sus{' '}
-                    {stats.total_pagos.toLocaleString('es-MX')} complementos de pago, y los
-                    CFDIs cargados en el procesador de CFDI. Los filtros activos también se
-                    restablecen (las demás empresas no se tocan). La acción no se puede
-                    deshacer.
-                  </>
-                }
-              />
             </div>
 
             <PagosFiltersPanel

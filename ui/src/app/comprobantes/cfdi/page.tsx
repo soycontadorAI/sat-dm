@@ -8,7 +8,6 @@ import { PageHeading } from '@/components/layout/page-heading';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { CfdiCargarMasButton } from '@/components/procesador-cfdi/cfdi-cargar-mas-button';
-import { CfdiClearButton } from '@/components/procesador-cfdi/cfdi-clear-button';
 import { CfdiDiotCounter } from '@/components/procesador-cfdi/cfdi-diot-counter';
 import { CfdiExportButtons } from '@/components/procesador-cfdi/cfdi-export-buttons';
 import { CfdiFiltersPanel } from '@/components/procesador-cfdi/cfdi-filters';
@@ -85,7 +84,7 @@ export default function ProcesadorCfdiPage() {
     <div className="space-y-6">
       <PageHeading
         title="Procesador de CFDI"
-        description="Carga XMLs, filtra, clasifica deducibilidad y prepara tus facturas para la DIOT."
+        description="Lo que descargas del SAT se agrega solo. Filtra, clasifica deducibilidad y prepara tus facturas para la DIOT."
         action={
           <Button variant="outline" size="sm" asChild>
             <Link href="/comprobantes">
@@ -117,11 +116,6 @@ export default function ProcesadorCfdiPage() {
                 <CfdiValidarButton rfc={rfcActivo} onValidado={recargar} />
                 <CfdiCargarMasButton onCargado={recargar} />
                 <CfdiExportButtons rfc={rfcActivo} filtros={filtros} />
-                <CfdiClearButton
-                  rfc={rfcActivo}
-                  total={stats.total_comprobantes}
-                  onBorrado={recargar}
-                />
               </div>
 
               <CfdiStats stats={stats} />

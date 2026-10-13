@@ -286,8 +286,9 @@ export function CfdiUploader({ bareback = false, onCargado }: Props) {
               </>
             )}
             <p className="text-xs text-muted-foreground">
-              Escanea la carpeta de descargas de la empresa activa y agrega las
-              facturas encontradas (las repetidas se cargan una sola vez).
+              Lo que descarga la app ya se agrega solo. Usa esto para los XML que
+              hayas puesto a mano en la carpeta de descargas de la empresa activa
+              (las repetidas se cargan una sola vez).
             </p>
           </TabsContent>
         </Tabs>

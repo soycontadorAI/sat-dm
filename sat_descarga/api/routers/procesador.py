@@ -128,33 +128,18 @@ def _rfc_requerido(rfc: Optional[str], *, del_catalogo: bool = False) -> str:
     return limpio
 
 
-def _pertenece_a(cfdi, mi_rfc: str) -> bool:
-    """¿El CFDI menciona a la empresa como emisor O receptor?
-
-    Es la restricción de la vía "Examinar": solo se aceptan comprobantes de
-    la empresa activa (emitidos o recibidos, incluso descargados con otro
-    software). strip+upper porque hay XMLs con el RFC en minúsculas.
-    """
-    lados = {
-        (cfdi.emisor_rfc or "").strip().upper(),
-        (cfdi.receptor_rfc or "").strip().upper(),
-    }
-    return mi_rfc in lados
-
-
 @router.post("/procesador/cfdi/cargar")
 async def procesador_cargar(
     files: List[UploadFile] = File(...),
     rfc: str = Form(...),
 ):
     """
-    Recibe `.xml` por multipart y los agrega al buffer de la empresa `rfc`.
+    Recibe `.xml` por multipart y los indexa bajo la empresa `rfc` (origen "manual").
     Hasta `MAX_BATCH_SIZE` archivos por request. Los XML que no correspondan
     al RFC (ni emisor ni receptor) se OMITEN y se reporta el conteo.
     """
-    from ...procesador import abrir_db, parse_cfdi, MAX_BATCH_SIZE
-    from ...procesador.cfdi_parser import CfdiParseError
-    from ...procesador.validaciones import validar_y_anotar
+    from ...procesador import MAX_BATCH_SIZE
+    from ...procesador.indexar import indexar
 
     mi_rfc = _rfc_requerido(rfc, del_catalogo=True)
 
@@ -165,34 +150,15 @@ async def procesador_cargar(
         )
     track("procesador_usado", tipo="cfdi")
 
-    db = abrir_db()
-    parseados = []
-    errores: list[dict] = []
-    omitidos_rfc = 0
-
-    for f in files:
-        try:
-            contenido = await f.read()
-            cfdi = parse_cfdi(contenido, file_name=f.filename or "")
-            if not _pertenece_a(cfdi, mi_rfc):
-                omitidos_rfc += 1
-                continue
-            validar_y_anotar(cfdi)
-            parseados.append(cfdi)
-        except CfdiParseError as e:
-            errores.append({"filename": f.filename, "mensaje": str(e)})
-        except Exception as e:  # noqa: BLE001
-            logger.exception("[procesador] error parseando %s", f.filename)
-            errores.append({"filename": f.filename, "mensaje": str(e)})
-
+    archivos = [(f.filename or "", await f.read()) for f in files]
     # Drag&drop: la dirección se infiere comparando con el RFC dueño
     # (autofactura emisor==receptor==rfc queda como 'E').
-    resultado = db.agregar(parseados, mi_rfc=mi_rfc)
+    resultado = indexar(mi_rfc, archivos, origen="manual")
     return {
         "agregados": resultado["agregados"],
         "duplicados": resultado["duplicados"],
-        "omitidos_rfc": omitidos_rfc,
-        "errores": errores,
+        "omitidos_rfc": resultado["omitidos_rfc"],
+        "errores": resultado["errores"],
     }
 
 
@@ -200,25 +166,15 @@ async def procesador_cargar(
 def procesador_cargar_desde_empresa(req: CargarDesdeEmpresaRequest):
     """
     Escanea `descargas/cfdi/<RFC>/.../*.xml` filtrando por fecha (opcional)
-    y agrega los CFDIs encontrados al buffer de esa empresa.
+    e indexa los CFDIs encontrados bajo esa empresa (origen "carpeta").
     """
-    from ...procesador import abrir_db, parse_cfdi
-    from ...procesador.cfdi_parser import CfdiParseError
-    from ...procesador.validaciones import validar_y_anotar
     from ...core import paths
+    from ...procesador.indexar import indexar, xmls_de_carpeta
 
     mi_rfc = _rfc_requerido(req.rfc, del_catalogo=True)
     track("procesador_usado", tipo="cfdi")
 
     base = paths.dir_cfdi_base(mi_rfc, salida_base=_descargas_base())
-    if not base.exists():
-        return {
-            "agregados": 0,
-            "duplicados": 0,
-            "omitidos_rfc": 0,
-            "errores": [],
-            "archivos_encontrados": 0,
-        }
 
     # Filtrar por subcarpeta según el tipo solicitado. Si el caller omite
     # `tipo`, escanea ambos (uso programático futuro).
@@ -229,56 +185,20 @@ def procesador_cargar_desde_empresa(req: CargarDesdeEmpresaRequest):
     else:
         scan_dirs = [base]
 
-    xmls: list = []
-    for d in scan_dirs:
-        if d.exists():
-            xmls.extend(d.rglob("*.xml"))
+    def _archivos():
+        for d in scan_dirs:
+            yield from xmls_de_carpeta(d)
 
-    db = abrir_db()
-    parseados = []
-    errores: list[dict] = []
-    omitidos_rfc = 0
-
-    desde = req.desde or ""
-    hasta = req.hasta + "T23:59:59" if req.hasta else ""
-
-    for xml_path in xmls:
-        try:
-            contenido = xml_path.read_bytes()
-            cfdi = parse_cfdi(contenido, file_name=xml_path.name)
-            # Filtro de fecha post-parseo (la fecha real vive en el XML)
-            if desde and cfdi.fecha_emision and cfdi.fecha_emision < desde:
-                continue
-            if hasta and cfdi.fecha_emision and cfdi.fecha_emision > hasta:
-                continue
-            # Defensa extra: la carpeta de descargas puede contener XMLs
-            # movidos a mano que no son de esta empresa.
-            if not _pertenece_a(cfdi, mi_rfc):
-                omitidos_rfc += 1
-                continue
-            validar_y_anotar(cfdi)
-            parseados.append(cfdi)
-        except CfdiParseError as e:
-            errores.append({"filename": xml_path.name, "mensaje": str(e)})
-        except Exception as e:  # noqa: BLE001
-            logger.exception("[procesador] error parseando %s", xml_path.name)
-            errores.append({"filename": xml_path.name, "mensaje": str(e)})
-
-    # En "cargar-desde-empresa" la dirección está implícita por el `tipo`
-    # solicitado (E/R) — se la pasamos directa y de paso usamos `mi_rfc` como
-    # respaldo si `tipo` viene en None.
-    resultado = db.agregar(
-        parseados,
-        mi_rfc=mi_rfc,
+    # La dirección está implícita por el `tipo` solicitado (E/R); sin tipo se
+    # infiere contra `mi_rfc`. La fecha real vive en el XML: filtro post-parseo.
+    return indexar(
+        mi_rfc,
+        _archivos(),
+        origen="carpeta",
         direccion_fija=req.tipo if req.tipo in ("E", "R") else None,
+        desde=req.desde or "",
+        hasta=req.hasta + "T23:59:59" if req.hasta else "",
     )
-    return {
-        "agregados": resultado["agregados"],
-        "duplicados": resultado["duplicados"],
-        "omitidos_rfc": omitidos_rfc,
-        "errores": errores,
-        "archivos_encontrados": len(xmls),
-    }
 
 
 @router.post("/procesador/cfdi/validar-sat")
@@ -447,7 +367,11 @@ def procesador_filtros_set(req: ProcesadorFiltrosRequest):
 
 @router.delete("/procesador/cfdi")
 def procesador_borrar(rfc: str):
-    """Vacía el buffer y los filtros de UNA empresa (las demás no se tocan)."""
+    """Borra el índice y los filtros de UNA empresa (las demás no se tocan).
+
+    Sin botón en la UI desde que el procesador es el índice permanente
+    (migración 010); lo usa el modo grabación para reiniciar su empresa demo.
+    """
     from ...procesador import abrir_db
     abrir_db().borrar(_rfc_requerido(rfc))
     return {"ok": True}

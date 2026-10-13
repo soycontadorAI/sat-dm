@@ -121,6 +121,17 @@ async def lifespan(app: "FastAPI"):
         logger.exception("No se pudo iniciar el poller de solicitudes WS")
         detener_poller = None
 
+    # Índice permanente del procesador: una vez por empresa, indexa en segundo
+    # plano los XML que ya estaban en la carpeta de descargas (las descargas
+    # nuevas se indexan solas al terminar; ver procesador/indexar.py).
+    try:
+        from ..procesador.indexar import indexar_descargas_existentes
+        from .state import _descargas_base
+
+        indexar_descargas_existentes(_descargas_base())
+    except Exception:
+        logger.exception("No se pudo iniciar el indexado de la carpeta de descargas")
+
     # Uso por acción (api/uso.py): hilo daemon que manda la cola de eventos
     # cada 5 min. No toca el keychain al arrancar (solo cuando hay qué mandar).
     from . import uso
