@@ -67,7 +67,9 @@ export function CfdiFiltersPanel({
   filtrosActivos,
   mostrarDiot = true,
 }: Props) {
-  const [open, setOpen] = useState(true);
+  // Cerrado por default: el usuario lo abre cuando quiere filtrar. Cerrado
+  // sigue avisando si hay filtros aplicados (persisten entre sesiones).
+  const [open, setOpen] = useState(false);
 
   return (
     <Card className="gap-0 overflow-hidden py-0">
