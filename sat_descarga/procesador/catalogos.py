@@ -107,6 +107,29 @@ TIPOS_COMPROBANTE: dict[str, str] = {
 }
 
 
+# c_ObjetoImp (Anexo 20, CFDI 4.0). Una clave fuera de esta lista se muestra
+# sola, sin descripción.
+OBJETOS_IMPUESTO: dict[str, str] = {
+    "01": "No objeto de impuesto",
+    "02": "Sí objeto de impuesto",
+    "03": "Sí objeto del impuesto y no obligado al desglose",
+    "04": "Sí objeto del impuesto y no causa impuesto",
+    "05": "Sí objeto del impuesto, IVA crédito PODEBI",
+}
+
+
+# c_TipoRelacion (CfdiRelacionados).
+TIPOS_RELACION: dict[str, str] = {
+    "01": "Nota de crédito de los documentos relacionados",
+    "02": "Nota de débito de los documentos relacionados",
+    "03": "Devolución de mercancía sobre facturas o traslados previos",
+    "04": "Sustitución de los CFDI previos",
+    "05": "Traslados de mercancías facturados previamente",
+    "06": "Factura generada por los traslados previos",
+    "07": "CFDI por aplicación de anticipo",
+}
+
+
 MONEDAS: dict[str, str] = {
     "MXN": "Peso mexicano",
     "USD": "Dólar estadounidense",

@@ -44,6 +44,13 @@ import type {
   CfdiListResponse,
   CfdiStats,
   CfdiFiltros,
+  CatalogoCamposExport,
+  OpcionesExport,
+  PlantillaExport,
+  PlantillaExportInput,
+  PlantillasExportResponse,
+  VistaPreviaRequest,
+  VistaPreviaResponse,
   CfdiFlagsPatch,
   CfdiFlagsResponse,
   CargarDesdeEmpresaRequest,
@@ -260,6 +267,17 @@ export class SatApiClient {
   ): Promise<T> {
     return this.request<T>(path, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  private async put<T>(
+    path: string,
+    body: Record<string, unknown> = {},
+  ): Promise<T> {
+    return this.request<T>(path, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
@@ -874,18 +892,70 @@ export class SatApiClient {
   }
 
   /** Descarga el buffer filtrado como Blob (xlsx o csv). */
+  /**
+   * Descarga el índice filtrado. Con `opciones.plantilla` sale por plantilla
+   * (una hoja con sus columnas); sin ella, el export de dos hojas de siempre.
+   */
   async procesadorExportar(
     rfc: string,
     formato: 'xlsx' | 'csv',
     filtros?: Partial<CfdiFiltros>,
+    opciones?: OpcionesExport,
   ): Promise<Blob> {
-    const qs = _filtrosToQuery({ ...(filtros ?? {}), rfc, formato });
+    const qs = _filtrosToQuery({
+      ...(filtros ?? {}),
+      rfc,
+      formato,
+      plantilla: opciones?.plantilla,
+      por_concepto: opciones?.porConcepto,
+      convertir_mxn: opciones?.convertirMxn,
+    });
     const r = await fetch(this.url(`/procesador/cfdi/exportar?${qs}`), { headers: this.tokenHeaders() });
     if (!r.ok) {
       const text = await r.text();
-      throw new Error(`Error al exportar: ${r.status} ${text}`);
+      let detalle = text;
+      try {
+        detalle = (JSON.parse(text) as { detail?: string }).detail ?? text;
+      } catch {
+        // texto plano
+      }
+      throw new Error(r.status === 400 ? detalle : `Error al exportar: ${r.status} ${detalle}`);
     }
     return await r.blob();
+  }
+
+  // -----------------------------------------------------------------------
+  // Plantillas de export (reportes personalizables)
+  // -----------------------------------------------------------------------
+
+  async procesadorCamposExport(): Promise<CatalogoCamposExport> {
+    return this.request<CatalogoCamposExport>('/procesador/cfdi/campos');
+  }
+
+  async plantillasListar(): Promise<PlantillasExportResponse> {
+    return this.request<PlantillasExportResponse>('/procesador/plantillas');
+  }
+
+  async plantillaCrear(body: PlantillaExportInput): Promise<PlantillaExport> {
+    return this.post<PlantillaExport>('/procesador/plantillas', { ...body });
+  }
+
+  async plantillaActualizar(id: string, body: PlantillaExportInput): Promise<PlantillaExport> {
+    return this.put<PlantillaExport>(`/procesador/plantillas/${encodeURIComponent(id)}`, { ...body });
+  }
+
+  async plantillaEliminar(id: string): Promise<{ ok: boolean }> {
+    return this.del<{ ok: boolean }>(`/procesador/plantillas/${encodeURIComponent(id)}`);
+  }
+
+  async plantillaPredeterminada(id: string): Promise<{ predeterminada: string }> {
+    return this.put<{ predeterminada: string }>(
+      `/procesador/plantillas/${encodeURIComponent(id)}/predeterminada`,
+    );
+  }
+
+  async procesadorVistaPrevia(body: VistaPreviaRequest): Promise<VistaPreviaResponse> {
+    return this.post<VistaPreviaResponse>('/procesador/cfdi/vista-previa', { ...body });
   }
 
   // -----------------------------------------------------------------------

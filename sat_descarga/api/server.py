@@ -55,6 +55,7 @@ from .routers import (
     certifica_router,
     empresas_router,
     procesador_router,
+    plantillas_router,
     utilidades_router,
     calculadoras_router,
     ce_router,
@@ -266,6 +267,7 @@ app.include_router(portal_router)
 app.include_router(certifica_router)
 app.include_router(empresas_router)
 app.include_router(procesador_router)
+app.include_router(plantillas_router)
 app.include_router(calculadoras_router)
 app.include_router(diot_router)
 app.include_router(ce_router)
