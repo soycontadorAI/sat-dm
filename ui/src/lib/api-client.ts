@@ -9,6 +9,7 @@ import type {
   DescargarFielResponse,
   SolicitudRequest,
   SolicitudResponse,
+  SolicitudDesdeBaseResponse,
   VerificarRequest,
   VerificarResponse,
   DescargarResponse,
@@ -382,6 +383,17 @@ export class SatApiClient {
    */
   async solicitar(req: SolicitudRequest): Promise<SolicitudResponse> {
     return this.post<SolicitudResponse>('/solicitar', req as unknown as Record<string, unknown>);
+  }
+
+  /**
+   * Solicitud inteligente (solo CFDI): los días ya consolidados se sirven de la
+   * base sin ir al SAT y solo se piden los huecos, en rangos mínimos.
+   */
+  async solicitarDesdeBase(req: SolicitudRequest): Promise<SolicitudDesdeBaseResponse> {
+    return this.post<SolicitudDesdeBaseResponse>(
+      '/solicitar/desde-base',
+      req as unknown as Record<string, unknown>,
+    );
   }
 
   /**

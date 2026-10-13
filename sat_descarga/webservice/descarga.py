@@ -62,7 +62,7 @@ def descargar_paquete(
 
     out_dir = Path(directorio_salida)
     out_dir.mkdir(parents=True, exist_ok=True)
-    zip_path = out_dir / f"{package_id}.zip"
+    zip_path = zip_paquete(out_dir, package_id)
     zip_path.write_bytes(zip_bytes)
     logger.info("[Descarga] ZIP guardado: %s (%d bytes)", zip_path, len(zip_bytes))
 
@@ -242,9 +242,20 @@ def _extraer_zip_del_response(resp_xml: bytes, package_id: str) -> bytes:
     return base64.b64decode(contenido)
 
 
+def zip_paquete(out_dir: Path, package_id: str) -> Path:
+    """Dónde queda el ZIP de un paquete: `out_dir/package_id.zip` (se guarda siempre,
+    antes de extraerlo)."""
+    return Path(out_dir) / f"{package_id}.zip"
+
+
+def carpeta_paquete(out_dir: Path, package_id: str) -> Path:
+    """Dónde quedan los XML extraídos de un paquete: `out_dir/package_id/`."""
+    return Path(out_dir) / package_id
+
+
 def _extraer_zip(zip_bytes: bytes, out_dir: Path, package_id: str) -> int:
-    """Extrae los XMLs del ZIP en `out_dir/package_id/`."""
-    extract_dir = out_dir / package_id
+    """Extrae los XMLs del ZIP en `carpeta_paquete(out_dir, package_id)`."""
+    extract_dir = carpeta_paquete(out_dir, package_id)
     extract_dir.mkdir(parents=True, exist_ok=True)
     base = extract_dir.resolve()
 

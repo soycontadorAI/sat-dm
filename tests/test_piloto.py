@@ -1328,11 +1328,30 @@ def test_un_5008_a_medias_registra_lo_que_si_bajo(entorno, monkeypatch):
 
     def _medio(**kw):
         # El primer paquete de esta solicitud sí bajó; el segundo ya no.
-        Path(kw["directorio_salida"]).mkdir(parents=True, exist_ok=True)
+        primero = Path(kw["directorio_salida"]) / kw["package_ids"][0]
+        primero.mkdir(parents=True, exist_ok=True)  # bajado y extraído
         (Path(kw["directorio_salida"]) / f"{kw['package_ids'][0]}.zip").write_bytes(b"PK")
         raise RuntimeError("Paquete 2: CodEstatus=5008, Máximo de descargas permitidas")
 
     monkeypatch.setattr(poller, "descargar_todos", _medio)
+    _procesar()
+    assert any("(incompleta, 5008)" in h["descripcion"] for h in config_store.list_descargas(RFC))
+
+
+def test_un_5008_con_el_zip_sin_extraer_tambien_se_registra(entorno, monkeypatch):
+    """Lo que bajó se reconoce por su ZIP (p. ej. de un /descargar sin extraer), no por
+    la carpeta extraída."""
+    from sat_descarga.api import piloto, poller
+
+    _activar(entorno)
+    piloto.evaluar()
+
+    def _sin_extraer(**kw):
+        Path(kw["directorio_salida"]).mkdir(parents=True, exist_ok=True)
+        (Path(kw["directorio_salida"]) / f"{kw['package_ids'][0]}.zip").write_bytes(b"PK")
+        raise RuntimeError("Paquete 2: CodEstatus=5008, Máximo de descargas permitidas")
+
+    monkeypatch.setattr(poller, "descargar_todos", _sin_extraer)
     _procesar()
     assert any("(incompleta, 5008)" in h["descripcion"] for h in config_store.list_descargas(RFC))
 

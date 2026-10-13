@@ -8,6 +8,17 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Feature
 
+- **Descargar CFDIs ya no vuelve a pedir al SAT lo que la base tiene consolidado.** En la
+  descarga por Web Service, los días que el cuadro de control ya tiene consolidados (verificados
+  contra el SAT por el cierre mensual) se sirven de la base: sus XML se guardan en la carpeta de
+  la descarga sin ir al SAT ni gastar descargas del mes, y al SAT solo se piden los días que
+  faltan, en rangos contiguos (a lo más 6). Todo cae en la carpeta del rango pedido. La pantalla
+  dice qué se sirvió y qué se pidió ("12 días ya estaban consolidados en la base (340 CFDI)… Al
+  SAT se pidieron solo los huecos: 10 al 12 de marzo"), con "Abrir carpeta", y el historial lo
+  registra como "De la base". Sin días consolidados (plan sin descarga automática) el flujo es el
+  de siempre; con tope de descargas en el plan se pide un solo rango, que cuesta una descarga como
+  antes. Endpoint nuevo `POST /solicitar/desde-base`; `/solicitar` no cambia (lo usan la API
+  pública y la MCP). Fase 6 de `docs/producto/descarga-programada.md`.
 - **Llenar el historial desde la descarga automática.** En el panel de la descarga automática (y
   al activarla) se elige desde qué mes llenar la base, hasta 5 años atrás (el límite del Web
   Service). El agente cierra esos meses hacia atrás, del más reciente al más antiguo, con la
