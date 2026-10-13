@@ -427,8 +427,17 @@ def procesador_exportar(
     monto_min: Optional[float] = None,
     monto_max: Optional[float] = None,
     diot: Optional[str] = None,
+    plantilla: Optional[str] = None,
+    por_concepto: bool = False,
+    convertir_mxn: bool = False,
 ):
-    """Descarga el buffer filtrado como XLSX o CSV."""
+    """Descarga el índice filtrado como XLSX o CSV.
+
+    Con `plantilla` (una del sistema o del usuario, procesador/plantillas.py)
+    sale el export por plantilla: una hoja con sus columnas, en orden de
+    fecha, y las opciones `por_concepto` y `convertir_mxn`. Sin ella, el
+    export de siempre (dos hojas): el que usan la API pública y la MCP.
+    """
     from ...procesador import abrir_db
     from ...procesador.exportar import to_csv, to_xlsx
 
@@ -438,6 +447,43 @@ def procesador_exportar(
         direccion, diot=diot,
     )
     db = abrir_db()
+
+    if plantilla and formato in ("xlsx", "csv"):
+        from ...procesador import plantillas_store
+        from ...procesador.exportar import plantilla_a_csv, plantilla_a_xlsx
+        from ...procesador.plantillas import (
+            MAX_FILAS_EXCEL,
+            columnas_de,
+            contar_renglones,
+            renglones,
+        )
+
+        p = plantillas_store.obtener(plantilla)
+        if p is None:
+            raise HTTPException(status_code=404, detail="Esa plantilla no existe.")
+        if formato == "xlsx":
+            n = contar_renglones(db, filtros, por_concepto)
+            if n > MAX_FILAS_EXCEL:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"El reporte tendría {n:,} renglones y una hoja de Excel admite "
+                           f"{MAX_FILAS_EXCEL:,}. Expórtalo en CSV o filtra un periodo más corto.",
+                )
+        columnas = columnas_de(p, por_concepto=por_concepto, convertir_mxn=convertir_mxn)
+        filas = renglones(db, filtros, columnas, por_concepto=por_concepto,
+                          convertir_mxn=convertir_mxn)
+        if formato == "xlsx":
+            data = plantilla_a_xlsx(columnas, filas)
+            media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else:
+            data = plantilla_a_csv(columnas, filas)
+            media = "text/csv; charset=utf-8"
+        track("excel_exportado", tipo="cfdi", formato=formato)
+        return StreamingResponse(
+            iter([data]),
+            media_type=media,
+            headers={"Content-Disposition": f'attachment; filename="cfdis.{formato}"'},
+        )
 
     if formato == "xlsx":
         data = to_xlsx(db, filtros)

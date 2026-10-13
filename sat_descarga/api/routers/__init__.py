@@ -10,6 +10,7 @@ las del monolito original (la UI y el CLI las consumen tal cual).
 - certifica  — renovación de e.firma y CSD de extremo a extremo (jobs SSE, FIEL-only).
 - empresas   — catálogo de empresas + historial global.
 - procesador — procesador de comprobantes (CFDI/Pagos/Nómina) + listas negras.
+- plantillas — plantillas de export del procesador de CFDI + vista previa.
 - utilidades — metadata, validación, organizador de XMLs.
 - calculadoras — calculadoras fiscales/laborales + estado por empresa.
 - diot       — DIOT 2025: prellenado, estado, export TXT y presentación (jobs).
@@ -25,6 +26,7 @@ from .portal import router as portal_router
 from .certifica import router as certifica_router
 from .empresas import router as empresas_router
 from .procesador import router as procesador_router
+from .plantillas import router as plantillas_router
 from .utilidades import router as utilidades_router
 from .calculadoras import router as calculadoras_router
 from .ce import router as ce_router
@@ -40,6 +42,7 @@ __all__ = [
     "certifica_router",
     "empresas_router",
     "procesador_router",
+    "plantillas_router",
     "utilidades_router",
     "calculadoras_router",
     "diot_router",

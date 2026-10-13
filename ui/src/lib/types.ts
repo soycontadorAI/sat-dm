@@ -706,6 +706,81 @@ export interface ProcesadorCargarResponse {
   archivos_encontrados?: number; // solo en cargar-desde-empresa
 }
 
+// ---------------------------------------------------------------------------
+// Plantillas de export del procesador de CFDI (sat_descarga/procesador/plantillas.py)
+// ---------------------------------------------------------------------------
+
+export type TipoCampoExport = 'texto' | 'fecha' | 'importe' | 'numero' | 'tipo_cambio';
+
+/** Nivel del campo: una columna por CFDI, o del bloque «una fila por concepto». */
+export type NivelCampoExport = 'cfdi' | 'concepto';
+
+export interface CampoExport {
+  id: string;
+  etiqueta: string;
+  grupo: string;
+  tipo: TipoCampoExport;
+  nivel: NivelCampoExport;
+  /** Importe en la moneda del CFDI: «Convertir a MXN» lo convierte. */
+  convertible: boolean;
+  descripcion: string;
+}
+
+export interface CatalogoCamposExport {
+  grupos: string[];
+  campos: CampoExport[];
+}
+
+export interface ColumnaPlantilla {
+  /** Id del catálogo, o ruta de nodos: `ruta:Comprobante.…` / `ruta_concepto:…`. */
+  campo: string;
+  encabezado: string;
+}
+
+export interface PlantillaExport {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  /** Las del sistema no se editan ni se borran (se duplican). */
+  sistema: boolean;
+  columnas: ColumnaPlantilla[];
+  detalle_concepto: ColumnaPlantilla[];
+}
+
+export interface PlantillasExportResponse {
+  predeterminada: string;
+  plantillas: PlantillaExport[];
+}
+
+export interface PlantillaExportInput {
+  nombre: string;
+  columnas: ColumnaPlantilla[];
+  detalle_concepto: ColumnaPlantilla[];
+}
+
+export interface OpcionesExport {
+  plantilla?: string;
+  /** Un renglón por concepto, repitiendo los datos del CFDI. */
+  porConcepto?: boolean;
+  convertirMxn?: boolean;
+}
+
+export interface VistaPreviaRequest {
+  rfc: string;
+  plantilla?: string;
+  columnas?: ColumnaPlantilla[];
+  detalle_concepto?: ColumnaPlantilla[];
+  por_concepto?: boolean;
+  convertir_mxn?: boolean;
+  limite?: number;
+}
+
+export interface VistaPreviaResponse {
+  encabezados: string[];
+  tipos: TipoCampoExport[];
+  filas: string[][];
+}
+
 export interface CargarDesdeEmpresaRequest {
   rfc: string;
   desde?: string;
