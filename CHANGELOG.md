@@ -8,6 +8,17 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Feature
 
+- **Cuadro de control de descargas.** Pantalla nueva en Descargar CFDIs (botón "Cuadro de
+  control", también en el espacio SAT y en ⌘K): un calendario por empresa, con una fila por
+  mes y una columna por día, que muestra qué días ya están en la base, cuáles están en proceso
+  y cuáles fallaron, con filtro Emitidos / Recibidos / Ambos (en Ambos la celda va partida:
+  arriba emitidos, abajo recibidos). Clic en un día: lo que hay en la base, las solicitudes al
+  SAT que lo llenaron y el error si lo hubo. Clic en un mes: ZIP de XML (para CONTPAQi) o
+  Excel con la plantilla predeterminada. Se llena solo con las solicitudes al Web Service (un
+  periodo sin CFDI, el 5004 del SAT, cuenta como día con 0), las descargas completas por el
+  portal y el índice de comprobantes. Se ve en todos los planes; en gratis, con la invitación a
+  Pro para la descarga automática. Tabla `descarga_dias` (migración `011_descarga_dias.sql`) y
+  `GET /calendario/{rfc}` (`/dia`, `/zip`). Fase 2 de `docs/producto/descarga-programada.md`.
 - **Plantillas de exportación del procesador de CFDI.** "Exportar" abre un diálogo: se elige la
   plantilla (qué columnas, en qué orden y con qué encabezado) y dos opciones apagadas por
   default, "Una fila por concepto" (repite los datos del CFDI en cada renglón con cantidad,

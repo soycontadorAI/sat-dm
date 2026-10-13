@@ -167,6 +167,18 @@ def _indexar_registrando(rfc: str, ruta: str, origen: str) -> None:
         "[indexar] %s: %d nuevos, %d ya estaban, %d errores (%s)",
         rfc, r["agregados"], r["duplicados"], len(r["errores"]), ruta,
     )
+    _sincronizar_calendario(rfc)
+
+
+def _sincronizar_calendario(rfc: str) -> None:
+    """El cuadro de control cuenta lo que hay en el índice: tras indexar se pone
+    al día (`total_bd` y días solo del índice). Best-effort."""
+    try:
+        from . import calendario
+
+        calendario.sincronizar(rfc)
+    except Exception:  # noqa: BLE001 - el calendario nunca rompe el indexado
+        logger.warning("[indexar] %s: no se pudo poner al día el calendario", rfc, exc_info=True)
 
 
 def _indexar_existentes(base: Path) -> None:
@@ -188,3 +200,4 @@ def _indexar_existentes(base: Path) -> None:
             "[indexar] %s: carpeta de descargas indexada — %d nuevos, %d ya estaban",
             rfc, r["agregados"], r["duplicados"],
         )
+        _sincronizar_calendario(rfc)

@@ -1918,3 +1918,78 @@ export interface TareaPatchRequest {
   prioridad?: TareaPrioridad;
   fecha?: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Cuadro de control (calendario año × día de descargas por empresa)
+// GET /calendario/{rfc}?anio=  y  /calendario/{rfc}/dia?fecha=
+// ---------------------------------------------------------------------------
+
+export type EstadoDia =
+  | 'pendiente'
+  | 'en_proceso'
+  | 'provisional'
+  | 'consolidado'
+  | 'diferencia'
+  | 'error';
+
+export type DireccionCfdi = 'E' | 'R';
+
+export interface CalendarioCelda {
+  estado: EstadoDia;
+  total_bd: number;
+  total_sat?: number | null;
+  error_codigo?: string | null;
+  error_mensaje?: string | null;
+  intentos?: number | null;
+  actualizado_en?: string | null;
+}
+
+export type CalendarioDias = Record<string, Partial<Record<DireccionCfdi, CalendarioCelda>>>;
+
+export interface CalendarioAnio {
+  rfc: string;
+  anio: number;
+  /** Fecha de hoy según el agente (YYYY-MM-DD). */
+  hoy: string;
+  anios: number[];
+  /** Solo trae fechas con algo; lo ausente es `pendiente` con 0. */
+  dias: CalendarioDias;
+  resumen: Partial<Record<DireccionCfdi, Partial<Record<EstadoDia, number>>>>;
+}
+
+export interface CalendarioSolicitud {
+  id_solicitud: string;
+  tipo_comprobante: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  estado: string;
+  mensaje?: string | null;
+  numero_cfdis?: number | null;
+  timestamp?: string | null;
+}
+
+export interface CalendarioCfdi {
+  uuid: string;
+  direccion: DireccionCfdi;
+  tipo?: string | null;
+  serie?: string | null;
+  folio?: string | null;
+  fecha: string;
+  emisor_rfc?: string | null;
+  emisor_nombre?: string | null;
+  receptor_rfc?: string | null;
+  receptor_nombre?: string | null;
+  total: number;
+  moneda?: string | null;
+  estado_sat?: string | null;
+}
+
+export interface CalendarioDia {
+  rfc: string;
+  fecha: string;
+  E?: CalendarioCelda;
+  R?: CalendarioCelda;
+  solicitudes: CalendarioSolicitud[];
+  cfdis: CalendarioCfdi[];
+  cfdis_total: number;
+}

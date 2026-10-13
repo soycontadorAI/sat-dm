@@ -1159,10 +1159,13 @@ def update_solicitud(
     *,
     mensaje: Optional[str] = None,
     numero_cfdis: Optional[int] = None,
+    cod_estatus: Optional[str] = None,
+    codigo_estado_solicitud: Optional[str] = None,
 ):
     """Actualiza el estado y, opcionalmente, los campos auxiliares que devuelve el
-    SAT en /verificar (mensaje, numero_cfdis). Estos últimos alimentan los detalles
-    de la fila expandida en la UI."""
+    SAT en /verificar (mensaje, numero_cfdis, cod_estatus y
+    codigo_estado_solicitud). Alimentan los detalles de la fila expandida en la UI
+    y el cuadro de control (CodigoEstadoSolicitud 5004 = sin datos en el periodo)."""
     with _solicitudes_lock:
         data = _load_solicitudes(rfc)
         for sol in data["solicitudes"]:
@@ -1174,6 +1177,10 @@ def update_solicitud(
                     sol["mensaje"] = mensaje
                 if numero_cfdis is not None:
                     sol["numero_cfdis"] = numero_cfdis
+                if cod_estatus is not None:
+                    sol["cod_estatus"] = cod_estatus
+                if codigo_estado_solicitud:
+                    sol["codigo_estado_solicitud"] = codigo_estado_solicitud
                 break
         _save_solicitudes(rfc, data)
 

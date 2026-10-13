@@ -127,6 +127,7 @@ hiddenimports: list[str] = [
     "sat_descarga.procesador.cfdi_parser",
     "sat_descarga.procesador.nodos",
     "sat_descarga.procesador.indexar",
+    "sat_descarga.procesador.calendario",
     "sat_descarga.procesador.plantillas",
     "sat_descarga.procesador.plantillas_store",
     "sat_descarga.procesador.exportar",
