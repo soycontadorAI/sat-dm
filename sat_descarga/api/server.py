@@ -62,6 +62,7 @@ from .routers import (
     diot_router,
     tareas_router,
     system_router,
+    calendario_router,
     descargas_router,
     sesion_router,
 )
@@ -272,6 +273,7 @@ app.include_router(calculadoras_router)
 app.include_router(diot_router)
 app.include_router(ce_router)
 app.include_router(tareas_router)
+app.include_router(calendario_router)
 app.include_router(descargas_router)
 app.include_router(sesion_router)
 

@@ -184,8 +184,9 @@ En la desktop, `procesador.db` sigue existiendo como caché local (y como único
 
 1. **Tres capas + indexado automático (local).** ✅ Rama `feat/indexado-tres-capas`. Ver
    "Fase 1: lo que se implementó" abajo.
-2. **Calendario local.** `descarga_dias` en `procesador.db`, alimentado por descargas manuales y
-   por el poller; pantalla del cuadro de control. Visible en todos los planes.
+2. **Calendario local.** ✅ `descarga_dias` en `procesador.db`, alimentado por descargas manuales
+   y por el poller; pantalla del cuadro de control. Visible en todos los planes. Ver "Fase 2: lo
+   que se implementó" abajo.
 3. **Supabase.** Tablas `sat_cfdis`, `sat_descarga_dias` y el bucket; subida desde el agente con
    plan de pago; la desktop baja lo que no tenga.
 4. **Planificador** (`sat_descarga/api/piloto.py`, F7): pasada diaria con rezago, cierre mensual
@@ -224,6 +225,29 @@ ingreso 58 KB de XML (5 KB comprimido), nómina 6 KB, pago 6 KB.
 - 45 XML reales no se pueden leer: traen un atributo mal formado
   (`xmlns:schemaLocation`, complemento de registro fiscal). El parser ya los rechazaba antes.
   Hay que leerlos en modo tolerante, o el conteo del cierre mensual nunca va a cuadrar.
+
+## Fase 2: lo que se implementó
+
+- Migración `011_descarga_dias.sql` y `procesador/calendario.py`: una fila por (empresa, día de
+  emisión, dirección); un día sin fila es `pendiente`.
+- `sincronizar(rfc)` traduce el catálogo de solicitudes de CFDI (la Metadata no cuenta): viva →
+  `en_proceso`; `descargada`, o rechazada con CodigoEstadoSolicitud 5004 (se guarda desde la
+  verificación; llega con CodEstatus 5000) → `provisional`; 4, 5 o vencida → `error` con su
+  código y mensaje. Gana `provisional`, luego `en_proceso`, luego `error`. Un día con CFDI en el
+  índice es al menos `provisional`. Si el usuario borra la solicitud que puso un día en proceso o
+  en error, el día vuelve a `pendiente`. Solo el cierre mensual (fase 4) escribe `consolidado` y
+  `diferencia` (`marcar(..., forzar=True)`); nada más los degrada.
+- Conteo (`total_bd`) alineado con el SAT: E = la empresa es emisora, R = receptora (una
+  autofactura cuenta en las dos, también en la lista del día); los cancelados no cuentan.
+- `hoy()` es la fecha de la Ciudad de México (UTC-6 fijo) en escritorio y en la nube, para que el
+  calendario y el piloto cuenten el mismo día.
+- Se pone al día al abrir la pantalla, cuando el poller ve un cambio (incluido el vencimiento a
+  72 h), al terminar de indexar una descarga y al registrar una descarga completa del portal (si
+  topó con `max_registros` no se marca el rango). Con `SAT_DM_SIN_INDEXADO=1` las descargas no
+  lo tocan, igual que al índice.
+- API: `GET /calendario/{rfc}?anio=`, `/dia?fecha=` y `/zip?anio=&mes=[&direccion=]` (XML del
+  índice; los CFDI sin XML guardado van listados en `sin_xml.txt`). Igual en escritorio y web.
+- Pantalla `/descarga/calendario`: año × día, filtro E/R/Ambos, detalle del día y export del mes.
 
 ## Abierto
 

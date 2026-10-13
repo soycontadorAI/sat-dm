@@ -1,6 +1,8 @@
 import { getAgentBaseUrl, getAgentToken } from './constants';
 import { agregarBreadcrumb, capturarExcepcion } from './telemetria';
 import type {
+  CalendarioAnio,
+  CalendarioDia,
   HealthResponse,
   CargarFielResponse,
   DescargarFielResponse,
@@ -690,6 +692,35 @@ export class SatApiClient {
     );
   }
 
+  // -----------------------------------------------------------------------
+  // Cuadro de control (calendario de descargas por empresa)
+  // -----------------------------------------------------------------------
+
+  /** Estado de cada día del año por dirección (E/R). */
+  async calendarioAnio(rfc: string, anio: number): Promise<CalendarioAnio> {
+    return this.request<CalendarioAnio>(
+      `/calendario/${encodeURIComponent(rfc)}?anio=${encodeURIComponent(String(anio))}`,
+    );
+  }
+
+  /** Detalle de un día: estado, solicitudes que lo llenaron y los primeros CFDI. */
+  async calendarioDia(rfc: string, fecha: string): Promise<CalendarioDia> {
+    return this.request<CalendarioDia>(
+      `/calendario/${encodeURIComponent(rfc)}/dia?fecha=${encodeURIComponent(fecha)}`,
+    );
+  }
+
+  /**
+   * ZIP con los XML de un mes desde el índice. Va por `fetch` y no por
+   * navegación: un error (mes sin CFDI, agente caído) sale como excepción en
+   * vez de dejar la ventana en una página de error.
+   */
+  async calendarioZip(rfc: string, anio: number, mes: number, direccion?: 'E' | 'R'): Promise<Blob> {
+    const qs = new URLSearchParams({ anio: String(anio), mes: String(mes) });
+    if (direccion) qs.set('direccion', direccion);
+    return this.blob(`/calendario/${encodeURIComponent(rfc)}/zip?${qs.toString()}`);
+  }
+
   /** Borra una solicitud del catálogo local (no afecta al SAT). */
   async deleteSolicitud(rfc: string, idSolicitud: string): Promise<{ ok: boolean }> {
     return this.del<{ ok: boolean }>(
@@ -910,7 +941,15 @@ export class SatApiClient {
       por_concepto: opciones?.porConcepto,
       convertir_mxn: opciones?.convertirMxn,
     });
-    const r = await fetch(this.url(`/procesador/cfdi/exportar?${qs}`), { headers: this.tokenHeaders() });
+    return this.blob(`/procesador/cfdi/exportar?${qs}`);
+  }
+
+  /**
+   * Archivo del agente como Blob (exports, ZIP). Los rechazos con mensaje para
+   * el usuario (400, 404) salen tal cual; lo demás, con el código de estado.
+   */
+  private async blob(path: string): Promise<Blob> {
+    const r = await fetch(this.url(path), { headers: this.tokenHeaders() });
     if (!r.ok) {
       const text = await r.text();
       let detalle = text;
@@ -919,7 +958,7 @@ export class SatApiClient {
       } catch {
         // texto plano
       }
-      throw new Error(r.status === 400 ? detalle : `Error al exportar: ${r.status} ${detalle}`);
+      throw new Error(r.status === 400 || r.status === 404 ? detalle : `Error al exportar: ${r.status} ${detalle}`);
     }
     return await r.blob();
   }

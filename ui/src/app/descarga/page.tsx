@@ -229,12 +229,22 @@ export default function DescargaPage() {
         title="Descargar CFDIs"
         description={description}
         action={
-          tieneFiel && state !== 'idle' ? (
-            <Button variant="outline" size="sm" onClick={reset}>
-              <Icon icon="ph:arrow-counter-clockwise-light" className="size-4" />
-              Nueva solicitud
-            </Button>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {empresaActiva && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/descarga/calendario">
+                  <Icon icon="ph:calendar-check-light" className="size-4" />
+                  Cuadro de control
+                </Link>
+              </Button>
+            )}
+            {tieneFiel && state !== 'idle' && (
+              <Button variant="outline" size="sm" onClick={reset}>
+                <Icon icon="ph:arrow-counter-clockwise-light" className="size-4" />
+                Nueva solicitud
+              </Button>
+            )}
+          </div>
         }
       />
 

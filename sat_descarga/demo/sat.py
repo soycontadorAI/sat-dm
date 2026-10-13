@@ -175,7 +175,7 @@ def verificar(rfc: str, id_solicitud: str):
         return EstadoSolicitud("2", "5000", "Solicitud Aceptada", 0, [], False)
     comps = _comprobantes(sol)
     if not comps:
-        return EstadoSolicitud("5", "5004", "No se encontró la información", 0, [], False)
+        return EstadoSolicitud("5", "5000", "Solicitud Aceptada", 0, [], False, "5004")
     paquetes = math.ceil(len(comps) / PAQUETE_MAX)
     ids = [f"{id_solicitud.upper()}_{i:02d}" for i in range(1, paquetes + 1)]
     return EstadoSolicitud("3", "5000", "Solicitud Aceptada", len(comps), ids, True)
@@ -271,7 +271,9 @@ def portal_cfdi(rfc: str, fecha_inicio, fecha_fin, tipo_comprobante: str = "RE",
             if i % max(paso * 5, 1) == 0 and i != total:
                 _avisar(f"Descargando XML {i} de {total}…")
     _avisar(f"Descarga completada: {len(descargados)} XML.", "ok")
-    return descargados
+    from ..portal.cfdi import DescargaPortal
+
+    return DescargaPortal(descargados, completa=len(descargados) < max_registros)
 
 
 def _hoy() -> date:

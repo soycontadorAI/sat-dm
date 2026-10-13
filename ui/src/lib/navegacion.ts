@@ -47,6 +47,7 @@ export const NAV_SECUNDARIO: readonly PaginaNav[] = [
 // Páginas adicionales que el palette ofrece pero no viven en el sidebar.
 export const PAGINAS_EXTRA: readonly PaginaNav[] = [
   { href: '/descarga/rapida', label: 'Descarga rápida', icon: 'ph:lightning-light' },
+  { href: '/descarga/calendario', label: 'Cuadro de control', icon: 'ph:calendar-check-light' },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -121,6 +122,7 @@ export const ESPACIOS: readonly Espacio[] = [
     destinos: [
       { id: 'descarga', href: '/descarga', label: 'Descargar CFDIs', icon: 'ph:download-simple-light', descripcion: 'Emitidos y recibidos, 3 canales', sinonimos: ['descargar', 'bajar', 'xml', 'solicitar', 'web service', 'cfdis', 'facturas'] },
       { id: 'descarga-rapida', href: '/descarga/rapida', label: 'Descarga rápida', icon: 'ph:lightning-light', descripcion: 'Directo del portal, sin esperar', estado: 'nuevo', sinonimos: ['rapida', 'portal', 'captcha', 'contrasena', 'ciec'] },
+      { id: 'descarga-calendario', href: '/descarga/calendario', label: 'Cuadro de control', icon: 'ph:calendar-check-light', descripcion: 'Qué días ya están en la base', sinonimos: ['calendario', 'dias', 'historial de descarga', 'cuadro', 'control'] },
       {
         id: 'constancia-opinion',
         // Acceso directo: abre Despacho > Empresas con la fila de la empresa
