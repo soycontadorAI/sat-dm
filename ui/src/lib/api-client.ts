@@ -739,8 +739,15 @@ export class SatApiClient {
     return this.request<PilotoEstado>('/piloto/estado');
   }
 
-  /** Activa/pausa o cambia el día de cierre. 402 si el plan no la incluye. */
-  async pilotoConfig(cfg: { activo?: boolean; dia_cierre?: number }): Promise<PilotoEstado> {
+  /**
+   * Activa/pausa, cambia el día de cierre o el historial (`historial_desde`
+   * "YYYY-MM-DD"; `null` lo detiene). 402 si el plan no la incluye.
+   */
+  async pilotoConfig(cfg: {
+    activo?: boolean;
+    dia_cierre?: number;
+    historial_desde?: string | null;
+  }): Promise<PilotoEstado> {
     return this.put<PilotoEstado>('/piloto/config', cfg);
   }
 

@@ -192,7 +192,8 @@ En la desktop, `procesador.db` sigue existiendo como caché local (y como único
 4. **Planificador** (`sat_descarga/api/piloto.py`, F7): ✅ pasada diaria con rezago, cierre
    mensual con metadata, cancelaciones y candado `piloto_ejecuciones` (local; el de Supabase,
    pendiente). Gateado por `piloto`. Ver "Fase 4: lo que se implementó" abajo.
-5. **Llenado del historial** desde la fecha elegida.
+5. **Llenado del historial** desde la fecha elegida. ✅ Mismo cierre del planificador, mes por mes
+   hacia atrás. Ver "Fase 5: lo que se implementó" abajo.
 6. **Solicitud manual inteligente**: servir de la base lo consolidado y pedir solo los huecos.
 7. **Reportes personalizables** sobre `nodos` (plantillas). ✅ Adelantada: ver
    [`plantillas-export.md`](plantillas-export.md).
@@ -322,6 +323,41 @@ ingreso 58 KB de XML (5 KB comprimido), nómina 6 KB, pago 6 KB.
   UUID acepta una solicitud por folio (si rechaza la lista, el cierre pide por días), el tope de
   registros de una Metadata de 12 meses, si contesta 5005 a una solicitud igual a otra que ya
   terminó y los límites por RFC e IP con muchas cuentas.
+
+## Fase 5: lo que se implementó
+
+- `settings.json → piloto.historial_desde` ("YYYY-MM-01" o `null`), por `PUT /piloto/config`
+  (se normaliza al día 1; fijarlo exige la capacidad `piloto`, detenerlo no). Rango válido: del
+  mes siguiente a hoy menos 5 años (límite del WS v1.5, se mueve cada día) al mes anterior al
+  primer cierre del piloto (`activado_en`); fuera de él, 400 con el rango en palabras.
+- Cada mes del historial es un **cierre** (`piloto_ejecuciones`, `tipo = 'cierre'`) marcado
+  desde la reserva con `detalle.origen = "historial"` e `iniciado` (día de la Ciudad de México).
+  Dos diferencias con el cierre normal: la metadata pide **solo ese mes** (con 12 meses las
+  ventanas de los meses vecinos se encimarían) y las cancelaciones se aplican sin aviso. Un mes
+  que ya cubre la metadata de 12 meses de un cierre normal completo la reusa en lugar de pedirla
+  otra vez al SAT. El mes conserva su origen si la metadata se vuelve a pedir.
+- Ritmo: a lo más un mes nuevo por empresa al día y 8 por cuenta (`HISTORIAL_MESES_POR_DIA` y
+  `HISTORIAL_MESES_POR_DIA_CUENTA`); un mes empezado sigue sus pasos sin límite. Solo después de
+  la hora de la pasada diaria y si ningún cierre normal tocó al SAT en la vuelta (los cierres
+  normales van primero). Detener (`null`) no empieza meses nuevos. Un mes que reusa la metadata
+  de un cierre normal cuenta igual en el cupo: no pide metadata, pero sí puede pedir los XML que
+  falten.
+- Sin `_resumen_si_toca`: al terminar todo el historial de todas las empresas incluidas, un solo
+  aviso ("El historial desde julio de 2026 ya está en la base: 2 meses, 0 con diferencias."; con
+  varias empresas cuenta cierres, un mes por empresa), con los que fallaron sin reintento
+  contados aparte. Habla del rango que de verdad se cubrió: el límite de 5 años se mueve cada día
+  y un mes que sale antes de pedirse ya no se pide. El aviso es uno por elección del usuario (no
+  se repite porque el límite avance), y cambiar de mes a un rango que ya estaba completo no
+  vuelve a avisar. Si después se suman meses que el historial llena (al reanudar tras una
+  pausa) o una empresa que no estaba incluida, otro aviso cuenta solo eso ("Ya está en la base
+  lo que se sumó al historial (septiembre de 2026 a octubre de 2026): 2 meses, 0 con
+  diferencias."; si es una de varias empresas, dice cuál); los meses que entran ya cerrados por
+  el cierre normal ni avisan ni se cuentan. `piloto.historial_revisado` guarda hasta qué mes ya
+  se revisó cada empresa, así lo revisado no se vuelve a leer.
+- `GET /piloto/estado` trae el bloque `historial` (desde, mínimo, máximo, meses totales,
+  completos, con diferencia, con error y el siguiente con trabajo) y `historial_completos` /
+  `historial_total` por empresa. UI: selector "Llenar historial desde…" con avance y Detener en
+  el panel, el mismo selector opcional al activar y "Historial: 3/20" en la lista de empresas.
 
 ## Abierto
 

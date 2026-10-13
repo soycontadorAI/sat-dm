@@ -1428,6 +1428,9 @@ PILOTO_DEFAULT = {
     "activo": False,       # copiloto: solo corre si el usuario lo activa
     "dia_cierre": 5,       # día del mes en que se cierra el mes anterior
     "activado_en": None,   # ISO; el primer cierre es el del mes previo a esta fecha
+    "historial_desde": None,  # "YYYY-MM-01": hasta dónde se llena el historial (None = no)
+    "historial_fijado_en": None,  # ISO UTC: cuándo se fijó `historial_desde` (para el aviso final)
+    "historial_revisado": None,   # {clave, hasta: {RFC: "YYYY-MM"}, avisos}: lo ya revisado del historial
 }
 
 

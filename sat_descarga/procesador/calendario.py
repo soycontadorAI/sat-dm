@@ -410,8 +410,7 @@ def _candidato(sol: dict) -> Optional[tuple[str, Optional[str], Optional[str]]]:
     if estado == "descargada":
         return ("provisional", None, None)
     if estado == "5" and (
-        codigo == "5004"
-        or sol.get("cod_estatus") == "5004"
+        codigo == "5004"  # el CodEstatus 5004 es otra cosa: "no se encontró la solicitud"
         or "No se encontró la información" in (mensaje or "")
         # Guardadas antes de que se guardara el código: con el mensaje genérico
         # de la verificación, el rechazo casi siempre es el 5004 (el 5003, tope
