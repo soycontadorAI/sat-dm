@@ -22,6 +22,9 @@ import threading
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Union
 
+from lxml import etree
+
+from ..core.xml_seguro import fromstring_seguro
 from .cfdi_parser import CfdiParseError, parse_cfdi
 from .db import abrir_db, normalizar_mi_rfc
 from .validaciones import validar_y_anotar
@@ -33,6 +36,12 @@ ORIGEN_POR_CANAL = {"ws": "sat_ws", "ciec": "sat_portal", "fiel": "sat_portal"}
 
 # CFDIs por transacción: acota la memoria con carpetas de decenas de miles.
 LOTE = 500
+
+# Versión del indexado inicial de la carpeta de cada empresa. La 2 trae la
+# lectura tolerante: una carpeta indexada con la 1 se recorre otra vez, una sola
+# vez, solo por los XML que la 1 rechazaba (los que no se leen en modo estricto,
+# `solo_mal_formados`); lo demás ya está en el índice.
+INDEXADO_CARPETA_VERSION = "2"
 
 # Un indexado en segundo plano a la vez: comparten CPU y el candado de la DB.
 _en_curso = threading.Lock()
@@ -58,11 +67,15 @@ def indexar(
     direccion_fija: Optional[str] = None,
     desde: str = "",
     hasta: str = "",
+    solo_mal_formados: bool = False,
 ) -> dict:
     """Indexa `(nombre, bytes o ruta)` bajo la empresa `mi_rfc`.
 
-    `desde`/`hasta` (ISO, opcionales) filtran por fecha de emisión. Devuelve
-    `{agregados, duplicados, omitidos_rfc, errores, archivos_encontrados}`.
+    `desde`/`hasta` (ISO, opcionales) filtran por fecha de emisión. Con
+    `solo_mal_formados`, un XML que se lee en modo estricto se salta (cuenta como
+    duplicado): lo usa el reindexado de la carpeta al subir de versión, porque
+    esos ya los indexó la versión anterior y solo faltan los que rechazaba.
+    Devuelve `{agregados, duplicados, omitidos_rfc, errores, archivos_encontrados}`.
     """
     mi_rfc = normalizar_mi_rfc(mi_rfc)
     db = abrir_db()
@@ -85,6 +98,9 @@ def indexar(
         total["archivos_encontrados"] += 1
         try:
             xml = contenido.read_bytes() if isinstance(contenido, Path) else contenido
+            if solo_mal_formados and _lee_estricto(xml):
+                total["duplicados"] += 1
+                continue
             cfdi = parse_cfdi(xml, file_name=nombre)
             if desde and cfdi.fecha_emision and cfdi.fecha_emision < desde:
                 continue
@@ -110,6 +126,14 @@ def indexar(
             _vaciar()
     _vaciar()
     return total
+
+
+def _lee_estricto(xml: bytes) -> bool:
+    try:
+        fromstring_seguro(xml)
+        return True
+    except etree.XMLSyntaxError:
+        return False
 
 
 def xmls_de_carpeta(carpeta: Union[str, Path]) -> Iterator[tuple[str, Path]]:
@@ -179,11 +203,12 @@ def _indexar_existentes(base: Path) -> None:
             continue
         rfc = emp["rfc"]
         llave = f"indexado_carpeta:{normalizar_mi_rfc(rfc)}"
-        if db.meta_get(llave):
+        previa = db.meta_get(llave)
+        if previa == INDEXADO_CARPETA_VERSION:
             continue
         carpeta = paths.dir_cfdi_base(rfc, salida_base=base)
-        r = indexar_carpeta(rfc, carpeta, origen="carpeta")
-        db.meta_set(llave, "1")
+        r = indexar_carpeta(rfc, carpeta, origen="carpeta", solo_mal_formados=previa == "1")
+        db.meta_set(llave, INDEXADO_CARPETA_VERSION)
         logger.info(
             "[indexar] %s: carpeta de descargas indexada — %d nuevos, %d ya estaban",
             rfc, r["agregados"], r["duplicados"],

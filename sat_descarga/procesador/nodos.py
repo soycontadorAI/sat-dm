@@ -28,31 +28,29 @@ from __future__ import annotations
 
 from typing import Any, Union
 
-from lxml import etree
-
-from ..core.xml_seguro import fromstring_seguro
+from ..core.xml_seguro import leer_tolerante, nombre_local
 
 NODOS_VERSION = 1
 
 
 def xml_a_nodos(xml: Union[bytes, str]) -> dict:
-    """Convierte el XML de un CFDI a `nodos`. Lanza `etree.XMLSyntaxError`
-    si el XML no es válido."""
+    """Convierte el XML de un CFDI a `nodos`. Lee en modo tolerante; lanza
+    `etree.XMLSyntaxError` solo si ni así se puede leer."""
     if isinstance(xml, str):
         xml = xml.encode("utf-8")
-    raiz = fromstring_seguro(xml, huge_tree=True)
-    return {etree.QName(raiz).localname: _elemento(raiz)}
+    raiz = leer_tolerante(xml, huge_tree=True).raiz
+    return {nombre_local(raiz): _elemento(raiz)}
 
 
 def _elemento(elem) -> dict:
     nodo: dict[str, Any] = {}
     for nombre, valor in elem.attrib.items():
-        nodo[etree.QName(nombre).localname] = valor
+        nodo[nombre_local(nombre)] = valor
 
     for hijo in elem:
         if not isinstance(hijo.tag, str):  # comentarios e instrucciones
             continue
-        nombre = etree.QName(hijo).localname
+        nombre = nombre_local(hijo)
         valor = _elemento(hijo)
         if nombre in nodo and not _es_hijo(nodo[nombre]):
             # Choque con un atributo del mismo nombre: el atributo se aparta.
