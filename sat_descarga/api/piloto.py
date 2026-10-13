@@ -556,22 +556,8 @@ def _estado_solicitud(rfc: str, id_sol: str) -> str:
 
 
 def _rangos(dias: list[date]) -> list[tuple[date, date]]:
-    """Rangos contiguos que cubren `dias`; si son más de MAX_RANGOS, se juntan los
-    más cercanos (pedir de más unos días es más barato que muchas solicitudes)."""
-    if not dias:
-        return []
-    dias = sorted(set(dias))
-    rangos = [[dias[0], dias[0]]]
-    for d in dias[1:]:
-        if d - rangos[-1][1] == timedelta(days=1):
-            rangos[-1][1] = d
-        else:
-            rangos.append([d, d])
-    while len(rangos) > MAX_RANGOS:
-        i = min(range(len(rangos) - 1), key=lambda k: rangos[k + 1][0] - rangos[k][1])
-        rangos[i][1] = rangos[i + 1][1]
-        del rangos[i + 1]
-    return [(a, b) for a, b in rangos]
+    """Rangos contiguos que cubren `dias`, a lo más MAX_RANGOS (ver `calendario`)."""
+    return calendario.rangos_contiguos(dias, MAX_RANGOS)
 
 
 def _backoff(intentos: int, ahora: datetime) -> str:
@@ -852,6 +838,7 @@ def _leer_metadata(rfc: str, ids: dict) -> tuple[list, list[str]]:
     leer completas: se borró la carpeta, un ZIP no abre o faltan paquetes. Comparar
     contra una metadata incompleta marcaría días como diferencia que no lo son."""
     from ..utils.metadata import extraer_metadata_de_directorio
+    from ..webservice.descarga import zip_paquete
     from .state import _salida_descarga_ws
 
     registros: list = []
@@ -872,7 +859,7 @@ def _leer_metadata(rfc: str, ids: dict) -> tuple[list, list[str]]:
         # En local el ZIP de cada paquete se conserva: si falta el de alguno (se borró,
         # quedó solo un TXT), la metadata está incompleta. Se busca el de cada uno: la
         # carpeta es del rango y la comparten las solicitudes de la misma ventana.
-        falta_zip = any(not (salida / f"{pid}.zip").is_file() for pid in sol.get("package_ids") or [])
+        falta_zip = any(not zip_paquete(salida, pid).is_file() for pid in sol.get("package_ids") or [])
         if errores or (not leidos and total > 0) or falta_zip:
             ilegibles.append(id_sol)
             continue

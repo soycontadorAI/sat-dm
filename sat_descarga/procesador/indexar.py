@@ -16,6 +16,7 @@ Kill switch del indexado automático: `SAT_DM_SIN_INDEXADO=1`.
 
 from __future__ import annotations
 
+import itertools
 import logging
 import os
 import threading
@@ -143,13 +144,15 @@ def automatico_activo() -> bool:
     return os.environ.get("SAT_DM_SIN_INDEXADO") != "1"
 
 
-def indexar_descarga(rfc: str, ruta: str, canal: str) -> Optional[threading.Thread]:
-    """Indexa en segundo plano lo que acaba de bajar una descarga de CFDI.
-    Best-effort: un fallo aquí nunca afecta la descarga."""
+def indexar_descarga(rfc: str, ruta: str, canal: str,
+                     carpetas: Optional[list] = None) -> Optional[threading.Thread]:
+    """Indexa en segundo plano lo que acaba de bajar una descarga de CFDI: la
+    carpeta `ruta` o, si vienen, solo esas `carpetas` (las de sus paquetes, en
+    un solo trabajo). Best-effort: un fallo aquí nunca afecta la descarga."""
     if not (automatico_activo() and rfc and ruta):
         return None
     origen = ORIGEN_POR_CANAL.get(canal, canal)
-    return _en_hilo(f"indexar-{rfc}", _indexar_registrando, rfc, ruta, origen)
+    return _en_hilo(f"indexar-{rfc}", _indexar_registrando, rfc, ruta, origen, carpetas)
 
 
 def indexar_descargas_existentes(base: Union[str, Path]) -> Optional[threading.Thread]:
@@ -192,8 +195,11 @@ def esperar_indexado(mi_rfc: str, timeout: float) -> bool:
 
 
 
-def _indexar_registrando(rfc: str, ruta: str, origen: str) -> None:
-    r = indexar_carpeta(rfc, ruta, origen=origen)
+def _indexar_registrando(rfc: str, ruta: str, origen: str,
+                         carpetas: Optional[list] = None) -> None:
+    fuentes = [ruta] if carpetas is None else carpetas
+    r = indexar(rfc, itertools.chain.from_iterable(xmls_de_carpeta(c) for c in fuentes),
+                origen=origen)
     logger.info(
         "[indexar] %s: %d nuevos, %d ya estaban, %d errores (%s)",
         rfc, r["agregados"], r["duplicados"], len(r["errores"]), ruta,

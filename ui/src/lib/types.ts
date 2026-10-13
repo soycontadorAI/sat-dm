@@ -56,6 +56,53 @@ export interface SolicitudResponse {
   id_solicitud: string;
 }
 
+// POST /solicitar/desde-base — response (sirve de la base lo consolidado y
+// pide al SAT solo los huecos). `id_solicitud` es null si TODO estaba
+// consolidado (no se fue al SAT).
+export interface SolicitudHueco {
+  id_solicitud: string;
+  fecha_inicio: string; // ISO date
+  fecha_fin: string;
+}
+
+export interface ServidosBase {
+  dias: number;
+  cfdis: number;
+  /** Carpeta de la descarga; null si no se escribió ningún XML. */
+  ruta: string | null;
+  sin_xml: number;
+}
+
+export interface ErrorRangoBase {
+  /**
+   * "sat": un hueco no se pudo solicitar; "base": no se pudo guardar lo
+   * consolidado; "cupo": el tope de descargas del plan no dejó pedir los huecos.
+   */
+  tipo: 'sat' | 'base' | 'cupo';
+  /** [desde, hasta] ISO. */
+  rango: [string, string];
+  mensaje: string;
+  /** Solo "cupo": los datos del tope (tope, usadas, reinicia, siguiente plan…). */
+  datos?: Record<string, unknown>;
+}
+
+export interface SolicitudDesdeBaseResponse {
+  ok: boolean;
+  id_solicitud: string | null;
+  solicitudes: SolicitudHueco[];
+  servidos: ServidosBase;
+  errores?: ErrorRangoBase[];
+}
+
+/** Resumen de lo servido de la base en una solicitud (lo que muestra la UI). */
+export interface ResumenServido {
+  /** Dirección de la solicitud: en "Ambos" hay un resumen por cada una. */
+  direccion: 'E' | 'R';
+  servidos: ServidosBase;
+  solicitudes: SolicitudHueco[];
+  errores: ErrorRangoBase[];
+}
+
 // POST /verificar — request body
 export interface VerificarRequest {
   id_solicitud: string;
@@ -487,7 +534,8 @@ export interface SolicitudesActividadResponse {
 // Historial de descargas completadas (GET /historial y /empresas/{rfc}/historial)
 // ---------------------------------------------------------------------------
 
-export type CanalDescarga = 'ws' | 'ciec' | 'fiel';
+/** `base`: servido del índice local por la solicitud inteligente (sin ir al SAT). */
+export type CanalDescarga = 'ws' | 'ciec' | 'fiel' | 'base';
 export type TipoDescarga = 'cfdi' | 'metadata' | 'constancia' | 'opinion';
 
 export interface HistorialItem {
