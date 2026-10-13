@@ -80,3 +80,39 @@ class TestIntegracionConElParser:
         resp = _respuesta_soap("404", "Error no Controlado")
         with pytest.raises(ErrorTransitorioSAT):
             _parse_request_id(resp, "SolicitaDescargaEmitidosResult")
+
+
+class TestReintento5002:
+    """El truco de variar los segundos ante un 5002 es opcional: la descarga
+    automática lo apaga (gasta cuota del SAT y su regla es error sin reintentos)."""
+
+    def _contar(self, monkeypatch):
+        from sat_descarga.webservice import solicitud
+
+        llamadas = []
+
+        def _emitidos(*a, ff_override=None, **k):
+            llamadas.append(ff_override)
+            raise RuntimeError("SAT rechazó la solicitud. CodEstatus=5002, Mensaje=Se han agotado")
+
+        monkeypatch.setattr(solicitud, "_solicitar_emitidos", _emitidos)
+        return solicitud, llamadas
+
+    def test_por_omision_varia_los_segundos(self, monkeypatch):
+        from datetime import date
+
+        solicitud, llamadas = self._contar(monkeypatch)
+        with pytest.raises(RuntimeError, match="5 reintentos"):
+            solicitud.solicitar_descarga(None, "tok", "AAA010101AAA", date(2026, 9, 1),
+                                         date(2026, 9, 30), tipo_comprobante="E")
+        assert llamadas == [f"2026-09-30T23:59:{s}" for s in (57, 56, 55, 54, 53)]
+
+    def test_sin_reintento_falla_a_la_primera(self, monkeypatch):
+        from datetime import date
+
+        solicitud, llamadas = self._contar(monkeypatch)
+        with pytest.raises(RuntimeError, match="CodEstatus=5002"):
+            solicitud.solicitar_descarga(None, "tok", "AAA010101AAA", date(2026, 9, 1),
+                                         date(2026, 9, 30), tipo_comprobante="E",
+                                         reintentar_5002=False)
+        assert llamadas == ["2026-09-30T23:59:57"]

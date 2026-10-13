@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { PageHeading } from '@/components/layout/page-heading';
 import { CuadroGrid } from '@/components/calendario/cuadro-grid';
 import { DiaDialog } from '@/components/calendario/dia-dialog';
+import { PilotoPanel } from '@/components/calendario/piloto-panel';
 import { VencimientoBadge } from '@/components/fiel/vencimiento-badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -242,6 +243,8 @@ export default function CalendarioPage() {
             </div>
           )}
 
+          {!sinPiloto && <PilotoPanel />}
+
           {error && (
             <Alert variant="destructive">
               <Icon icon="ph:warning-circle-light" className="size-4" />
@@ -298,7 +301,7 @@ export default function CalendarioPage() {
         </>
       )}
 
-      {rfc && <DiaDialog rfc={rfc} fecha={diaAbierto} onClose={() => setDiaAbierto(null)} />}
+      {rfc && <DiaDialog rfc={rfc} fecha={diaAbierto} onClose={() => setDiaAbierto(null)} onCambio={cargar} />}
     </div>
   );
 }

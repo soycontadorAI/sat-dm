@@ -326,6 +326,8 @@ export interface Empresa {
   renovacion_pendiente?: RenovacionPendiente | null;
   /** Certificados de Sello Digital solicitados desde la app. */
   csds?: CsdInfo[];
+  /** ¿Entra en la descarga automática (piloto)? */
+  piloto_incluida?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1992,4 +1994,54 @@ export interface CalendarioDia {
   solicitudes: CalendarioSolicitud[];
   cfdis: CalendarioCfdi[];
   cfdis_total: number;
+}
+
+// ---------------------------------------------------------------------------
+// Descarga automática (piloto): GET /piloto/estado, PUT /piloto/config, etc.
+// ---------------------------------------------------------------------------
+
+export type PilotoPausadoPor = 'inactivo' | 'licencia' | 'sesion' | null;
+export type PilotoTipoAviso = 'resumen' | 'cancelacion' | 'efirma' | 'error';
+export type PilotoEstadoEjecucion = 'en_curso' | 'completa' | 'error';
+
+export interface PilotoEmpresa {
+  rfc: string;
+  nombre: string;
+  incluida: boolean;
+  elegible: boolean;
+  /** "Archivada" | "No incluida" | "Sin e.firma" | "e.firma vencida" */
+  motivo: string | null;
+}
+
+export interface PilotoEjecucion {
+  rfc: string;
+  tipo: string;
+  periodo: string;
+  estado: PilotoEstadoEjecucion;
+  intentos: number;
+  error_mensaje: string | null;
+  actualizado_en: string;
+}
+
+export interface PilotoAviso {
+  id: number;
+  tipo: PilotoTipoAviso;
+  rfc: string | null;
+  periodo: string | null;
+  mensaje: string;
+  creado_en: string;
+  leido: boolean;
+}
+
+export interface PilotoEstado {
+  disponible: boolean;
+  activo: boolean;
+  dia_cierre: number;
+  activado_en: string | null;
+  pausado_por: PilotoPausadoPor;
+  proxima_pasada: string | null;
+  cierre: { periodo: string; fecha: string } | null;
+  empresas: PilotoEmpresa[];
+  ejecuciones: PilotoEjecucion[];
+  avisos: PilotoAviso[];
 }

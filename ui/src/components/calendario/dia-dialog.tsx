@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -8,11 +8,15 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Icon } from '@/components/ui/icon';
+import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
 import { ResourceList } from '@/components/shared/resource-list';
+import { useAuth } from '@/providers/auth-provider';
 import { useServer } from '@/providers/server-provider';
 import { mensajeDeError } from '@/lib/errores';
 import { formatCurrency, formatNumber } from '@/lib/formatting';
-import { clasePunto, llevaTotal, nombreDireccion, textoEstado, textoSolicitud } from '@/lib/calendario';
+import { clasePunto, llevaTotal, tienePiloto, nombreDireccion, textoEstado, textoSolicitud } from '@/lib/calendario';
 import type { CalendarioCelda, CalendarioDia, DireccionCfdi } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -23,10 +27,21 @@ function tituloFecha(fecha: string): string {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
-function TarjetaDireccion({ dir, c }: { dir: DireccionCfdi; c: CalendarioCelda | undefined }) {
+function TarjetaDireccion({
+  dir,
+  c,
+  onReintentar,
+  reintentando,
+}: {
+  dir: DireccionCfdi;
+  c: CalendarioCelda | undefined;
+  /** Solo con piloto; sin él no hay botón. */
+  onReintentar?: (dir: DireccionCfdi) => void;
+  reintentando?: boolean;
+}) {
   const estado = c?.estado ?? 'pendiente';
   return (
-    <div className="space-y-2 rounded-lg border bg-card p-3">
+    <div className="min-w-0 space-y-2 rounded-lg border bg-card p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-bold tracking-tight">{nombreDireccion(dir)}</span>
         <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium">
@@ -52,11 +67,25 @@ function TarjetaDireccion({ dir, c }: { dir: DireccionCfdi; c: CalendarioCelda |
           </div>
         ) : null}
       </dl>
-      {estado === 'error' && (c?.error_mensaje || c?.error_codigo) && (
-        <p className="text-xs text-destructive">
+      {(estado === 'error' || estado === 'diferencia') && (c?.error_mensaje || c?.error_codigo) && (
+        <p
+          className={cn(
+            'text-xs [overflow-wrap:anywhere]',
+            estado === 'error' ? 'text-destructive' : 'text-muted-foreground',
+          )}
+        >
           {c.error_codigo ? `${c.error_codigo}: ` : ''}
           {c.error_mensaje}
         </p>
+      )}
+      {onReintentar && (estado === 'error' || estado === 'diferencia') && (
+        <Button size="sm" variant="outline" disabled={reintentando} onClick={() => onReintentar(dir)}>
+          <Icon
+            icon={reintentando ? 'ph:circle-notch-light' : 'ph:arrow-clockwise-light'}
+            className={cn('mr-1.5 size-3.5', reintentando && 'animate-spin')}
+          />
+          Reintentar
+        </Button>
       )}
       {!llevaTotal(estado) && estado === 'pendiente' && (
         <p className="text-xs text-muted-foreground">Nadie lo ha pedido todavía.</p>
@@ -76,10 +105,15 @@ interface Props {
   /** null = cerrado. */
   fecha: string | null;
   onClose: () => void;
+  /** Tras reintentar: el padre recarga el calendario. */
+  onCambio?: () => void;
 }
 
-export function DiaDialog({ rfc, fecha, onClose }: Props) {
+export function DiaDialog({ rfc, fecha, onClose, onCambio }: Props) {
   const { apiClient } = useServer();
+  const { license } = useAuth();
+  const conPiloto = tienePiloto(license);
+  const [reintentando, setReintentando] = useState<DireccionCfdi | null>(null);
   const [datos, setDatos] = useState<CalendarioDia | null>(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +133,24 @@ export function DiaDialog({ rfc, fecha, onClose }: Props) {
       vivo = false;
     };
   }, [apiClient, rfc, fecha]);
+
+  const reintentar = useCallback(
+    async (dir: DireccionCfdi) => {
+      if (!fecha) return;
+      setReintentando(dir);
+      try {
+        await apiClient.calendarioReintentar(rfc, fecha, dir);
+        toast.success('Se volvió a pedir al SAT');
+        onCambio?.();
+        setDatos(await apiClient.calendarioDia(rfc, fecha));
+      } catch (e) {
+        toast.error(mensajeDeError(e));
+      } finally {
+        setReintentando(null);
+      }
+    },
+    [apiClient, rfc, fecha, onCambio],
+  );
 
   return (
     <Dialog open={fecha !== null} onOpenChange={(v) => !v && onClose()}>
@@ -131,8 +183,18 @@ export function DiaDialog({ rfc, fecha, onClose }: Props) {
         {datos && (
           <div className="space-y-5">
             <div className="grid gap-3 sm:grid-cols-2">
-              <TarjetaDireccion dir="E" c={datos.E} />
-              <TarjetaDireccion dir="R" c={datos.R} />
+              <TarjetaDireccion
+                dir="E"
+                c={datos.E}
+                onReintentar={conPiloto ? reintentar : undefined}
+                reintentando={reintentando === 'E'}
+              />
+              <TarjetaDireccion
+                dir="R"
+                c={datos.R}
+                onReintentar={conPiloto ? reintentar : undefined}
+                reintentando={reintentando === 'R'}
+              />
             </div>
 
             <section className="space-y-2">

@@ -43,8 +43,9 @@ Notas de diseño:
 
 import logging
 import os
-from datetime import datetime
 import threading
+import time
+from datetime import datetime
 from typing import Optional
 
 import requests
@@ -59,6 +60,7 @@ from .state import (
     _registrar_descarga,
     _salida_descarga_ws,
     _terminar_descarga_ws,
+    es_metadata,
 )
 from .uso import rango, tipo_de_solicitud, track
 
@@ -66,6 +68,13 @@ logger = logging.getLogger(__name__)
 
 POLL_INTERVAL_S = 60          # entre pasadas completas
 ARRANQUE_DELAY_S = 20         # deja arrancar el agente antes de la 1.ª pasada
+# Las solicitudes de la descarga automática no tienen a nadie esperando en la
+# pantalla: se verifican a lo más cada 10 min, no cada pasada (son muchas y
+# todas salen de la misma IP en la nube).
+VERIFICAR_PILOTO_CADA_S = 600
+
+# id_solicitud → time.monotonic() de la próxima verificación (solo las del piloto).
+_proxima_verificacion: dict = {}
 
 _stop = threading.Event()
 _thread: Optional[threading.Thread] = None
@@ -196,6 +205,10 @@ def _procesar_empresa(rfc: str, emp: dict) -> None:
             if _stop.is_set():
                 return
             id_sol = sol["id_solicitud"]
+            if sol.get("origen") == "piloto":
+                if time.monotonic() < _proxima_verificacion.get(id_sol, 0):
+                    continue
+                _proxima_verificacion[id_sol] = time.monotonic() + VERIFICAR_PILOTO_CADA_S
             try:
                 estado = consultar_solicitud(token, fiel.rfc, id_sol, fiel)
             except Exception as e:  # noqa: BLE001 — red/SSL del SAT: reintenta luego
@@ -276,8 +289,9 @@ def _descargar_lista(rfc: str, fiel: FIEL, sol: dict) -> bool:
             fiel=fiel,
             extraer=True,
         )
+        # La metadata es un TXT del SAT: va al historial como tal y no se indexa.
         _registrar_descarga(
-            rfc, "ws", "cfdi",
+            rfc, "ws", "metadata" if es_metadata(sol) else "cfdi",
             descripcion=f"Descarga WS · solicitud {id_sol[:8]}… (automática)",
             ruta=salida, total=numero_cfdis,
         )

@@ -189,8 +189,9 @@ En la desktop, `procesador.db` sigue existiendo como caché local (y como único
    que se implementó" abajo.
 3. **Supabase.** Tablas `sat_cfdis`, `sat_descarga_dias` y el bucket; subida desde el agente con
    plan de pago; la desktop baja lo que no tenga.
-4. **Planificador** (`sat_descarga/api/piloto.py`, F7): pasada diaria con rezago, cierre mensual
-   con metadata, cancelaciones y candado `piloto_ejecuciones`. Gateado por `piloto`.
+4. **Planificador** (`sat_descarga/api/piloto.py`, F7): ✅ pasada diaria con rezago, cierre
+   mensual con metadata, cancelaciones y candado `piloto_ejecuciones` (local; el de Supabase,
+   pendiente). Gateado por `piloto`. Ver "Fase 4: lo que se implementó" abajo.
 5. **Llenado del historial** desde la fecha elegida.
 6. **Solicitud manual inteligente**: servir de la base lo consolidado y pedir solo los huecos.
 7. **Reportes personalizables** sobre `nodos` (plantillas). ✅ Adelantada: ver
@@ -249,8 +250,67 @@ ingreso 58 KB de XML (5 KB comprimido), nómina 6 KB, pago 6 KB.
   índice; los CFDI sin XML guardado van listados en `sin_xml.txt`). Igual en escritorio y web.
 - Pantalla `/descarga/calendario`: año × día, filtro E/R/Ambos, detalle del día y export del mes.
 
+## Fase 4: lo que se implementó
+
+- `api/piloto.py`: hilo como el poller (cada 5 min, 45 s después de arrancar; `despertar()` lo
+  adelanta). Corre solo con la capacidad `piloto` en la licencia en cache, si el usuario lo activó
+  (`settings.json → piloto.activo`, nunca solo) y si la sesión única no lo pausó. Por empresa: no
+  archivada, incluida (`piloto_incluida` en empresas.json, local; aún no viaja en el sync), con
+  e.firma que abre y vigente. Las solicitudes van al catálogo con `origen: "piloto"`, `proposito`
+  y `periodo`; el poller las termina (verificándolas a lo más cada 10 min).
+- Pasada diaria: desde la 1:00 de la Ciudad de México más un desfase estable por cuenta (hasta 4 h).
+  Pide D-3…D-1 (menos los días cerrados o en error) más los días por descargar desde la
+  activación o los últimos 31 días, sin los que ya tienen solicitud viva o un reintento en curso.
+  Rangos contiguos mínimos, a lo más 4 por dirección. Una pausa de 90 s (más variación) entre
+  empresas que tocaron al SAT, y una sola autenticación por empresa en cada vuelta (el token se
+  reusa unos 4 min; si falla, lo demás de la empresa espera su reintento sin volver a tocar al SAT).
+- Cierre mensual: el `dia_cierre` del mes siguiente pero no antes del día 4 (rezago del último
+  día), y solo cuando ya no hay solicitudes vivas del mes ni días de una pasada esperando su
+  reintento. Pide Metadata de los **últimos 12
+  meses** con estatus `Todos` (decisión: una sola consulta por dirección da el conteo del mes y
+  las cancelaciones; 12 meses y no "el ejercicio" porque en enero-abril siguen llegando
+  cancelaciones del año anterior). Aplica las cancelaciones (`estado_sat`, `fecha_cancelacion`,
+  columna nueva) y avisa las de meses anteriores. Compara por día con la regla del conteo; lo que
+  falte se pide una vez (por folio si son hasta 10, si no por los días), se indexa en ese momento
+  (sin esperar al indexado de fondo del poller) y se vuelve a comparar. Si el SAT falla al pedir
+  lo que falta, el cierre espera y lo vuelve a pedir (no se cierra en diferencia por eso). Una
+  metadata que el SAT no completa o que no se puede leer se vuelve a pedir, hasta 3 veces; la
+  dirección que sí llegó no se vuelve a pedir.
+  Resultado con `calendario.cerrar_dias`: consolidado o diferencia con el detalle. Los meses que
+  vencieron con la app cerrada se cierran también, uno que toque al SAT por vuelta.
+- Pausa: mientras está pausada no se pide nada. Reanudarla empieza desde ese día, como una
+  activación nueva (`activado_en`): los meses de la pausa no se piden solos, se llenan con el
+  historial. Un cierre que ya había empezado sí se termina.
+- Errores: red, 404, 5006 y errores sin CodEstatus (un SOAP Fault) → reintento a los 30 min, 2 h,
+  6 h, 12 h y 24 h (también de días anteriores) y, a las 72 h de la primera falla seguida, error
+  (sin pisar días que ya cerró el cierre o que ya tienen datos). e.firma (300-305 o no abre) →
+  error y aviso, y se vuelve a probar cada 6 h por si ya se corrigió (la pasada se retoma aunque
+  haya cambiado el día). 5002, 5001, 301 → error sin reintento (sin el truco de variar los
+  segundos, que gasta cuota). 5005 → nunca se varían los segundos: en la pasada diaria los días
+  quedan en proceso (el cierre los resuelve); en el cierre se usa la solicitud igual que ya se
+  tenía y, si no hay (la pidió otra instalación), se espera como a una falla del SAT. 5004 → día
+  con 0.
+- Avisos (`piloto_avisos`): resumen del cierre cuando todas las empresas lo terminan,
+  cancelaciones de meses ya cerrados (una sola por comparación: el primer cierre puede traer las
+  de todo un año), e.firma y cierres fallidos. En la app, como notificación (si llegan más de 3 a
+  la vez, una sola que manda al cuadro de control); el correo (SES de todoconta-apps) queda
+  pendiente.
+- API: `GET /piloto/estado`, `PUT /piloto/config` (402 sin la capacidad), `PUT
+  /empresas/{rfc}/piloto`, `POST /piloto/correr`, `POST /piloto/avisos/leidos` y `POST
+  /calendario/{rfc}/reintentar`. Reintentar solo crea la solicitud del día; si su mes ya estaba
+  cerrado, al terminar el planificador (el único que escribe los cierres) vuelve a comparar el mes
+  con la metadata que ya tenía.
+- Poller: una solicitud en 3 que no se baja en 72 h vence (`lista_en`); la Metadata va a su carpeta
+  y se registra como metadata; las de folio, a `cfdi/{RFC}/folios/{id}/`.
+- Pendiente fuera de este repo: el candado entre instalaciones (`piloto_ejecuciones` en Supabase,
+  migración 044 de todoconta-apps), `empresas_catalogo.piloto_incluida`, el correo del resumen y
+  el despertar por agenda del provisioner.
+- Solo el SAT real puede confirmar: `EstadoComprobante=Todos` en Metadata de recibidos, cuántos
+  UUID acepta una solicitud por folio (si rechaza la lista, el cierre pide por días), el tope de
+  registros de una Metadata de 12 meses, si contesta 5005 a una solicitud igual a otra que ya
+  terminó y los límites por RFC e IP con muchas cuentas.
+
 ## Abierto
 
 - Ritmo del llenado del historial frente a los límites reales del SAT por RFC e IP. Medir en el
   VPS (riesgo ya listado en F7).
-- Si el cierre mensual pide metadata del ejercicio completo cada mes o solo de los últimos N meses.

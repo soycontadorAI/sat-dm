@@ -397,8 +397,9 @@ def descargar(
                 fiel=fiel,
                 extraer=extraer,
             )
+            # La metadata es un TXT del SAT: va al historial como tal y no se indexa.
             _registrar_descarga(
-                fiel.rfc, "ws", "cfdi",
+                fiel.rfc, "ws", "metadata" if _es_metadata_guardada(fiel.rfc, id_solicitud) else "cfdi",
                 descripcion=f"Descarga WS · solicitud {id_solicitud[:8]}…",
                 ruta=salida, total=estado.numero_cfdis,
             )
@@ -573,6 +574,16 @@ def descarga_inteligente(req: DescargaInteligente):
 # ---------------------------------------------------------------------------
 
 
+def _es_metadata_guardada(rfc: str, id_solicitud: str) -> bool:
+    from ...cli import config_store
+    from ..state import es_metadata
+
+    try:
+        return es_metadata(config_store.get_solicitud(rfc, id_solicitud))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _tipo_guardado(rfc: str, id_solicitud: str):
     """emitidos | recibidos | metadata de una solicitud WS guardada (uso por acción)."""
     try:
@@ -610,6 +621,7 @@ def _guardar_solicitud_ws(rfc: str, id_solicitud: str, req: "SolicitudRequest") 
             str(req.fecha_inicio), str(req.fecha_fin),
             tipo=tipo_humano,
             tipo_comprobante=req.tipo_comprobante,
+            tipo_solicitud=req.tipo_solicitud,
         )
     except Exception:  # noqa: BLE001
         logger.warning("No se pudo guardar la solicitud en el historial", exc_info=True)

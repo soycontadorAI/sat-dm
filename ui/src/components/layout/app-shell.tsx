@@ -17,6 +17,7 @@ import { StatusBar } from '@/components/layout/status-bar';
 import { Titlebar } from '@/components/layout/titlebar';
 import { useEfirmaReminder } from '@/hooks/use-efirma-reminder';
 import { useSolicitudesWatcher } from '@/hooks/use-solicitudes-watcher';
+import { usePilotoAvisos } from '@/hooks/use-piloto-avisos';
 import { useAuth, usePlanesV3 } from '@/providers/auth-provider';
 import { useNavegacion } from '@/providers/navegacion-provider';
 import { useServer } from '@/providers/server-provider';
@@ -34,6 +35,8 @@ export function AppShell({ children }: AppShellProps) {
   // las resuelve en background con el poller) y notifica éxitos/fallas por
   // empresa — en rojo cuando algo falló o venció.
   useSolicitudesWatcher();
+  // Avisos de la descarga automática (resumen del cierre, cancelaciones, e.firma).
+  usePilotoAvisos();
 
   const { license, loading } = useAuth();
   const { modo } = useNavegacion();
