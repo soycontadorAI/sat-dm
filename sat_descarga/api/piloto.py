@@ -58,6 +58,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import requests
+from lxml import etree
 
 from ..cli import config_store
 from ..core.errores import ErrorEsperado
@@ -79,6 +80,7 @@ RESPIRO_CIERRE_DIAS = 3      # el cierre espera el rezago de timbrado del últim
 MESES_METADATA = 12          # ventana de la metadata del cierre (cancelaciones)
 FOLIOS_MAX = 10              # faltantes que se piden por UUID; más, se piden los días
 METADATA_INTENTOS_MAX = 3    # metadata que el SAT no completa o que no se puede leer
+INDEXADO_ESPERA_S = 5        # cuánto espera el cierre al indexado de fondo de la empresa
 REINTENTOS_S = (30 * 60, 2 * 3600, 6 * 3600, 12 * 3600, 24 * 3600)
 REINTENTOS_HORAS_MAX = 72    # transitorios: tras 3 días sin lograrlo, error
 EFIRMA_RECHEQUEO_S = 6 * 3600
@@ -86,6 +88,10 @@ EFIRMA_RECHEQUEO_S = 6 * 3600
 _CODIGOS_EFIRMA = frozenset({"300", "302", "303", "304", "305"})
 # Una solicitud que el SAT todavía va a resolver (3 = lista, falta bajarla).
 _VIVAS = config_store.ESTADOS_PENDIENTES | {"3"}
+# Ejecuciones con trabajo pendiente: en curso, o en error esperando a la e.firma
+# (`detalle` se guarda con json.dumps, de ahí la forma exacta).
+_CON_TRABAJO = ("(estado = 'en_curso' OR (estado = 'error'"
+                " AND detalle LIKE '%\"reintentable\": true%'))")
 _DIRECCIONES = ("E", "R")
 _NOMBRE_DIR = {"E": "emitidos", "R": "recibidos"}
 _MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
@@ -360,13 +366,17 @@ def _guardar(rfc: str, tipo: str, periodo: str, **campos) -> None:
         )
 
 
+def _terminada(fila: Optional[dict]) -> bool:
+    """¿Esa ejecución ya no tiene trabajo? Completa, o en error sin reintento."""
+    return fila is not None and (fila["estado"] == "completa" or (
+        fila["estado"] == "error" and not (fila.get("detalle") or {}).get("reintentable")))
+
+
 def _toca(fila: Optional[dict], ahora: datetime) -> bool:
     """¿La ejecución tiene trabajo ahora? (nueva, en curso o en un reintento vencido)."""
     if fila is None:
         return True
-    if fila["estado"] == "completa":
-        return False
-    if fila["estado"] == "error" and not (fila.get("detalle") or {}).get("reintentable"):
+    if _terminada(fila):
         return False
     proximo = fila.get("proximo_intento")
     return not proximo or proximo <= _utc(ahora)
@@ -413,6 +423,9 @@ def marcar_avisos_leidos(ids: Optional[Iterable[int]] = None) -> int:
 # ---------------------------------------------------------------------------
 
 _CODESTATUS = re.compile(r"CodEstatus=(\d+)")
+# Respuestas que no se pudieron leer (HTML de mantenimiento, XML truncado): son del
+# SAT. Cualquier otra excepción es un error de la app y sube con su traza.
+_ERRORES_DE_LECTURA = (etree.XMLSyntaxError, etree.ParserError)
 
 
 def _clasificar(mensaje: str) -> tuple[str, str, str]:
@@ -440,11 +453,18 @@ def _vivas(rfc: str) -> list[dict]:
 
 def _igual(rfc: str, desde, hasta, direccion: str, tipo_solicitud: str,
            uuids: Optional[list], *, listas: bool = False) -> Optional[str]:
-    """Una solicitud viva con el mismo criterio (se reusa en vez de provocar un
-    5005). Con `listas`, también una que ya terminó bien: el SAT contesta 5005 a
-    una solicitud igual a otra que ya tiene, y lo que esa bajó sirve igual."""
+    """Una solicitud viva con el mismo criterio y sin filtros (se reusa en vez de
+    provocar un 5005); de metadata, solo las del piloto. Con `listas`, también una
+    que ya terminó bien: el SAT contesta 5005 a una solicitud igual a otra que ya
+    tiene, y lo que esa bajó sirve igual."""
     candidatas = config_store.list_solicitudes(rfc) if listas else _vivas(rfc)
     for s in reversed(candidatas):  # la más reciente primero
+        # Una que no se pudo leer no sirve, ni una con filtros (contraparte). La
+        # metadata solo la del piloto: una manual pudo pedir solo un estatus.
+        if s.get("ilegible") or s.get("rfc_emisor") or s.get("rfc_receptor"):
+            continue
+        if tipo_solicitud.lower() == "metadata" and s.get("origen") != "piloto":
+            continue
         if uuids:
             if sorted(s.get("uuids") or []) != sorted(uuids):
                 continue
@@ -491,6 +511,9 @@ def _pedir(rfc: str, sesion: _SesionSat, desde: Optional[date], hasta: Optional[
         return "transitorio", "", str(e)
     except RuntimeError as e:
         return _clasificar(str(e))
+    except _ERRORES_DE_LECTURA as e:  # p. ej. una página HTML en lugar del SOAP
+        logger.warning("[piloto] %s: respuesta inesperada del SAT", rfc, exc_info=True)
+        return "transitorio", "", f"Respuesta inesperada del SAT: {e}"
     tipo = f"{tipo_solicitud} · folios" if uuids else f"{tipo_solicitud} · {_NOMBRE_DIR[direccion]}"
     config_store.save_solicitud(
         rfc, id_sol, desde.isoformat() if desde else "", hasta.isoformat() if hasta else "",
@@ -562,7 +585,9 @@ def _agotado_el_plazo(fallando_desde: Optional[str], ahora: datetime) -> bool:
 def _cubiertos_por_vivas(rfc: str) -> set[tuple[str, str]]:
     cubiertos: set[tuple[str, str]] = set()
     for s in _vivas(rfc):
-        if s.get("uuids") or config_store.es_metadata(s):
+        # Una con filtros (contraparte) no cubre el día completo.
+        if (s.get("uuids") or config_store.es_metadata(s)
+                or s.get("rfc_emisor") or s.get("rfc_receptor")):
             continue
         try:
             desde = date.fromisoformat(str(s.get("fecha_inicio"))[:10])
@@ -612,7 +637,7 @@ def _diarias_en_curso(rfc: str, antes_de: str) -> list[dict]:
     with db.cursor() as cur:
         periodos = [r[0] for r in cur.execute(
             "SELECT periodo FROM piloto_ejecuciones WHERE mi_rfc = ? AND tipo = 'diaria'"
-            " AND estado IN ('en_curso', 'error') AND periodo < ? ORDER BY periodo",
+            f" AND {_CON_TRABAJO} AND periodo < ? ORDER BY periodo",
             (rfc, antes_de),
         ).fetchall()]
     filas_ = (_fila(rfc, "diaria", p) for p in periodos)
@@ -781,7 +806,7 @@ def _cierres_empezados(rfc: str) -> list[str]:
     with db.cursor() as cur:
         periodos = [r[0] for r in cur.execute(
             "SELECT periodo FROM piloto_ejecuciones WHERE mi_rfc = ? AND tipo = 'cierre'"
-            " AND estado IN ('en_curso', 'error') ORDER BY periodo DESC",
+            f" AND {_CON_TRABAJO} ORDER BY periodo DESC",
             (rfc,),
         ).fetchall()]
     filas_ = ((p, _fila(rfc, "cierre", p)) for p in periodos)
@@ -807,29 +832,35 @@ def _hay_vivas_del_mes(rfc: str, ini: date, fin: date) -> bool:
     return False
 
 
-def _leer_metadata(rfc: str, ids: dict) -> Optional[list]:
-    """Registros de metadata de las solicitudes del cierre. None si una descargada
-    no se puede leer (se borró la carpeta, ZIP dañado): comparar contra una
-    metadata vacía marcaría todo el mes como diferencia."""
+def _leer_metadata(rfc: str, ids: dict) -> tuple[list, list[str]]:
+    """Registros de metadata de las solicitudes del cierre y las que no se pudieron
+    leer completas: se borró la carpeta, un ZIP no abre o faltan paquetes. Comparar
+    contra una metadata incompleta marcaría días como diferencia que no lo son."""
     from ..utils.metadata import extraer_metadata_de_directorio
     from .state import _salida_descarga_ws
 
-    registros = []
+    registros: list = []
+    ilegibles: list[str] = []
     for id_sol in ids.values():
         sol = config_store.get_solicitud(rfc, id_sol) or {}
         if sol.get("estado") == "5":  # 5004: sin información
             continue
-        total = sol.get("numero_cfdis")
+        total = int(sol.get("numero_cfdis") or 0)
         salida = Path(_salida_descarga_ws(rfc, id_sol))
         if not salida.is_dir():
-            if total is not None and int(total) == 0:
+            if sol.get("numero_cfdis") is not None and total == 0:
                 continue  # el SAT la dio lista sin paquetes: no hay nada que leer
-            return None
-        leidos = extraer_metadata_de_directorio(str(salida))
-        if not leidos and int(total or 0) > 0:
-            return None
+            ilegibles.append(id_sol)
+            continue
+        errores: list = []
+        leidos = extraer_metadata_de_directorio(str(salida), errores=errores)
+        paquetes = len(sol.get("package_ids") or [])
+        zips = len(list(salida.glob("*.zip")))
+        if errores or (not leidos and total > 0) or 0 < zips < paquetes:
+            ilegibles.append(id_sol)
+            continue
         registros.extend(leidos)
-    return registros
+    return registros, ilegibles
 
 
 def _cancelaciones(rfc: str, periodo: str, registros: list) -> int:
@@ -963,12 +994,16 @@ def _avanzar_cierre(rfc: str, sesion: _SesionSat, periodo: str) -> bool:
         _indexar_solicitudes(rfc, detalle.get("faltantes", []))
         paso = "comparar"
 
-    # paso == "comparar"
-    registros = _leer_metadata(rfc, detalle["metadata"])
-    if registros is None:
-        logger.warning("[piloto] %s: la metadata de %s no se pudo leer; se vuelve a pedir",
-                       rfc, periodo)
-        _metadata_otra_vez(rfc, periodo, fila, detalle, "descargada no se pudo leer")
+    # paso == "comparar". El poller indexa lo que baja en segundo plano: se espera a
+    # que termine (si tarda, se compara en la siguiente vuelta).
+    from ..procesador import indexar
+
+    if not indexar.esperar_indexado(rfc, INDEXADO_ESPERA_S):
+        return False
+    registros, ilegibles = _leer_metadata(rfc, detalle["metadata"])
+    if ilegibles:
+        logger.warning("[piloto] %s: la metadata de %s no se pudo leer completa", rfc, periodo)
+        _metadata_ilegible(rfc, periodo, fila, detalle, ilegibles)
         return False
     canceladas = int(detalle.get("canceladas") or 0) + _cancelaciones(rfc, periodo, registros)
     sat, bd, todos = _comparar(rfc, periodo, registros)
@@ -996,8 +1031,41 @@ def _avanzar_cierre(rfc: str, sesion: _SesionSat, periodo: str) -> bool:
     return False
 
 
+def _metadata_ilegible(rfc: str, periodo: str, fila: Optional[dict], detalle: dict,
+                       ilegibles: list[str]) -> None:
+    """La metadata que bajó no se pudo leer completa. Pedirla igual otra vez contesta
+    5005, así que se vuelve a bajar la misma (sus paquetes duran 72 h en el SAT; si
+    ya vencieron, el poller la marca vencida y el cierre la pide de nuevo)."""
+    for id_sol in ilegibles:
+        sol = config_store.get_solicitud(rfc, id_sol) or {}
+        if sol.get("package_ids") and not sol.get("rebajada") and _paquetes_vigentes(sol):
+            # Una sola vez: el SAT limita cuántas veces se baja un paquete (5008).
+            config_store.marcar_solicitud(rfc, id_sol, rebajada=True)
+            config_store.update_solicitud(rfc, id_sol, "3")  # el poller la vuelve a bajar
+        else:
+            config_store.marcar_solicitud(rfc, id_sol, ilegible=True)
+    if all((config_store.get_solicitud(rfc, i) or {}).get("estado") == "3" for i in ilegibles):
+        _metadata_otra_vez(rfc, periodo, fila, detalle, "descargada no se pudo leer",
+                           esperar=True)
+        return
+    buenas = {d: i for d, i in detalle["metadata"].items() if i not in ilegibles}
+    _metadata_otra_vez(rfc, periodo, fila, detalle, "descargada no se pudo leer",
+                       metadata_parcial=buenas)
+
+
+def _paquetes_vigentes(sol: dict) -> bool:
+    """¿Los paquetes de la solicitud siguen en el SAT? Duran 72 h desde que quedó
+    lista (con una hora de margen)."""
+    try:
+        lista = datetime.fromisoformat(str(sol.get("lista_en")))
+    except (TypeError, ValueError):
+        return False
+    horas = config_store.SOLICITUD_VENCIMIENTO_HORAS - 1
+    return datetime.now(lista.tzinfo) - lista < timedelta(hours=horas)
+
+
 def _metadata_otra_vez(rfc: str, periodo: str, fila: Optional[dict], detalle: dict,
-                       motivo: str, **extra) -> None:
+                       motivo: str, *, esperar: bool = False, **extra) -> None:
     """La metadata no se completó o no se pudo leer: se vuelve a pedir con la
     espera de una falla del SAT, y a la METADATA_INTENTOS_MAX el cierre queda en
     error (pedirla bien no reinicia nada: sin tope, daría vueltas para siempre)."""
@@ -1005,6 +1073,13 @@ def _metadata_otra_vez(rfc: str, periodo: str, fila: Optional[dict], detalle: di
     if n >= METADATA_INTENTOS_MAX:
         _falla_cierre(rfc, periodo, fila, "rechazo", "",
                       f"La metadata del SAT {motivo} ({n} intentos)", detalle=_reinicio(detalle))
+        return
+    if esperar:
+        # Se vuelve a bajar la misma: se espera en el paso "metadata", y la
+        # comparación que siga es nueva (puede volver a pedir lo que falte).
+        _guardar(rfc, "cierre", periodo, estado="en_curso", proximo_intento=None,
+                 detalle={**_sin(detalle, "faltantes", "faltantes_pedidos"), "paso": "metadata",
+                          "reintentos_metadata": n})
         return
     _falla_cierre(rfc, periodo, fila, "transitorio", "", f"La metadata del SAT {motivo}",
                   detalle=_reinicio(detalle, reintentos_metadata=n, **extra))
@@ -1021,7 +1096,7 @@ def _indexar_solicitudes(rfc: str, ids: Iterable[str]) -> None:
         if sol.get("estado") != "descargada":
             continue
         try:
-            indexar.indexar_carpeta(rfc, _salida_descarga_ws(rfc, id_sol), origen="sat_ws")
+            indexar.indexar_carpeta_en_turno(rfc, _salida_descarga_ws(rfc, id_sol), origen="sat_ws")
         except Exception:  # noqa: BLE001 — el cierre compara con lo que haya
             logger.warning("[piloto] %s: no se pudo indexar %s", rfc, id_sol, exc_info=True)
 
@@ -1044,9 +1119,11 @@ def _pedir_faltantes(rfc: str, sesion: _SesionSat, periodo: str,
                              periodo=periodo, uuids=uuids)
         if clase == "ok":
             return [a], None
-        if clase in ("transitorio", "efirma"):
+        if clase == "efirma":
             return [], (clase, a, b)
-        # Un rechazo (el SAT real puede no aceptar varios folios), 5002 o 5005: por días.
+        # Cualquier otra falla (el SAT real puede no aceptar varios folios, y lo dice
+        # con un SOAP Fault sin CodEstatus), 5002 o 5005: por días. Si el SAT está
+        # caído, la primera de esas falla igual y el cierre espera.
     ids: list[str] = []
     for direccion in _DIRECCIONES:
         dias = [date.fromisoformat(f) for (f, d) in faltantes if d == direccion]
@@ -1131,8 +1208,7 @@ def _resumen_si_toca(periodo: str) -> None:
     if not empresas:
         return
     filas_ = {e["rfc"]: _fila(e["rfc"], "cierre", periodo) for e in empresas}
-    if any(f is None or f["estado"] == "en_curso" or (f.get("detalle") or {}).get("reintentable")
-           for f in filas_.values()):
+    if not all(_terminada(f) for f in filas_.values()):
         return
     nombres = {e["rfc"]: e.get("nombre") or e["rfc"] for e in empresas}
     con_diferencias = [nombres[r] for r, f in filas_.items() if f["estado"] == "completa"
@@ -1189,11 +1265,14 @@ def evaluar() -> dict:
                 rfc = normalizar_mi_rfc(emp["rfc"])
                 sesion = _SesionSat(rfc)
                 _reabrir_cierres_por_reintentos(rfc)
-                # Un cierre que toque al SAT por vuelta: si la app estuvo cerrada
-                # meses, no se pide la metadata de todos a la vez.
+                # Un cierre a la vez, del más reciente al más antiguo: si la app
+                # estuvo cerrada meses, no se pide la metadata de todos a la vez (el
+                # siguiente empieza cuando este termina).
                 for mes in meses_por_cerrar(rfc, hoy):
                     if _avanzar_cierre(rfc, sesion, mes):
                         pidio = True
+                        break
+                    if not _terminada(_fila(rfc, "cierre", mes)):
                         break
                 pidio = _pasada_diaria(rfc, sesion) or pidio
             except Exception:  # noqa: BLE001 — una empresa con problemas no frena a las demás
@@ -1211,6 +1290,13 @@ def evaluar() -> dict:
 # ---------------------------------------------------------------------------
 
 
+_NO_REINTENTA = {
+    "inactivo": "No se puede reintentar con la descarga automática en pausa.",
+    "licencia": "Tu plan no incluye la descarga automática.",
+    "sesion": "La cuenta está abierta en otra instalación: reintenta desde ahí.",
+}
+
+
 def reintentar(rfc: str, fecha: date, direccion: str) -> dict:
     """Vuelve a pedir un día en error o diferencia. Si su mes ya estaba cerrado, el
     cierre lo vuelve a comparar cuando llegue. Lanza ValueError si no aplica."""
@@ -1222,13 +1308,22 @@ def reintentar(rfc: str, fecha: date, direccion: str) -> dict:
         raise ValueError("Solo se reintentan los días con error o con diferencia.")
     emp = next((e for e in config_store.list_empresas() if e["rfc"] == rfc), None)
     motivo = _motivo_no_elegible(emp or {}, _ahora().date()) if emp else "No está en el catálogo"
-    if motivo and motivo != "No incluida":
+    if motivo:
         raise ValueError(f"No se puede reintentar: {motivo}.")
+    pausa = pausado_por()
+    if pausa:
+        # Es el planificador el que vuelve a comparar el mes cuando el día llega.
+        raise ValueError(_NO_REINTENTA.get(pausa, "No se puede reintentar ahora."))
     sesion = _SesionSat(rfc)
     if sesion.fiel() is None:
         raise ValueError("No se pudo abrir la e.firma de la empresa.")
     clase, a, b = _pedir(rfc, sesion, fecha, fecha, direccion, proposito="reintento",
                          periodo=fecha.isoformat())
+    if clase == "duplicada":
+        # El SAT ya tiene una igual (una viva del piloto se habría reusado arriba): lo
+        # que trajo ya está en la base y no acepta repetirla por ahora.
+        raise ValueError("El SAT ya tiene una solicitud igual para ese día y no acepta repetirla "
+                         "por ahora. Intenta más tarde.")
     if clase != "ok":
         raise ValueError(f"El SAT no aceptó la solicitud: {b}")
     calendario.marcar(rfc, fecha, fecha, direccion, "en_proceso", solicitud_id=a, forzar=True)

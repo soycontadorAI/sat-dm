@@ -622,6 +622,10 @@ def _guardar_solicitud_ws(rfc: str, id_solicitud: str, req: "SolicitudRequest") 
             tipo=tipo_humano,
             tipo_comprobante=req.tipo_comprobante,
             tipo_solicitud=req.tipo_solicitud,
+            # Los filtros quedan: una solicitud con contraparte no cubre el día completo
+            # (la descarga automática no la toma como suya).
+            rfc_emisor=req.rfc_emisor or None,
+            rfc_receptor=req.rfc_receptor or None,
         )
     except Exception:  # noqa: BLE001
         logger.warning("No se pudo guardar la solicitud en el historial", exc_info=True)

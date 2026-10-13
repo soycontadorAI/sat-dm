@@ -175,6 +175,7 @@ def _procesar_empresa(rfc: str, emp: dict) -> None:
     # 1) Vencimiento local: cierra lo que el SAT dejó colgado más de 72 h.
     vencidas = config_store.marcar_solicitudes_vencidas(rfc)
     for v in vencidas:
+        _proxima_verificacion.pop(v.get("id_solicitud"), None)
         logger.warning(
             "[poller] %s: solicitud %s marcada como vencida (creada %s)",
             rfc, v.get("id_solicitud"), v.get("timestamp"),
@@ -218,6 +219,8 @@ def _procesar_empresa(rfc: str, emp: dict) -> None:
                 continue
             estado_catalogo = "vencida" if estado.cod_estado == "6" else estado.cod_estado
             cambio = cambio or estado_catalogo != sol.get("estado")
+            if estado_catalogo not in config_store.ESTADOS_PENDIENTES:
+                _proxima_verificacion.pop(id_sol, None)  # ya no se vuelve a verificar
             config_store.update_solicitud(
                 rfc, id_sol, estado_catalogo,
                 package_ids=estado.package_ids or None,
@@ -303,6 +306,16 @@ def _descargar_lista(rfc: str, fiel: FIEL, sol: dict) -> bool:
         logger.info("[poller] %s: solicitud %s descargada en %s", rfc, id_sol, salida)
         return True
     except Exception as e:  # noqa: BLE001 — reintenta en la siguiente pasada (sigue en 3)
+        if "5008" in str(e):
+            # El SAT ya no deja bajar esos paquetes (máximo de descargas): reintentar
+            # cada pasada no sirve de nada.
+            config_store.update_solicitud(
+                rfc, id_sol, "vencida",
+                mensaje="El SAT ya no permite bajar estos paquetes otra vez (5008). "
+                        "Vuelve a pedir el periodo.",
+            )
+            logger.warning("[poller] %s: %s llegó al máximo de descargas (5008)", rfc, id_sol)
+            return True
         logger.warning("[poller] %s: descarga de %s falló: %s", rfc, id_sol, e)
         return False
     finally:

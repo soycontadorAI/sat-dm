@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import threading
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -538,12 +539,12 @@ def test_metadata_lista_sin_paquetes_no_es_ilegible(entorno):
     config_store.save_solicitud(RFC, "VACIA", "2025-10-01", "2026-09-30", "Metadata · emitidos",
                                 tipo_comprobante="E", tipo_solicitud="Metadata")
     config_store.update_solicitud(RFC, "VACIA", "descargada", numero_cfdis=0)
-    assert piloto._leer_metadata(RFC, {"E": "VACIA"}) == []
+    assert piloto._leer_metadata(RFC, {"E": "VACIA"}) == ([], [])
     # Con registros y sin carpeta (se borró): no se compara contra nada.
     config_store.save_solicitud(RFC, "BORRADA", "2025-10-01", "2026-09-30", "Metadata · recibidos",
                                 tipo_comprobante="R", tipo_solicitud="Metadata")
     config_store.update_solicitud(RFC, "BORRADA", "descargada", numero_cfdis=12)
-    assert piloto._leer_metadata(RFC, {"E": "VACIA", "R": "BORRADA"}) is None
+    assert piloto._leer_metadata(RFC, {"E": "VACIA", "R": "BORRADA"}) == ([], ["BORRADA"])
 
 
 def test_la_metadata_viva_de_antes_se_reusa(entorno):
@@ -552,11 +553,29 @@ def test_la_metadata_viva_de_antes_se_reusa(entorno):
     from sat_descarga.api import piloto
 
     config_store.save_solicitud(RFC, "META", "2025-10-01", "2026-09-30", "Metadata · emitidos",
-                                tipo_comprobante="E")
+                                tipo_comprobante="E", origen="piloto")
     desde, hasta = date(2025, 10, 1), date(2026, 9, 30)
     assert piloto._igual(RFC, desde, hasta, "E", "Metadata", None) == "META"
     assert piloto._igual(RFC, desde, hasta, "E", "CFDI", None) is None
     assert ("2026-09-15", "E") not in piloto._cubiertos_por_vivas(RFC)
+
+
+def test_una_manual_no_se_reusa_y_con_filtros_no_cubre_el_dia(entorno):
+    """Una solicitud manual puede traer filtros que no quedan en el catálogo: el
+    cierre no la toma como suya; y una con contraparte no cubre el día completo."""
+    from sat_descarga.api import piloto
+
+    config_store.save_solicitud(RFC, "MANUAL", "2025-10-01", "2026-09-30", "Metadata · emitidos",
+                                tipo_comprobante="E", tipo_solicitud="Metadata")
+    assert piloto._igual(RFC, date(2025, 10, 1), date(2026, 9, 30), "E", "Metadata", None) is None
+    config_store.save_solicitud(RFC, "FILTRO", "2026-10-11", "2026-10-11", "CFDI · recibidos",
+                                tipo_comprobante="R", rfc_emisor="AAA010101AAA")
+    assert ("2026-10-11", "R") not in piloto._cubiertos_por_vivas(RFC)
+    assert piloto._igual(RFC, date(2026, 10, 11), date(2026, 10, 11), "R", "CFDI", None) is None
+    # Una manual de CFDI sin filtros sí se reusa (evita el 5005).
+    config_store.save_solicitud(RFC, "LIBRE", "2026-10-12", "2026-10-12", "CFDI · recibidos",
+                                tipo_comprobante="R", tipo_solicitud="CFDI")
+    assert piloto._igual(RFC, date(2026, 10, 12), date(2026, 10, 12), "R", "CFDI", None) == "LIBRE"
 
 
 def test_meses_vencidos_con_la_app_cerrada_y_respiro_del_rezago(entorno):
@@ -573,29 +592,45 @@ def test_meses_vencidos_con_la_app_cerrada_y_respiro_del_rezago(entorno):
     assert len({s["periodo"] for s in _del_piloto("cierre_metadata")}) == 1
 
 
-def test_metadata_ilegible_se_vuelve_a_pedir(entorno, monkeypatch):
+def test_metadata_ilegible_se_vuelve_a_bajar_una_vez_y_al_tercer_intento_es_error(entorno, monkeypatch):
+    """Pedirla igual daría 5005: primero se vuelve a bajar la misma (una sola vez, el
+    SAT limita las descargas por paquete); si sigue ilegible se pide otra; con tope."""
     from sat_descarga.api import piloto
 
     _activar(entorno)
     piloto.evaluar()
     _procesar()  # baja la metadata
-    monkeypatch.setattr(piloto, "_leer_metadata", lambda rfc, ids: None)
+    originales = {s["id_solicitud"] for s in _del_piloto("cierre_metadata")}
+    monkeypatch.setattr(piloto, "_leer_metadata", lambda rfc, ids: ([], list(ids.values())))
     piloto.evaluar()
     ej = piloto._fila(RFC, "cierre", "2026-09")
-    assert ej["estado"] == "en_curso" and ej["detalle"]["paso"] == "inicio"
+    assert ej["estado"] == "en_curso" and ej["detalle"]["paso"] == "metadata"
     assert not calendario.filas(RFC, date(2026, 9, 1), date(2026, 9, 30))  # nada se cerró
-    # Con la espera y el plazo de cualquier falla del SAT (no en cada vuelta).
-    assert ej["intentos"] == 1 and ej["proximo_intento"] > piloto._utc(AHORA)
-    metadata = len(_del_piloto("cierre_metadata"))
-    piloto.evaluar()
-    assert len(_del_piloto("cierre_metadata")) == metadata
-    for horas in (1, 4, 11, 24, 49, 74):
+    assert {s["estado"] for s in _del_piloto("cierre_metadata")} == {"3"}  # el poller la rebaja
+    for horas in range(1, 8):
+        _procesar()
         entorno.reloj["ahora"] = AHORA + timedelta(hours=horas)
         piloto.evaluar()
-        _procesar()
     ej = piloto._fila(RFC, "cierre", "2026-09")
     assert ej["estado"] == "error" and "no se pudo leer" in ej["error_mensaje"]
+    viejas = [s for s in _del_piloto("cierre_metadata") if s["id_solicitud"] in originales]
+    assert all(s.get("rebajada") and s.get("ilegible") for s in viejas)
     assert any(a["tipo"] == "error" for a in piloto.avisos())
+
+
+def test_metadata_con_un_zip_danado_no_se_compara(entorno):
+    """Un paquete que no abre: lo demás se leyó, pero la metadata está incompleta."""
+    from sat_descarga.api import piloto, state
+
+    _activar(entorno)
+    piloto.evaluar()
+    _procesar()
+    meta = {s["tipo_comprobante"]: s["id_solicitud"] for s in _del_piloto("cierre_metadata")}
+    assert piloto._leer_metadata(RFC, meta)[1] == []
+    zips = sorted(Path(state._salida_descarga_ws(RFC, meta["R"])).glob("*.zip"))
+    zips[0].write_bytes(b"no es un zip")
+    registros, ilegibles = piloto._leer_metadata(RFC, meta)
+    assert ilegibles == [meta["R"]] and registros  # los emitidos sí se leyeron
 
 
 # ---------------------------------------------------------------------------
@@ -615,6 +650,25 @@ def test_reintentar_un_dia_con_error(entorno):
     assert sol["proposito"] == "reintento" and sol["fecha_inicio"] == "2026-09-03"
     with pytest.raises(ValueError):
         piloto.reintentar(RFC, date(2026, 9, 4), "E")  # no está en error
+
+
+def test_reintentar_con_5005_en_pausa_o_fuera_del_piloto_explica_por_que_no(entorno, monkeypatch):
+    from sat_descarga.api import piloto
+
+    _activar(entorno)
+    calendario.marcar(RFC, date(2026, 9, 3), date(2026, 9, 3), "E", "error", error_codigo="5002")
+    _falla_solicitud(monkeypatch, RuntimeError("CodEstatus=5005, Solicitud duplicada"))
+    with pytest.raises(ValueError, match="no acepta repetir"):
+        piloto.reintentar(RFC, date(2026, 9, 3), "E")
+    monkeypatch.setattr(solicitud_mod, "solicitar_descarga", ORIGINAL_SOLICITAR)
+    piloto.configurar(activo=False)
+    with pytest.raises(ValueError, match="en pausa"):
+        piloto.reintentar(RFC, date(2026, 9, 3), "E")
+    piloto.configurar(activo=True)
+    config_store.set_piloto_incluida(RFC, False)
+    with pytest.raises(ValueError, match="No incluida"):
+        piloto.reintentar(RFC, date(2026, 9, 3), "E")
+    assert _fila("2026-09-03", "E")["estado"] == "error"
 
 
 def test_reintentar_un_dia_de_un_mes_cerrado_lo_vuelve_a_comparar(entorno, monkeypatch):
@@ -1064,3 +1118,173 @@ def test_un_cierre_empezado_antes_de_la_pausa_se_termina(entorno):
     _cerrar_septiembre(entorno, vueltas=6)
     assert piloto._fila(RFC, "cierre", "2026-07")["estado"] == "completa"
     assert piloto._fila(RFC, "cierre", "2026-08") is None  # el de la pausa no
+
+
+
+# ---------------------------------------------------------------------------
+# Tercera revisión
+# ---------------------------------------------------------------------------
+
+
+def test_si_el_sat_no_acepta_los_folios_pide_los_dias(entorno, monkeypatch):
+    """El SAT real puede no aceptar varios folios y decirlo con un SOAP Fault sin
+    CodEstatus: no es para esperar 72 h, se piden los días."""
+    from sat_descarga.api import piloto
+    from sat_descarga.procesador.db import abrir_db
+
+    comps = _indexar_mes(2026, 9)
+    faltan = [comps[0].uuid, comps[-1].uuid]
+    with abrir_db().transaccion() as conn:
+        conn.executemany("DELETE FROM cfdis WHERE uuid = ? AND mi_rfc = ?", [(u, RFC) for u in faltan])
+
+    def _folio(*a, **k):
+        raise RuntimeError("[SolicitaDescargaFolio] SOAP Fault s:Client: formato no válido")
+
+    monkeypatch.setattr(solicitud_mod, "solicitar_descarga_folio", _folio)
+    _activar(entorno)
+    ej = _cerrar_septiembre(entorno)
+    assert ej["estado"] == "completa"
+    pedidas = _del_piloto("cierre_faltantes")
+    assert pedidas and all(not s.get("uuids") for s in pedidas)
+    assert {f["estado"] for f in calendario.filas(RFC, date(2026, 9, 1), date(2026, 9, 30)).values()} \
+        == {"consolidado"}
+
+
+def test_una_respuesta_rara_del_sat_espera_como_falla(entorno, monkeypatch):
+    from sat_descarga.api import piloto
+    from sat_descarga.webservice import auth
+
+    from lxml import etree
+
+    try:
+        etree.fromstring(b"<html><body>Mantenimiento")  # una página HTML en lugar del SOAP
+    except etree.XMLSyntaxError as e:
+        error = e
+
+    def _html(fiel):
+        raise error
+
+    monkeypatch.setattr(auth, "obtener_token", _html)
+    _activar(entorno)
+    piloto.evaluar()
+    ej = piloto._fila(RFC, "diaria", "2026-10-13")
+    assert ej["estado"] == "en_curso" and ej["proximo_intento"] and ej["detalle"]["fallando_desde"]
+
+
+def test_un_cierre_a_la_vez_aunque_el_primero_espere(entorno):
+    from sat_descarga.api import piloto
+
+    _activar(entorno, AHORA.replace(month=8, day=10))
+    entorno.reloj["ahora"] = AHORA
+    piloto.evaluar()
+    piloto.evaluar()  # septiembre espera su metadata: julio y agosto no empiezan
+    piloto.evaluar()
+    assert {s["periodo"] for s in _del_piloto("cierre_metadata")} == {"2026-09"}
+    _cerrar_septiembre(entorno, vueltas=4)
+    assert piloto._fila(RFC, "cierre", "2026-09")["estado"] == "completa"
+    assert "2026-08" in {s["periodo"] for s in _del_piloto("cierre_metadata")}
+
+
+def test_el_cierre_espera_al_indexado_de_fondo(entorno, monkeypatch):
+    from sat_descarga.api import piloto
+    from sat_descarga.procesador import indexar as indexar_mod
+
+    _activar(entorno)
+    piloto.evaluar()
+    _procesar()
+    monkeypatch.setattr(indexar_mod, "esperar_indexado", lambda rfc, timeout: False)
+    piloto.evaluar()
+    ej = piloto._fila(RFC, "cierre", "2026-09")
+    assert ej["detalle"]["paso"] == "metadata" and not _del_piloto("cierre_faltantes")
+
+
+def test_esperar_indexado_cuenta_los_hilos_lanzados():
+    import threading as th
+
+    from sat_descarga.procesador import indexar as indexar_mod
+
+    soltar = th.Event()
+    hilo = indexar_mod._en_hilo("indexar-AAA010101AAA", soltar.wait)
+    assert indexar_mod.esperar_indexado("AAA010101AAA", 0.05) is False
+    assert indexar_mod.esperar_indexado("BBB020202BBB", 0.05) is True  # otra empresa no espera
+    soltar.set()
+    assert indexar_mod.esperar_indexado("AAA010101AAA", 5) is True
+    hilo.join(timeout=5)
+
+
+def test_las_diarias_terminadas_ya_no_se_releen(entorno, monkeypatch):
+    import requests
+
+    from sat_descarga.api import piloto
+
+    _falla_solicitud(monkeypatch, requests.ConnectionError("SAT caído"))
+    _activar(entorno)
+    piloto.evaluar()
+    assert [f["periodo"] for f in piloto._diarias_en_curso(RFC, "2026-10-14")] == ["2026-10-13"]
+    piloto._guardar(RFC, "diaria", "2026-10-13", estado="error", detalle={"rangos": []})
+    leidas = []
+    original = piloto._fila
+    monkeypatch.setattr(piloto, "_fila", lambda *a: leidas.append(a) or original(*a))
+    assert piloto._diarias_en_curso(RFC, "2026-10-14") == []
+    assert leidas == []  # el filtro va en la consulta: no se lee cada fila terminada
+    monkeypatch.setattr(piloto, "_fila", original)
+    piloto._guardar(RFC, "diaria", "2026-10-13", detalle={"rangos": [], "reintentable": True})
+    assert [f["periodo"] for f in piloto._diarias_en_curso(RFC, "2026-10-14")] == ["2026-10-13"]
+
+
+def test_el_poller_olvida_las_que_ya_no_verifica(entorno):
+    from sat_descarga.api import piloto, poller
+
+    _activar(entorno)
+    piloto.evaluar()
+    _procesar()  # verifica y baja: ya no están pendientes
+    ids = {s["id_solicitud"] for s in _del_piloto()}
+    assert not ids & set(poller._proxima_verificacion)
+
+
+def test_un_paquete_que_el_sat_ya_no_deja_bajar_vence(entorno, monkeypatch):
+    """5008 (máximo de descargas): el poller no lo reintenta en cada pasada."""
+    from sat_descarga.api import piloto, poller
+
+    _activar(entorno)
+    piloto.evaluar()
+
+    def _5008(**kw):
+        raise RuntimeError("Error en la descarga: CodEstatus=5008, Máximo de descargas permitidas")
+
+    monkeypatch.setattr(poller, "descargar_todos", _5008)
+    _procesar()
+    sols = _del_piloto("diaria")
+    con_paquetes = [s for s in sols if s.get("package_ids")]  # la otra dirección vino sin CFDI (5004)
+    assert con_paquetes and all(s["estado"] == "vencida" and "5008" in s["mensaje"] for s in con_paquetes)
+    assert not any(s["estado"] == "3" for s in sols)
+
+
+def test_un_error_de_la_app_no_se_disfraza_de_falla_del_sat(entorno, monkeypatch):
+    from sat_descarga.api import piloto
+
+    _falla_solicitud(monkeypatch, TypeError("argumento inesperado"))
+    _activar(entorno)
+    with pytest.raises(TypeError):
+        piloto._pedir(RFC, piloto._SesionSat(RFC), date(2026, 10, 10), date(2026, 10, 12), "E",
+                      proposito="diaria", periodo="2026-10-13")
+
+
+def test_paquetes_vigentes_72_horas_desde_que_quedo_lista():
+    from sat_descarga.api import piloto
+
+    ahora = datetime.now()
+    assert piloto._paquetes_vigentes({"lista_en": ahora.isoformat(timespec="seconds")})
+    viejo = (ahora - timedelta(hours=80)).isoformat(timespec="seconds")
+    assert not piloto._paquetes_vigentes({"lista_en": viejo})
+    assert not piloto._paquetes_vigentes({})
+
+
+def test_una_solicitud_manual_guarda_sus_filtros(entorno):
+    from sat_descarga.api.routers import webservice
+
+    req = webservice.SolicitudRequest(fecha_inicio=date(2026, 10, 1), fecha_fin=date(2026, 10, 10),
+                                      tipo_solicitud="CFDI", tipo_comprobante="R",
+                                      rfc_emisor="AAA010101AAA")
+    webservice._guardar_solicitud_ws(RFC, "CONFILTRO", req)
+    assert config_store.get_solicitud(RFC, "CONFILTRO")["rfc_emisor"] == "AAA010101AAA"
