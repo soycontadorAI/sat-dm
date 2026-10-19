@@ -294,21 +294,51 @@ def recuperar_csd_cmd(cer, key, password, key_nueva, salida, ver_navegador):
 @click.option("--key-nueva", type=click.Path(exists=True), default=None,
               help="La .key nueva del .ren (para confirmar la e.firma renovada)")
 @click.option("--salida", default=None, help="Directorio de salida (default: ./renovacion/)")
+@click.option("--publica", is_flag=True, default=False,
+              help="Buscar en la Recuperación pública del SAT (sin login, con captcha). "
+                   "Úsalo cuando la e.firma anterior ya quedó revocada; requiere --key-nueva.")
 @click.option("--ver-navegador", is_flag=True, default=False, help="Debug: mostrar el navegador (headful)")
-def recuperar_ren_cmd(cer, key, password, key_nueva, salida, ver_navegador):
+def recuperar_ren_cmd(cer, key, password, key_nueva, salida, publica, ver_navegador):
     """Descarga el .cer de la e.firma renovada (útil cuando tardó en publicarse)."""
-    from sat_descarga.portal.renovacion import recuperar_renovacion_fiel
-
     print_header("Recuperación de e.firma renovada")
     if not password:
         password = click.prompt("Contraseña de la clave privada vigente", hide_input=True)
+    directorio = str(salida) if salida else "./renovacion/"
+
+    if publica:
+        # Al emitir la e.firma nueva el SAT revoca la anterior y con ella ya no
+        # se entra a CertiSAT: se busca por RFC en el servicio público.
+        from functools import partial
+
+        from sat_descarga.core.fiel import FIEL
+        from sat_descarga.portal.captcha import pedir_captcha
+        from sat_descarga.portal.recuperacion_publica import recuperar_cert_emparejado
+
+        if not key_nueva:
+            print_error("--publica requiere --key-nueva (la .key generada junto al .ren).")
+            raise SystemExit(1)
+        rfc = FIEL(cer, key, password).rfc
+        cer_nuevo = recuperar_cert_emparejado(
+            rfc, str(key_nueva), password,
+            partial(pedir_captcha, respetar_mayusculas=True), directorio,
+        )
+        if cer_nuevo:
+            print_success(f".cer renovado descargado: {cer_nuevo}")
+        else:
+            print_warning("El SAT todavía no publica un certificado que empareje con la "
+                          ".key nueva. Reintenta en unos minutos.")
+        return
+
+    from sat_descarga.portal.renovacion import recuperar_renovacion_fiel
+
     res = recuperar_renovacion_fiel(
         cer, key, password,
-        directorio_salida=str(salida) if salida else "./renovacion/",
+        directorio_salida=directorio,
         key_nueva_path=str(key_nueva) if key_nueva else None,
         headless=not ver_navegador,
     )
     if res.get("cer"):
         print_success(f".cer renovado descargado: {res['cer']}")
     else:
-        print_warning("No se encontró/descargó el .cer (¿aún no se publica? reintenta en unos minutos).")
+        print_warning("No se encontró/descargó el .cer (¿aún no se publica? Si la e.firma "
+                      "anterior ya quedó revocada, usa --publica).")

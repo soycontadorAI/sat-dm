@@ -1,13 +1,17 @@
 """
 Router: Certifica — renovación de e.firma y generación de CSD, de extremo a extremo.
 
-Cada trámite es UN job SSE (la generación local tarda <1 s, así que va dentro del
-job y no hay estados huérfanos de .ren/.sdg generados sin enviar):
+Cada envío es UN job SSE. La renovación genera primero el .ren aparte para que el
+usuario resguarde la .key nueva antes de enviar; lo generado queda persistido en
+la etapa "generada" (retomable, nunca huérfano):
 
-- POST /renovar            — genera el .ren, lo firma y lo envía a CertiSAT;
-                             sustituye la e.firma del catálogo al recuperar el .cer.
-- POST /renovar/recuperar  — reintento no destructivo: baja el .cer renovado
-                             pendiente y completa la sustitución.
+- POST /renovar/generar    — genera el .ren + la .key nueva SIN enviar (síncrono),
+                             para bajar el respaldo antes de que el SAT reciba nada.
+- POST /renovar            — (re)usa ese .ren, lo envía a CertiSAT y sustituye la
+                             e.firma del catálogo al recuperar el .cer.
+- POST /renovar/recuperar  — reintento no destructivo: busca el .cer renovado en la
+                             recuperación pública del SAT (captcha) y completa la
+                             sustitución.
 - POST /csd                — genera el .sdg + .key del CSD, lo envía y (si alcanza)
                              recupera el .cer emitido. «Bajar después» es first-class.
 - POST /csd/recuperar      — baja el .cer de un CSD pendiente.
@@ -33,6 +37,7 @@ from .. import jobs
 from ..state import _session, _descargas_base, _registrar_descarga, _cargar_fiel_empresa
 from ..uso import track
 from ...core import paths, secretos
+from ...core.config import es_modo_hosted
 from ...core.fiel import FIEL
 from ...cli import config_store
 
@@ -50,6 +55,12 @@ class RenovarRequest(BaseModel):
     password: str                      # contraseña de la e.firma VIGENTE (consentimiento)
     confirmar: bool = False            # el trámite es irreversible: la UI debe mandarlo True
     correo: Optional[str] = None       # correo del nuevo requerimiento (default: el del cert)
+
+
+class RenovarGenerarRequest(BaseModel):
+    rfc: str
+    password: str                      # contraseña de la e.firma VIGENTE
+    correo: Optional[str] = None
 
 
 class RenovarRecuperarRequest(BaseModel):
@@ -72,6 +83,9 @@ class CsdRecuperarRequest(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
+# Intentos (cada 30 s) de bajar el cert renovado en la misma sesión del envío.
+_INTENTOS_CERT_EN_SESION = 20
 
 # Extensiones que produce el trámite de renovación y que el usuario debe
 # resguardar. La .key NUEVA es la crítica: el .cer se puede volver a bajar del
@@ -160,10 +174,12 @@ def _credenciales_keychain(rfc: str) -> dict:
     return empresa
 
 
-def _lanzar_job_certifica(fn_factory, al_completar=None):
+def _lanzar_job_certifica(fn_factory, al_completar=None, con_captcha: bool = False):
     """
-    Como `_lanzar_job_portal`, pero la factory recibe `emitir_fase(fase, data)` en
-    vez del callback de captcha (la e.firma no pide captcha). Solo un job a la vez.
+    Como `_lanzar_job_portal`, pero la factory recibe `emitir_fase(fase, data)`
+    (la e.firma no pide captcha). Con `con_captcha` recibe además el
+    `pedir_captcha` del bridge (la recuperación pública del SAT sí lo pide).
+    Solo un job a la vez.
     """
     if jobs.registry.hay_activo():
         raise HTTPException(
@@ -175,7 +191,10 @@ def _lanzar_job_certifica(fn_factory, al_completar=None):
     def emitir_fase(fase: str, data: Optional[dict] = None):
         jobs.registry.emitir(job, "fase", fase=fase, **(data or {}))
 
-    fn = fn_factory(emitir_fase)
+    if con_captcha:
+        fn = fn_factory(emitir_fase, jobs.registry.pedir_captcha_callback(job))
+    else:
+        fn = fn_factory(emitir_fase)
 
     def fn_con_navegador():
         from ...portal import setup
@@ -210,6 +229,11 @@ def _instalar_efirma_renovada(rfc: str, cer_nuevo: str, key_nueva: str, password
             _cargar_fiel_empresa(config_store.get_empresa(rfc))
         except Exception as e:  # noqa: BLE001 — la sesión se recarga al reabrir
             logger.warning("No se pudo recargar la sesión con la e.firma renovada: %s", e)
+    # La e.firma del otro lado (escritorio ⇄ web) quedó revocada: el sync de
+    # credenciales la reemplaza por esta, que vence después.
+    from ..sync_empresas import sincronizar_async
+
+    sincronizar_async("renovacion")
 
 
 def _verificar_renovacion_procesada(empresa: dict, password: str, salida: str,
@@ -254,23 +278,9 @@ def _verificar_renovacion_procesada(empresa: dict, password: str, salida: str,
 # ---------------------------------------------------------------------------
 
 
-@router.post("/renovar")
-def renovar_efirma(req: RenovarRequest):
-    """
-    Renueva la e.firma EN LÍNEA (solo si sigue vigente): genera el `.ren`, lo firma
-    con el certificado actual, lo envía a CertiSAT y — si el SAT lo emite a tiempo —
-    descarga el `.cer` nuevo y sustituye la e.firma del catálogo. → {job_id}.
-
-    ⚠️ Irreversible: el certificado anterior queda revocado. `confirmar` debe venir
-    en true (la UI pide confirmación explícita antes de llamar).
-    """
-    if not req.confirmar:
-        raise HTTPException(
-            status_code=400,
-            detail="Falta la confirmación explícita del trámite (confirmar=true).",
-        )
-    rfc = req.rfc.strip().upper()
-    empresa, fiel = _credenciales_fiel(rfc, req.password)
+def _validar_renovable(rfc: str, password: str) -> tuple[dict, FIEL]:
+    """Contraseña correcta, e.firma vigente y sin una renovación ya enviada."""
+    empresa, fiel = _credenciales_fiel(rfc, password)
     if not fiel.vigente:
         raise HTTPException(
             status_code=400,
@@ -289,51 +299,112 @@ def renovar_efirma(req: RenovarRequest):
                 "Usa «Descargar certificado» (POST /renovar/recuperar)."
             ),
         )
-    # Pendiente SIN número de operación = el `.ren` se generó pero el envío no se
-    # logró (portal del SAT caído). Se REUTILIZA el mismo .ren/.key: si el SAT
-    # hubiera alcanzado a procesar el envío sin que leyéramos el número, el cert
-    # emitido empareja con ESA .key — regenerar la perdería. Si el usuario borró
-    # los archivos del trámite, se limpia y se regenera.
-    reusar: Optional[dict] = None
-    if pendiente:
-        ren_prev, key_prev = pendiente.get("ren_path"), pendiente.get("key_path")
-        if ren_prev and key_prev and Path(ren_prev).exists() and Path(key_prev).exists():
-            reusar = {"ren": ren_prev, "key": key_prev,
-                      "solicitado_en": pendiente.get("solicitado_en")}
-        else:
-            config_store.clear_renovacion_pendiente(rfc)
+    return empresa, fiel
+
+
+def _ren_reutilizable(rfc: str) -> Optional[dict]:
+    """
+    Pendiente SIN número de operación = el `.ren` ya se generó (paso del
+    respaldo, o un envío que el portal del SAT tiró). Se REUTILIZA el mismo
+    .ren/.key: es la .key que el usuario respaldó y, si el SAT hubiera
+    alcanzado a procesar un envío sin que leyéramos el número, la que empareja
+    con el cert emitido — regenerar la perdería. Si el usuario borró los
+    archivos del trámite, se limpia y se regenera.
+    """
+    pendiente = config_store.get_renovacion_pendiente(rfc)
+    if not pendiente or pendiente.get("numero_operacion"):
+        return None
+    ren_prev, key_prev = pendiente.get("ren_path"), pendiente.get("key_path")
+    if ren_prev and key_prev and Path(ren_prev).exists() and Path(key_prev).exists():
+        return {"ren": ren_prev, "key": key_prev,
+                "solicitado_en": pendiente.get("solicitado_en")}
+    config_store.clear_renovacion_pendiente(rfc)
+    return None
+
+
+def _generar_ren(rfc: str, fiel: FIEL, password: str, correo: Optional[str],
+                 salida: str, reusar: Optional[dict]) -> tuple[str, str]:
+    """Genera (o reutiliza) el `.ren` + la `.key` nueva y deja la etapa
+    "generada" persistida ANTES de cualquier envío. → (ren_path, key_nueva)."""
+    if reusar:
+        ren_path, key_nueva = str(reusar["ren"]), str(reusar["key"])
+    else:
+        from ...certifica import generar_renovacion_fiel
+
+        # La contraseña de la .key nueva = la de la vigente (decisión UX: una
+        # sola contraseña que el usuario ya conoce).
+        generado = generar_renovacion_fiel(
+            fiel, correo=correo, password=password, salida_dir=salida,
+        )
+        ren_path, key_nueva = str(generado["ren"]), str(generado["key"])
+    config_store.set_renovacion_pendiente(rfc, {
+        "etapa": "generada",
+        "numero_operacion": None,
+        "acuse_pdf": None,
+        "ren_path": ren_path,
+        "key_path": key_nueva,
+        **({"solicitado_en": reusar["solicitado_en"]}
+           if reusar and reusar.get("solicitado_en") else {}),
+    })
+    return ren_path, key_nueva
+
+
+def _salida_renovacion(rfc: str) -> str:
+    return str(paths.dir_documento(paths.TIPO_RENOVACION, rfc,
+                                   salida_base=_descargas_base()))
+
+
+@router.post("/renovar/generar")
+def renovar_generar(req: RenovarGenerarRequest):
+    """
+    Paso previo al envío: genera el `.ren` y la `.key` NUEVA en este equipo (o
+    en el espacio en línea) sin mandar nada al SAT, para que el usuario baje el
+    respaldo (`GET /renovar/respaldo`) antes de enviar. Síncrono (<1 s) e
+    idempotente: si ya hay una solicitud generada, la devuelve tal cual.
+    `POST /renovar` reutiliza después estos mismos archivos.
+    """
+    rfc = req.rfc.strip().upper()
+    _, fiel = _validar_renovable(rfc, req.password)
+    reusar = _ren_reutilizable(rfc)
+    _generar_ren(rfc, fiel, req.password, req.correo, _salida_renovacion(rfc), reusar)
+    return {
+        "rfc": rfc,
+        "etapa": "generada",
+        "reutilizada": reusar is not None,
+        "archivos": [p.name for p in _archivos_renovacion(rfc)],
+    }
+
+
+@router.post("/renovar")
+def renovar_efirma(req: RenovarRequest):
+    """
+    Renueva la e.firma EN LÍNEA (solo si sigue vigente): genera el `.ren` (o usa
+    el de `POST /renovar/generar`), lo firma con el certificado actual, lo envía
+    a CertiSAT y — si el SAT lo emite a tiempo — descarga el `.cer` nuevo y
+    sustituye la e.firma del catálogo. → {job_id}.
+
+    ⚠️ Irreversible: el certificado anterior queda revocado. `confirmar` debe venir
+    en true (la UI pide confirmación explícita antes de llamar).
+    """
+    if not req.confirmar:
+        raise HTTPException(
+            status_code=400,
+            detail="Falta la confirmación explícita del trámite (confirmar=true).",
+        )
+    rfc = req.rfc.strip().upper()
+    empresa, fiel = _validar_renovable(rfc, req.password)
+    reusar = _ren_reutilizable(rfc)
 
     password = req.password
     correo = req.correo
-    salida = str(paths.dir_documento(paths.TIPO_RENOVACION, rfc,
-                                     salida_base=_descargas_base()))
+    salida = _salida_renovacion(rfc)
 
     def factory(emitir_fase):
         def run():
-            from ...certifica import generar_renovacion_fiel
             from ...portal.renovacion import enviar_renovacion_fiel
 
             emitir_fase("generando")
-            if reusar:
-                ren_path, key_nueva = str(reusar["ren"]), str(reusar["key"])
-            else:
-                # La contraseña de la .key nueva = la de la vigente (decisión UX:
-                # una sola contraseña que el usuario ya conoce).
-                generado = generar_renovacion_fiel(
-                    fiel, correo=correo, password=password, salida_dir=salida,
-                )
-                ren_path, key_nueva = str(generado["ren"]), str(generado["key"])
-            # Persistir ANTES de enviar (etapa "generada"): si el portal del SAT
-            # falla en el envío, el reintento continúa desde aquí con el MISMO .ren.
-            config_store.set_renovacion_pendiente(rfc, {
-                "etapa": "generada",
-                "numero_operacion": None,
-                "acuse_pdf": None,
-                "ren_path": ren_path,
-                "key_path": key_nueva,
-                **({"solicitado_en": reusar["solicitado_en"]}
-                   if reusar and reusar.get("solicitado_en") else {}),
-            })
+            ren_path, key_nueva = _generar_ren(rfc, fiel, password, correo, salida, reusar)
             emitir_fase("firmando")     # la firma CMS ocurrió dentro del .ren
 
             def puente(fase, data):
@@ -356,11 +427,16 @@ def renovar_efirma(req: RenovarRequest):
 
             emitir_fase("enviando")
             try:
+                # Hasta ~10 min esperando el cert DENTRO de la sesión del envío:
+                # al emitirse, el SAT revoca la e.firma con la que entramos, así
+                # que un login posterior ya no sirve para bajarlo (eso lo cubre
+                # la recuperación pública de /renovar/recuperar, con captcha).
                 res = enviar_renovacion_fiel(
                     empresa["cer_path"], empresa["key_path"], password,
                     ren_path, directorio_salida=salida,
                     key_nueva_path=key_nueva, recuperar=True,
-                    intentos_cert=6, espera_cert_s=30, on_progreso=puente,
+                    intentos_cert=_INTENTOS_CERT_EN_SESION, espera_cert_s=30,
+                    on_progreso=puente,
                 )
             except Exception as e_envio:
                 # Fallback: quizá un envío (este o uno previo que quedó en etapa
@@ -510,8 +586,14 @@ def renovar_respaldo(rfc: str):
 @router.post("/renovar/recuperar")
 def renovar_recuperar(req: RenovarRecuperarRequest):
     """
-    Reintento NO destructivo: descarga el `.cer` de una renovación ya enviada
-    (el SAT tarda minutos en emitirlo) y completa la sustitución. → {job_id}.
+    Reintento NO destructivo: busca el `.cer` renovado y completa la
+    sustitución. Nunca reenvía nada al SAT. → {job_id}.
+
+    Va por la Recuperación PÚBLICA de certificados (captcha por SSE, como CIEC):
+    al emitir la e.firma nueva el SAT revoca la anterior, y con ella ya no se
+    puede entrar a CertiSAT. Solo se acepta el certificado que empareje con la
+    `.key` nueva del trámite, así que también sirve en la etapa `generada` (un
+    envío que el SAT procesó sin que alcanzáramos a leer el número).
     """
     rfc = req.rfc.strip().upper()
     pendiente = config_store.get_renovacion_pendiente(rfc)
@@ -520,48 +602,55 @@ def renovar_recuperar(req: RenovarRecuperarRequest):
             status_code=404,
             detail="No hay una renovación pendiente de descargar para este RFC.",
         )
-    if not pendiente.get("numero_operacion"):
-        # Etapa "generada": el .ren nunca llegó al SAT → aquí no hay nada que
-        # descargar; el reintento correcto es POST /renovar (reenvía el mismo .ren).
+    key_nueva = pendiente.get("key_path")
+    if not key_nueva or not Path(key_nueva).exists():
         raise HTTPException(
             status_code=409,
             detail=(
-                "La solicitud de renovación aún no se envía al SAT. "
-                "Reintenta la renovación: se reenviará la misma solicitud."
+                "No encontramos la llave nueva (.key) de la renovación en "
+                f"{'tu espacio en línea' if es_modo_hosted() else 'este equipo'}. "
+                "Si tienes el respaldo, baja tu certificado de la Recuperación de "
+                "certificados del SAT y actualiza aquí los archivos (.cer/.key)."
             ),
         )
     empresa = _credenciales_keychain(rfc)
     password = empresa["password"]
-    key_nueva = pendiente.get("key_path")
-    salida = str(paths.dir_documento(paths.TIPO_RENOVACION, rfc,
-                                     salida_base=_descargas_base()))
+    enviada = bool(pendiente.get("numero_operacion"))
+    salida = _salida_renovacion(rfc)
 
-    def factory(emitir_fase):
+    def factory(emitir_fase, pedir_captcha):
         def run():
-            from ...portal.renovacion import recuperar_renovacion_fiel
+            from ...portal.recuperacion_publica import recuperar_cert_emparejado
 
-            def puente(fase, data):
-                emitir_fase(fase, data)
-
-            res = recuperar_renovacion_fiel(
-                empresa["cer_path"], empresa["key_path"], password,
-                directorio_salida=salida, key_nueva_path=key_nueva,
-                intentos=10, espera_s=30, on_progreso=puente,
+            cer = recuperar_cert_emparejado(
+                rfc, key_nueva, password, pedir_captcha, salida,
+                on_progreso=emitir_fase,
             )
             renovada = False
             vencimiento = None
-            if res.get("cer"):
+            if cer:
                 emitir_fase("guardando")
-                _instalar_efirma_renovada(rfc, str(res["cer"]), key_nueva, password)
+                _instalar_efirma_renovada(rfc, str(cer), key_nueva, password)
                 renovada = True
                 vencimiento = config_store.get_empresa(rfc).get("vencimiento")
+            mensaje = None
+            if not renovada:
+                mensaje = (
+                    "El SAT todavía no publica tu certificado nuevo. Suele tardar unos "
+                    "minutos después de enviar la renovación: vuelve a intentarlo más tarde."
+                    if enviada else
+                    "No encontramos en el SAT un certificado emitido con tu llave nueva, "
+                    "así que la solicitud no llegó y tu e.firma actual sigue vigente. "
+                    "Reanuda la renovación para enviarla."
+                )
             return {
-                "cer": str(res["cer"]) if res.get("cer") else None,
+                "cer": str(cer) if cer else None,
                 "vencimiento": vencimiento,
                 "renovada": renovada,
                 "cer_pendiente": not renovada,
                 "numero_operacion": pendiente.get("numero_operacion"),
                 "acuse_pdf": pendiente.get("acuse_pdf"),
+                "mensaje": mensaje,
             }
         return run
 
@@ -573,7 +662,7 @@ def renovar_recuperar(req: RenovarRecuperarRequest):
                 ruta=(resultado or {}).get("acuse_pdf") or salida,
             )
 
-    return _lanzar_job_certifica(factory, al_completar=al_completar)
+    return _lanzar_job_certifica(factory, al_completar=al_completar, con_captcha=True)
 
 
 # ---------------------------------------------------------------------------

@@ -27,15 +27,17 @@ def bytes_de_data_uri(src: str) -> bytes:
     return base64.b64decode(src)
 
 
-def pedir_captcha(imagen: bytes, intento: int = 1, max_intentos: int = 3) -> Optional[str]:
+def pedir_captcha(imagen: bytes, intento: int = 1, max_intentos: int = 3,
+                  respetar_mayusculas: bool = False) -> Optional[str]:
     """
     Abre una mini-ventana con la imagen del captcha + input + botón Enviar.
 
     Bloquea hasta que el usuario envía (Enter o el botón) o cierra la ventana.
 
     Returns:
-        El texto tecleado (en MAYÚSCULAS, sin espacios), o None si el usuario cancela
-        (cierra la ventana o presiona Escape sin texto).
+        El texto tecleado (en MAYÚSCULAS, sin espacios; tal cual con
+        `respetar_mayusculas`, p. ej. la recuperación pública de certificados),
+        o None si el usuario cancela (cierra la ventana o presiona Escape sin texto).
     """
     try:
         import tkinter as tk
@@ -69,11 +71,15 @@ def pedir_captcha(imagen: bytes, intento: int = 1, max_intentos: int = 3) -> Opt
         resultado["texto"] = texto
         root.quit()  # sale del mainloop; la ventana se cierra abajo
 
-    entry.bind("<Return>", lambda *_: _finalizar(entry.get().strip().upper()))
+    def _texto():
+        t = entry.get().strip()
+        return t if respetar_mayusculas else t.upper()
+
+    entry.bind("<Return>", lambda *_: _finalizar(_texto()))
     root.bind("<Escape>", lambda *_: _finalizar(None))
     root.protocol("WM_DELETE_WINDOW", lambda: _finalizar(None))
     tk.Button(root, text="Enviar",
-              command=lambda: _finalizar(entry.get().strip().upper()),
+              command=lambda: _finalizar(_texto()),
               default="active").pack(pady=(0, 14))
 
     root.mainloop()
