@@ -169,13 +169,30 @@ def subir_credenciales(
 # ---------------------------------------------------------------------------
 
 
+def _fiel_mas_nueva(a: dict, b: dict) -> bool:
+    """True si las dos empresas tienen e.firma y la de `a` vence después.
+
+    Al renovar, el SAT revoca el certificado anterior: si solo viajara la
+    e.firma que "falta", el otro lado se quedaría con la revocada para
+    siempre. Entre dos e.firmas del mismo RFC, la que vence después es la
+    emitida después (vencimiento en ISO, YYYY-MM-DD).
+    """
+    va, vb = a.get("vencimiento") or "", b.get("vencimiento") or ""
+    return (
+        "fiel" in a.get("metodos", [])
+        and "fiel" in b.get("metodos", [])
+        and bool(va) and va > vb
+    )
+
+
 def sincronizar_credenciales() -> dict | None:
     """
     Replica credenciales entre este equipo y el espacio en línea del usuario,
     en ambos sentidos — la nube no puede alcanzar este equipo, así que la
     desktop siempre inicia: EMPUJA lo que a la web le falta y JALA lo que se
-    capturó en la web (alta local automática). Solo corre con el ajuste
-    "sincronizar credenciales" activado. Best-effort: nunca lanza.
+    capturó en la web (alta local automática). Una e.firma más nueva (renovada)
+    reemplaza a la del otro lado. Solo corre con el ajuste "sincronizar
+    credenciales" activado. Best-effort: nunca lanza.
     """
     import base64
     import tempfile
@@ -209,10 +226,10 @@ def sincronizar_credenciales() -> dict | None:
     for rfc, loc in locales.items():
         if loc.get("archived_at"):
             continue
-        faltan = [
-            m for m in loc.get("metodos", [])
-            if m not in (remotas.get(rfc) or {}).get("metodos", [])
-        ]
+        rem = remotas.get(rfc) or {}
+        faltan = [m for m in loc.get("metodos", []) if m not in rem.get("metodos", [])]
+        if _fiel_mas_nueva(loc, rem):
+            faltan.append("fiel")
         if not faltan:
             continue
         try:
@@ -230,6 +247,10 @@ def sincronizar_credenciales() -> dict | None:
             m for m in rem.get("metodos", [])
             if m not in (loc or {}).get("metodos", [])
         ]
+        # Renovada en la web: la local quedó revocada y se reemplaza.
+        reemplaza_fiel = bool(loc) and _fiel_mas_nueva(rem, loc)
+        if reemplaza_fiel:
+            faltan.append("fiel")
         if not faltan:
             continue
         try:
@@ -249,8 +270,12 @@ def sincronizar_credenciales() -> dict | None:
                         fh.write(base64.b64decode(f["cer_b64"]))
                     with open(key, "wb") as fh:
                         fh.write(base64.b64decode(f["key_b64"]))
+                    if reemplaza_fiel:
+                        config_store.respaldar_efirma_anterior(rfc)
                     # add_empresa valida el par y COPIA a ~/.sat-descarga/efirma/.
                     config_store.add_empresa(nombre, cer, key, f["password"], rfc_esperado=rfc)
+                if reemplaza_fiel:
+                    _recargar_sesion_si_activa(rfc)
                 bajadas.append(f"{rfc}:fiel")
             if "ciec" in faltan and data.get("ciec"):
                 config_store.add_empresa_ciec(rfc, nombre, data["ciec"])
@@ -263,3 +288,16 @@ def sincronizar_credenciales() -> dict | None:
             "[espacio] credenciales sincronizadas · subidas=%s bajadas=%s", subidas, bajadas
         )
     return {"subidas": subidas, "bajadas": bajadas}
+
+
+def _recargar_sesion_si_activa(rfc: str) -> None:
+    """Si la e.firma reemplazada era la de la sesión, carga la nueva (best-effort)."""
+    from ..cli import config_store
+    from .state import _cargar_fiel_empresa, _session
+
+    if _session.get("rfc") != rfc:
+        return
+    try:
+        _cargar_fiel_empresa(config_store.get_empresa(rfc))
+    except Exception as e:  # noqa: BLE001 — la sesión se recarga al reactivar
+        logger.info("[espacio] no se pudo recargar la sesión de %s: %s", rfc, e)

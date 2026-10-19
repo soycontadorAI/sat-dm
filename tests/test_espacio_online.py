@@ -121,6 +121,109 @@ class TestSincronizarCredenciales:
         assert resultado["subidas"] == ["LOC010101AAA"]
         assert subidas == [("LOC010101AAA", ["ciec"])]
 
+    def test_push_de_efirma_renovada_aqui(self, monkeypatch, test_cer, test_key,
+                                          test_password, test_rfc):
+        """Las dos tienen e.firma, pero la local vence después (se renovó en este
+        equipo): la de la web quedó revocada y se reemplaza."""
+        config_store.set_sync_credenciales(True)
+        config_store.add_empresa("Local", test_cer, test_key, test_password)
+        monkeypatch.setattr(
+            espacio_online, "_conectar_espacio", lambda: ("http://esp", "tok")
+        )
+
+        class _Resp:
+            status_code = 200
+
+            def json(self):
+                return {"empresas": [
+                    {"rfc": test_rfc, "nombre": "Local", "metodos": ["fiel"],
+                     "vencimiento": "2001-01-01", "archived_at": None},
+                ]}
+
+        monkeypatch.setattr(espacio_online.requests, "get", lambda *a, **k: _Resp())
+        subidas = []
+        monkeypatch.setattr(
+            espacio_online, "subir_credenciales",
+            lambda rfc, metodos, conexion=None: subidas.append((rfc, metodos)),
+        )
+        espacio_online.sincronizar_credenciales()
+        assert subidas == [(test_rfc, ["fiel"])]
+
+    def test_misma_efirma_en_los_dos_lados_no_viaja(self, monkeypatch, test_cer, test_key,
+                                                    test_password, test_rfc):
+        config_store.set_sync_credenciales(True)
+        config_store.add_empresa("Local", test_cer, test_key, test_password)
+        venc = config_store.get_empresa(test_rfc)["vencimiento"]
+        monkeypatch.setattr(
+            espacio_online, "_conectar_espacio", lambda: ("http://esp", "tok")
+        )
+
+        class _Resp:
+            status_code = 200
+
+            def json(self):
+                return {"empresas": [
+                    {"rfc": test_rfc, "nombre": "Local", "metodos": ["fiel"],
+                     "vencimiento": venc, "archived_at": None},
+                ]}
+
+        def _get(url, **kwargs):
+            if url.endswith("/empresas"):
+                return _Resp()
+            raise AssertionError(f"GET inesperado: {url}")
+
+        monkeypatch.setattr(espacio_online.requests, "get", _get)
+        monkeypatch.setattr(
+            espacio_online, "subir_credenciales",
+            lambda *a, **k: pytest.fail("no debía subir nada"),
+        )
+        assert espacio_online.sincronizar_credenciales() == {"subidas": [], "bajadas": []}
+
+    def test_pull_de_efirma_renovada_en_la_web(self, monkeypatch, tmp_path, test_cer,
+                                               test_key, test_password, test_rfc):
+        """La web trae una e.firma que vence después que la local: se baja, y la
+        local (revocada) queda respaldada antes de reemplazarse."""
+        config_store.set_sync_credenciales(True)
+        config_store.add_empresa("Local", test_cer, test_key, test_password)
+        monkeypatch.setattr(
+            espacio_online, "_conectar_espacio", lambda: ("http://esp", "tok")
+        )
+
+        class _Resp:
+            def __init__(self, data):
+                self._data = data
+                self.status_code = 200
+
+            def json(self):
+                return self._data
+
+        with open(test_cer, "rb") as c, open(test_key, "rb") as k:
+            fiel_b64 = {
+                "cer_b64": base64.b64encode(c.read()).decode(),
+                "key_b64": base64.b64encode(k.read()).decode(),
+                "password": test_password,
+            }
+
+        def _get(url, **kwargs):
+            if url.endswith("/empresas"):
+                return _Resp({"empresas": [
+                    {"rfc": test_rfc, "nombre": "Local", "metodos": ["fiel"],
+                     "vencimiento": "2099-12-31", "archived_at": None},
+                ]})
+            if url.endswith(f"/empresas/{test_rfc}/credenciales"):
+                return _Resp({"rfc": test_rfc, "nombre": "Local",
+                              "fiel": fiel_b64, "ciec": None})
+            raise AssertionError(f"GET inesperado: {url}")
+
+        monkeypatch.setattr(espacio_online.requests, "get", _get)
+        monkeypatch.setattr(
+            espacio_online, "subir_credenciales",
+            lambda *a, **k: pytest.fail("la local es la vieja: no se sube"),
+        )
+        resultado = espacio_online.sincronizar_credenciales()
+        assert resultado["bajadas"] == [f"{test_rfc}:fiel"]
+        assert list((tmp_path / "efirma" / test_rfc).glob("anterior_*"))
+
 
 def test_export_no_incluye_paths_locales(client, monkeypatch):
     """El export expone credenciales, nunca rutas del filesystem del contenedor."""
