@@ -8,6 +8,17 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Feature
 
+- **Renovación de e.firma en línea, encendida en escritorio y web.** Desde Empresas
+  ("Renovar e.firma", también en la navegación por espacios) TodoConta genera la solicitud
+  de renovación, entrega el **respaldo de la llave nueva antes de enviar nada al SAT**, la
+  firma con la e.firma vigente, la envía a CertiSAT y guarda el certificado nuevo. Si el SAT
+  tarda en emitirlo, "Descargar certificado" lo busca en la Recuperación pública de
+  certificados (con captcha) y solo acepta el que empareja con la llave nueva: la e.firma
+  anterior ya quedó revocada y no sirve para entrar a CertiSAT. La e.firma renovada
+  reemplaza a la vieja en el otro lado (escritorio ⇄ web) con el sync de credenciales, y un
+  aviso diario recuerda una renovación a medias. Endpoint nuevo `POST /renovar/generar`;
+  CLI `sat-dm recuperar ren --publica`. Detalle:
+  `docs/producto/renovacion-csd-ui-integracion.md`.
 - **Plantillas de exportación del procesador de CFDI.** "Exportar" abre un diálogo: se elige la
   plantilla (qué columnas, en qué orden y con qué encabezado) y dos opciones apagadas por
   default, "Una fila por concepto" (repite los datos del CFDI en cada renglón con cantidad,
