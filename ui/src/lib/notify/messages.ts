@@ -106,3 +106,16 @@ export function mensajeEfirmaAviso(vars: Vars): string {
   }
   return interpolate(pick(POOL_EFIRMA_AVISO), vars);
 }
+
+/** Renovación de e.firma a medias: 'enviada' falta bajar el cert; si no, falta enviarla. */
+export function mensajeRenovacionPendiente(enviada: boolean, rfc: string): string {
+  return enviada
+    ? interpolate(
+        'La renovación de la e.firma de {rfc} ya está en el SAT: falta descargar tu certificado nuevo.',
+        { rfc },
+      )
+    : interpolate(
+        'La renovación de la e.firma de {rfc} quedó a medias: tu solicitud está lista para enviarse.',
+        { rfc },
+      );
+}

@@ -108,7 +108,7 @@ const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: 'Mi e.firma está por vencer, ¿qué hago?',
-        a: 'Necesitas renovarla ante el SAT (en línea si aún está vigente, o presencialmente si ya venció). Cuando tengas los archivos nuevos, actualízalos en Empresas. Te avisamos cuando a tu e.firma le queden 30 días o menos.',
+        a: 'Si aún está vigente, la renuevas en línea desde Empresas con "Renovar e.firma": TodoConta genera la solicitud, te da el respaldo de tu llave nueva, la envía al SAT y guarda tu certificado nuevo. Si ya venció, se renueva directamente con el SAT (con SAT ID o con cita); cuando tengas los archivos nuevos, actualízalos en Empresas. Te avisamos cuando a tu e.firma le queden 30 días o menos.',
       },
       {
         q: '¿Es seguro guardar mi e.firma y mi Contraseña del SAT?',

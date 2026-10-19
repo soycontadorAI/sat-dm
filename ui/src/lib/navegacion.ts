@@ -193,18 +193,18 @@ export const ESPACIOS: readonly Espacio[] = [
       },
       { id: 'contabilidad', label: 'Contabilidad electrónica', icon: 'ph:books-light', descripcion: 'Catálogo, balanzas y acuses', detalle: 'Envío del catálogo de cuentas y las balanzas, y los acuses de Recibido, Aceptado o Rechazado.', estado: 'pronto', sinonimos: ['contabilidad', 'contabilidad electronica', 'balanza', 'catalogo de cuentas', 'anexo 24'] },
       {
-        id: 'efirma-csd',
-        label: 'e.firma y CSD',
+        id: 'renovar-efirma',
+        // Acceso directo: abre Despacho > Empresas con la fila de la empresa
+        // activa y su asistente de renovación (mismo patrón que Constancia y
+        // Opinión 32-D).
+        href: '/empresas?abrir=1&renovar=1',
+        label: 'Renovar e.firma',
         icon: 'ph:fingerprint-light',
-        descripcion: 'Renovación y sellos digitales',
-        detalle: 'La renovación de la e.firma y la solicitud de Certificados de Sello Digital.',
-        estado: 'pronto',
-        sinonimos: ['csd', 'sello digital', 'renovar'],
-        hijos: [
-          { id: 'renovar-efirma', label: 'Renovar e.firma', corto: 'Renovar e.firma', icon: 'ph:fingerprint-light', descripcion: 'El .ren y el respaldo de tu llave nueva', detalle: 'Generar el .ren de la renovación y guardar el respaldo de tu llave nueva.', estado: 'pronto', sinonimos: ['renovar efirma', 'renovar e.firma', 'renovacion'] },
-          { id: 'solicitar-csd', label: 'Solicitar CSD', corto: 'Solicitar CSD', icon: 'ph:certificate-light', descripcion: 'La solicitud de un sello digital', detalle: 'Generar la solicitud de un Certificado de Sello Digital.', estado: 'pronto', sinonimos: ['csd', 'sello digital', 'certificado de sello'] },
-        ],
+        descripcion: 'En línea, con el respaldo de tu llave nueva',
+        estado: 'nuevo',
+        sinonimos: ['renovar efirma', 'renovar e.firma', 'renovacion', 'renovar', 'certifica', 'certisat', 'fiel'],
       },
+      { id: 'solicitar-csd', label: 'Solicitar CSD', icon: 'ph:certificate-light', descripcion: 'La solicitud de un sello digital', detalle: 'Generar la solicitud de un Certificado de Sello Digital.', estado: 'pronto', sinonimos: ['csd', 'sello digital', 'certificado de sello'] },
     ],
   },
   {

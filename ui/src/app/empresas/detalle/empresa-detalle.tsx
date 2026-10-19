@@ -46,6 +46,9 @@ export function EmpresaDetalle() {
   // QA del wizard de CSD sin trigger visible: /empresas/detalle?rfc=…&labs=csd
   // (se conectará de verdad cuando exista la pantalla de Expediente fiscal).
   const labsCsd = searchParams.get('labs') === 'csd';
+  // `?renovar=1` abre el asistente de renovación (aviso de trámite a medias,
+  // sugerencia de Tareas, navegación).
+  const abrirRenovar = searchParams.get('renovar') === '1';
   const { empresas, loading, refresh, addCiec, addFiel, removeEfirma, activarSesion, update } =
     useEmpresas();
   const { refreshHealth } = useServer();
@@ -133,6 +136,7 @@ export function EmpresaDetalle() {
       />
       <FielSection
         empresa={empresa}
+        abrirRenovar={abrirRenovar}
         onGuardar={async (cer, key, password) => {
           await addFiel(cer, key, password, empresa.nombre, empresa.rfc);
           // Cargar la e.firma recién agregada/renovada en la sesión (cabecera/Inicio).
@@ -442,11 +446,14 @@ function CiecSection({
 
 function FielSection({
   empresa,
+  abrirRenovar = false,
   onGuardar,
   onQuitar,
   onRenovada,
 }: {
   empresa: Empresa;
+  /** Abre el asistente de renovación al montar (`?renovar=1`). */
+  abrirRenovar?: boolean;
   onGuardar: (cer: File, key: File, password: string) => Promise<void>;
   onQuitar: () => Promise<void>;
   /** Refresca catálogo/health tras una renovación en línea exitosa. */
@@ -456,14 +463,16 @@ function FielSection({
   const tieneCiec = empresa.metodos.includes('ciec');
   const sem = tiene ? semaforoVencimiento(empresa.vencimiento) : null;
   const avisaRenovar = sem !== null && sem.estado !== 'verde';
-  // Con la renovación en línea deshabilitada no se exponen los estados de
-  // trámite (no hay forma de avanzarlos); la vía manual de actualizar
+  // Con la renovación en línea deshabilitada (flag) no se exponen los estados
+  // de trámite (no hay forma de avanzarlos); la vía manual de actualizar
   // archivos .cer/.key sigue disponible (no toca el portal del SAT).
   const pendiente = RENOVACION_EFIRMA_HABILITADA && !!empresa.renovacion_pendiente;
   // 'enviada' (falta bajar el cert) vs 'generada' (reenviar el mismo .ren).
   const pendienteEnviada = RENOVACION_EFIRMA_HABILITADA && !!empresa.renovacion_pendiente?.numero_operacion;
   const [mostrarForm, setMostrarForm] = useState(!tiene);
-  const [renovarOpen, setRenovarOpen] = useState(false);
+  const [renovarOpen, setRenovarOpen] = useState(
+    abrirRenovar && RENOVACION_EFIRMA_HABILITADA && tiene && !sem?.vencida,
+  );
   const [confirmQuitar, setConfirmQuitar] = useState(false);
   const [quitando, setQuitando] = useState(false);
   const [cer, setCer] = useState<File | null>(null);
@@ -575,7 +584,7 @@ function FielSection({
             {pendienteEnviada
               ? 'Renovación enviada: solo falta descargar el certificado que emitió el SAT.'
               : pendiente
-                ? 'El envío de la renovación falló en ese momento; tu e.firma sigue intacta. Reanuda para reenviar la misma solicitud.'
+                ? 'Tu solicitud de renovación está lista y el SAT no ha confirmado recibirla; tu e.firma sigue intacta. Reanuda para enviarla.'
                 : 'Certificado registrado.'}
           </p>
         ) : (

@@ -21,6 +21,8 @@ import type {
   CiecDocRequest,
   CfdiFielRequest,
   RenovarRequest,
+  RenovarGenerarRequest,
+  RenovarGenerarResultado,
   RenovarRecuperarRequest,
   CsdSolicitarRequest,
   CsdRecuperarRequest,
@@ -528,8 +530,24 @@ export class SatApiClient {
   }
 
   // -----------------------------------------------------------------------
-  // Certifica: renovación de e.firma + CSD (jobs SSE; FIEL-only, sin captcha)
+  // Certifica: renovación de e.firma + CSD (jobs SSE; FIEL-only)
   // -----------------------------------------------------------------------
+
+  /** Genera el .ren y la .key nueva SIN enviar nada (paso del respaldo). Idempotente. */
+  async renovarGenerar(req: RenovarGenerarRequest): Promise<RenovarGenerarResultado> {
+    return this.post<RenovarGenerarResultado>('/renovar/generar', req as unknown as Record<string, unknown>);
+  }
+
+  /** ZIP de respaldo del trámite (.key nueva, .ren y, si ya existen, .cer y acuse). */
+  async renovarRespaldo(rfc: string): Promise<Blob> {
+    const qs = new URLSearchParams({ rfc });
+    const r = await fetch(this.url(`/renovar/respaldo?${qs}`), { headers: this.tokenHeaders() });
+    if (!r.ok) {
+      const text = await r.text();
+      throw new Error(`No se pudo descargar el respaldo: ${r.status} ${text}`);
+    }
+    return await r.blob();
+  }
 
   /** Renueva la e.firma EN LÍNEA (irreversible; requiere confirmar=true). → {job_id} */
   async renovarEfirma(req: RenovarRequest): Promise<JobIniciado> {

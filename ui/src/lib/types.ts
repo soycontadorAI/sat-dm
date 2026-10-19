@@ -333,9 +333,10 @@ export interface Empresa {
 // ---------------------------------------------------------------------------
 
 export interface RenovacionPendiente {
-  /** 'generada' = el .ren existe pero el envío al SAT falló (se reenvía el mismo
-   * con POST /renovar); 'enviada' = ya hay número de operación (falta el cert,
-   * se descarga con POST /renovar/recuperar). */
+  /** 'generada' = el .ren y la .key nueva existen pero el SAT aún no los recibe
+   * (paso del respaldo, o un envío que falló: se reenvía el mismo con POST
+   * /renovar); 'enviada' = ya hay número de operación (falta el cert, se busca
+   * con POST /renovar/recuperar). */
   etapa?: 'generada' | 'enviada';
   numero_operacion?: string | null;
   acuse_pdf?: string | null;
@@ -363,6 +364,21 @@ export interface RenovarRequest {
   correo?: string;
 }
 
+// POST /renovar/generar — genera el .ren + .key nueva sin enviar (respaldo primero).
+export interface RenovarGenerarRequest {
+  rfc: string;
+  password: string;
+  correo?: string;
+}
+
+export interface RenovarGenerarResultado {
+  rfc: string;
+  etapa: 'generada';
+  /** true = ya había una solicitud generada y se reutilizó tal cual. */
+  reutilizada: boolean;
+  archivos: string[];
+}
+
 export interface RenovarRecuperarRequest {
   rfc: string;
 }
@@ -377,6 +393,8 @@ export interface RenovarResultado {
   renovada: boolean;
   /** true = el SAT aún no emite el cert; reintentar con /renovar/recuperar. */
   cer_pendiente: boolean;
+  /** Mensaje para el usuario cuando el cert no se encontró (recuperación pública). */
+  mensaje?: string | null;
 }
 
 // POST /csd

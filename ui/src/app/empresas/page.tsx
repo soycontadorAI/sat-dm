@@ -120,6 +120,8 @@ function EmpresasContenido() {
   // repita.
   const [abrirFila, setAbrirFila] = useState<{ key: string } | null>(null);
   const [autoBajar, setAutoBajar] = useState<{ rfc: string; doc: 'constancia' | 'opinion' } | null>(null);
+  // Con &renovar=1 (acceso directo "Renovar e.firma") abre además el asistente.
+  const [autoRenovar, setAutoRenovar] = useState<string | null>(null);
   useEffect(() => {
     if (searchParams.get('abrir') !== '1') return;
     const rfc = (searchParams.get('rfc') || activeRfc || '').toUpperCase();
@@ -132,6 +134,7 @@ function EmpresasContenido() {
     setAbrirFila({ key: rfc });
     const bajar = searchParams.get('bajar');
     if (bajar === 'constancia' || bajar === 'opinion') setAutoBajar({ rfc, doc: bajar });
+    if (searchParams.get('renovar') === '1') setAutoRenovar(rfc);
     router.replace('/empresas');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, activeRfc, activas.length, router]);
@@ -316,6 +319,8 @@ function EmpresasContenido() {
                     onJobDone={refresh}
                     autoBajar={autoBajar?.rfc === e.rfc ? autoBajar.doc : undefined}
                     onAutoBajarIniciado={() => setAutoBajar(null)}
+                    autoRenovar={autoRenovar === e.rfc}
+                    onAutoRenovarIniciado={() => setAutoRenovar(null)}
                   />
                 ),
               }}

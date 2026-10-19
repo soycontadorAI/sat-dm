@@ -35,6 +35,9 @@ interface Props {
    */
   autoBajar?: Documento;
   onAutoBajarIniciado?: () => void;
+  /** Abre solo el asistente de renovación al abrir la fila (Renovar e.firma). */
+  autoRenovar?: boolean;
+  onAutoRenovarIniciado?: () => void;
 }
 
 type Documento = 'constancia' | 'opinion';
@@ -54,7 +57,14 @@ function formatoFecha(iso: string | null | undefined): string | null {
  * línea, Constancia de Situación Fiscal y Opinión 32-D con descarga por el
  * canal preferido) + link al expediente fiscal (próximamente).
  */
-export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarIniciado }: Props) {
+export function EmpresaRowExpanded({
+  empresa,
+  onJobDone,
+  autoBajar,
+  onAutoBajarIniciado,
+  autoRenovar,
+  onAutoRenovarIniciado,
+}: Props) {
   const { apiClient } = useServer();
   const job = useJob();
   // Estado FIEL por documento: /constancia/fiel y /opinion/fiel son endpoints
@@ -146,6 +156,17 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
     void bajar(autoBajar);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoBajar]);
+
+  // Acceso directo "Renovar e.firma": una vez por pedido, solo si aplica (con
+  // e.firma vencida o sin e.firma la fila ya muestra la vía que corresponde).
+  useEffect(() => {
+    if (!autoRenovar) return;
+    onAutoRenovarIniciado?.();
+    if (RENOVACION_EFIRMA_HABILITADA && empresa.metodos.includes('fiel') && !sem?.vencida) {
+      setRenovarOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRenovar]);
 
   async function abrir(kind: Documento, modo: ModoAbrir) {
     const ruta = kind === 'constancia' ? empresa.csf_path : empresa.opinion_path;
@@ -240,10 +261,11 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
     );
   }
 
-  // Renovación pendiente: 'enviada' (falta bajar el cert) vs 'generada' (el
-  // envío falló y se reanuda reenviando el mismo .ren). Con la renovación
-  // deshabilitada no se exponen los estados de trámite (no hay forma de
-  // avanzarlos): la card muestra el semáforo normal.
+  // Renovación pendiente: 'enviada' (falta bajar el cert) vs 'generada' (la
+  // solicitud y la llave nueva existen pero el SAT no la ha recibido; se
+  // reanuda enviando el mismo .ren). Con la renovación deshabilitada no se
+  // exponen los estados de trámite (no hay forma de avanzarlos): la card
+  // muestra el semáforo normal.
   const renEnviada = RENOVACION_EFIRMA_HABILITADA && !!empresa.renovacion_pendiente?.numero_operacion;
   const renGenerada = RENOVACION_EFIRMA_HABILITADA && !!empresa.renovacion_pendiente && !renEnviada;
 
@@ -253,7 +275,7 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
     : renEnviada
       ? { tone: 'warn' as const, label: 'Certificado nuevo pendiente' }
       : renGenerada
-        ? { tone: 'warn' as const, label: 'Renovación por reenviar' }
+        ? { tone: 'warn' as const, label: 'Renovación por enviar' }
         : sem?.vencida
           ? { tone: 'warn' as const, label: 'Vencida' }
           : sem && sem.estado !== 'verde'
@@ -277,8 +299,8 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
                 </>
               ) : renGenerada ? (
                 <>
-                  El envío al SAT falló en ese momento; tu e.firma sigue intacta.
-                  Reanuda para reenviar la misma solicitud.
+                  Tu solicitud de renovación está lista y el SAT no ha confirmado
+                  recibirla; tu e.firma sigue intacta. Reanuda para enviarla.
                 </>
               ) : (
                 <>
@@ -294,7 +316,7 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
               Esta empresa opera con Contraseña del SAT. Registra su e.firma para la descarga masiva.
             </p>
           )}
-          <div className="mt-auto flex items-center gap-1.5 pt-1">
+          <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
             {tieneFiel ? (
               RENOVACION_EFIRMA_HABILITADA ? (
                 <Button
