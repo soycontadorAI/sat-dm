@@ -244,6 +244,24 @@ async def _origen_de_la_accion(request: Request, call_next):
         restaurar_origen(marca)
 
 # ---------------------------------------------------------------------------
+# Contexto del cliente para la API de conversiones de Meta
+# ---------------------------------------------------------------------------
+# Recuerda el user agent (y en web la IP) de la persona para reenviarlos a
+# api.todoconta.com (ver api/contexto_cliente.py). Solo peticiones del renderer.
+
+
+@app.middleware("http")
+async def _contexto_del_cliente(request: Request, call_next):
+    from . import contexto_cliente
+
+    contexto_cliente.registrar(
+        request.headers.get("user-agent"),
+        request.headers.get("x-forwarded-for"),
+        request.headers.get("x-todoconta-origen"),
+    )
+    return await call_next(request)
+
+# ---------------------------------------------------------------------------
 # Límites del plan (F1): tope de empresas y descargas del mes → HTTP 402 con
 # `{detail, codigo, <codigo>: datos}` (ver api/limites_plan.py).
 # ---------------------------------------------------------------------------
