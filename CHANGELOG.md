@@ -34,6 +34,12 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Bug fix
 
+- **Después de pagar con tarjeta ya no aparece un 404.** Stripe regresaba a
+  `/desktop/checkout-success` y `/desktop/checkout-cancelled`, que nunca existieron. Ahora
+  regresa a `/pago/listo` o `/pago/cancelado` en app.todoconta.com (sin pedir sesión: quien
+  pagó desde la desktop no la tiene en el navegador), con botón para volver a la app de
+  escritorio o entrar a Suscripción en la web. Las rutas viejas redirigen ahí
+  (`ui/vercel.json`) para los checkouts que ya estaban abiertos.
 - **Los textos del XML ya no se escriben como fórmulas en el Excel ni en el CSV del procesador.**
   Una descripción de concepto que empezaba con `=` (la escribe el emisor) quedaba como fórmula
   de Excel en el export; ahora se escribe como texto.
