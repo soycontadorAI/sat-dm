@@ -168,6 +168,8 @@ export default function AjustesPage() {
   const [editable, setEditable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncCreds, setSyncCreds] = useState<boolean | null>(null);
+  // Medición de anuncios en Meta (de la cuenta, no del equipo); null = cargando o sin servicio.
+  const [medicion, setMedicion] = useState<boolean | null>(null);
   const [notifPrefs, setNotifPrefsState] = useState<NotifPrefs>({
     descargas: true,
     efirma: true,
@@ -195,7 +197,20 @@ export default function AjustesPage() {
         .then((r) => setSyncCreds(r.activado))
         .catch(() => {});
     }
+    apiClient
+      .getMedicion()
+      .then((r) => setMedicion(r.participa))
+      .catch(() => {});
   }, [apiClient]);
+
+  async function cambiarMedicion(v: boolean) {
+    setMedicion(v); // optimista; el servicio lo guarda en la cuenta
+    try {
+      await apiClient.setMedicion(v);
+    } catch {
+      setMedicion(!v);
+    }
+  }
 
   async function cambiarSyncCreds(v: boolean) {
     setSyncCreds(v); // optimista; el agente persiste en settings.json
@@ -403,6 +418,36 @@ export default function AjustesPage() {
                   <Link href="/ajustes/api">{sinMcp ? 'Ver' : 'Administrar'}</Link>
                 </Button>
               </div>
+            }
+          />
+        </AjCard>
+
+        {/* Privacidad: interruptor de "no participar" en la medición de anuncios
+            (API de conversiones de Meta). Es de la cuenta: vale en desktop y web. */}
+        <AjCard icon="ph:shield-check-light" title="Privacidad">
+          <AjRow
+            label="Medición de anuncios"
+            sub={
+              <>
+                Cuando te registras, empiezas la prueba o pagas, le avisamos a Meta (Facebook e
+                Instagram) con tu correo cifrado para saber qué anuncio funcionó. Nunca le mandamos
+                tus datos fiscales.{' '}
+                <a
+                  href="https://todoconta.com/privacidad"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  Aviso de privacidad
+                </a>
+              </>
+            }
+            control={
+              <Switch
+                checked={medicion ?? true}
+                disabled={medicion === null}
+                onCheckedChange={cambiarMedicion}
+              />
             }
           />
         </AjCard>

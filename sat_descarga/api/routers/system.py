@@ -796,6 +796,23 @@ def cuenta_usuarios_adicionales(req: UsuariosAdicionalesRequest):
     )
 
 
+class MedicionRequest(BaseModel):
+    participa: bool
+
+
+@router.get("/cuenta/medicion")
+def cuenta_medicion():
+    """Si la cuenta participa en la medición de anuncios en Meta (`{participa}`)."""
+    return _proxy_cuenta("GET", "/api/desktop/medicion")
+
+
+@router.put("/cuenta/medicion")
+def cuenta_medicion_cambiar(req: MedicionRequest):
+    """Interruptor de "no participar": con `participa=false` el servicio no manda
+    a Meta ningún evento de esta cuenta."""
+    return _proxy_cuenta("PUT", "/api/desktop/medicion", json_body={"participa": req.participa})
+
+
 @router.patch("/cuenta/teams/members/permissions")
 def cuenta_teams_permisos(req: PermisosMiembroRequest):
     """Ajusta el modo de acceso y el allow-list de empresas de un miembro (solo admin)."""
