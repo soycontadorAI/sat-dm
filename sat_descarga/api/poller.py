@@ -42,7 +42,6 @@ Notas de diseño:
 """
 
 import logging
-from pathlib import Path
 import os
 import threading
 import time
@@ -54,7 +53,7 @@ import requests
 from ..core.errores import ErrorEsperado
 from ..core.fiel import FIEL
 from ..webservice.auth import obtener_token
-from ..webservice.descarga import descargar_todos
+from ..webservice.descarga import descargar_todos, zip_paquete
 from ..webservice.errores import trae_codestatus
 from ..webservice.verificacion import consultar_solicitud, ESTADO_TERMINADA
 from .state import (
@@ -299,6 +298,7 @@ def _descargar_lista(rfc: str, fiel: FIEL, sol: dict) -> bool:
             rfc, "ws", "metadata" if es_metadata(sol) else "cfdi",
             descripcion=f"Descarga WS · solicitud {id_sol[:8]}… (automática)",
             ruta=salida, total=numero_cfdis,
+            paquetes=package_ids,
         )
         config_store.update_solicitud(
             rfc, id_sol, "descargada", package_ids=package_ids,
@@ -310,15 +310,16 @@ def _descargar_lista(rfc: str, fiel: FIEL, sol: dict) -> bool:
     except Exception as e:  # noqa: BLE001 — reintenta en la siguiente pasada (sigue en 3)
         if trae_codestatus(str(e), "5008"):
             # El SAT ya no deja bajar esos paquetes (máximo de descargas): reintentar
-            # cada pasada no sirve de nada. Lo que sí bajó de esta solicitud (otros
-            # paquetes; la carpeta es del rango y puede traer de otras) se registra y
-            # se indexa.
+            # cada pasada no sirve de nada. Lo que sí bajó de esta solicitud (el ZIP de
+            # otros paquetes; la carpeta es del rango y puede traer de otras) se
+            # registra, y lo extraído se indexa.
             salida = _salida_descarga_ws(rfc, id_sol)
-            if any((Path(salida) / f"{pid}.zip").is_file() for pid in package_ids or []):
+            if any(zip_paquete(salida, pid).is_file() for pid in package_ids or []):
                 _registrar_descarga(
                     rfc, "ws", "metadata" if es_metadata(sol) else "cfdi",
                     descripcion=f"Descarga WS · solicitud {id_sol[:8]}… (incompleta, 5008)",
                     ruta=salida, total=None,
+                    paquetes=package_ids,
                 )
             config_store.update_solicitud(
                 rfc, id_sol, "vencida",

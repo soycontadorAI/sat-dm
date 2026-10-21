@@ -256,6 +256,25 @@ def _dias(desde: date, hasta: date) -> list[date]:
     return [desde + timedelta(days=n) for n in range((hasta - desde).days + 1)]
 
 
+def rangos_contiguos(dias: list[date], maximo: int) -> list[tuple[date, date]]:
+    """Rangos contiguos que cubren `dias`; si son más de `maximo`, se juntan los
+    más cercanos (pedir de más unos días es más barato que muchas solicitudes)."""
+    if not dias:
+        return []
+    dias = sorted(set(dias))
+    rangos = [[dias[0], dias[0]]]
+    for d in dias[1:]:
+        if d - rangos[-1][1] == timedelta(days=1):
+            rangos[-1][1] = d
+        else:
+            rangos.append([d, d])
+    while len(rangos) > maximo:
+        i = min(range(len(rangos) - 1), key=lambda k: rangos[k + 1][0] - rangos[k][1])
+        rangos[i][1] = rangos[i + 1][1]
+        del rangos[i + 1]
+    return [(a, b) for a, b in rangos]
+
+
 def marcar(
     mi_rfc: str,
     desde: date,
@@ -314,16 +333,18 @@ def cerrar_dias(mi_rfc: str, resultados: dict) -> int:
     return _aplicar(mi_rfc, items)
 
 
-def uuids_por_dia(mi_rfc: str, desde: date, hasta: date) -> dict[tuple[str, str], set[str]]:
-    """UUID (en mayúsculas) del índice por (día, dirección), con la regla del
-    conteo: E si la empresa es emisora, R si es receptora, sin cancelados."""
+def uuids_por_dia(mi_rfc: str, desde: date, hasta: date,
+                  mayusculas: bool = True) -> dict[tuple[str, str], set[str]]:
+    """UUID del índice por (día, dirección), con la regla del conteo: E si la
+    empresa es emisora, R si es receptora, sin cancelados. En mayúsculas, o con
+    `mayusculas=False` tal como se guardó en `cfdis`."""
     mi_rfc = normalizar_mi_rfc(mi_rfc)
     out: dict[tuple[str, str], set[str]] = {}
     db = abrir_db()
     with db.cursor() as cur:
         filas_ = cur.execute(
             f"""
-            SELECT UPPER(uuid), substr(fecha,1,10), {_ES_EMISOR}, {_ES_RECEPTOR}
+            SELECT {"UPPER(uuid)" if mayusculas else "uuid"}, substr(fecha,1,10), {_ES_EMISOR}, {_ES_RECEPTOR}
             FROM cfdis
             WHERE mi_rfc = ? AND fecha >= ? AND fecha < ? AND {_NO_CANCELADO} AND {_FECHA_BIEN}
             """,

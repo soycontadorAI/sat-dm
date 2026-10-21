@@ -195,6 +195,7 @@ En la desktop, `procesador.db` sigue existiendo como caché local (y como único
 5. **Llenado del historial** desde la fecha elegida. ✅ Mismo cierre del planificador, mes por mes
    hacia atrás. Ver "Fase 5: lo que se implementó" abajo.
 6. **Solicitud manual inteligente**: servir de la base lo consolidado y pedir solo los huecos.
+   ✅ Ver "Fase 6: lo que se implementó" abajo.
 7. **Reportes personalizables** sobre `nodos` (plantillas). ✅ Adelantada: ver
    [`plantillas-export.md`](plantillas-export.md).
 
@@ -360,6 +361,35 @@ ingreso 58 KB de XML (5 KB comprimido), nómina 6 KB, pago 6 KB.
   completos, con diferencia, con error y el siguiente con trabajo) y `historial_completos` /
   `historial_total` por empresa. UI: selector "Llenar historial desde…" con avance y Detener en
   el panel, el mismo selector opcional al activar y "Historial: 3/20" en la lista de empresas.
+
+## Fase 6: lo que se implementó
+
+- `procesador/servir_base.py` (sin FastAPI): `plan(rfc, desde, hasta, dirección)` parte el rango
+  (recortado a hoy) en los días `consolidado` del calendario, que se sirven, y los huecos, que son
+  todo lo demás (también `diferencia` y `provisional`: no hay garantía de que el índice esté
+  completo; y un día consolidado con algún CFDI sin XML guardado), en rangos contiguos mínimos;
+  si son más de 6 se juntan los más cercanos (la misma regla del planificador, ahora
+  `calendario.rangos_contiguos`). `materializar` escribe los `{UUID}.xml` de esos días (regla E/R
+  del calendario, sin cancelados) en la carpeta convencional del rango **pedido** y lo registra
+  en el historial con canal `base`, sin reindexar. Lo que después baja cada hueco se indexa solo
+  desde las carpetas de sus paquetes (`webservice.descarga.carpeta_paquete`), no desde la del
+  rango, que comparte con lo servido.
+- `POST /solicitar/desde-base` (solo CFDI): sin huecos no toca al SAT ni al cupo y `id_solicitud`
+  es null; con huecos, una solicitud por hueco con el mismo código de `/solicitar` y cada hueco
+  queda en proceso en el calendario. Con tope de descargas en el plan se pide un solo rango del
+  primer hueco al último (cuesta 1 descarga, como `/solicitar`). Lo que bajen esas solicitudes va
+  a la misma carpeta del rango pedido (`carpeta_rango` en el catálogo). Lo consolidado se sirve
+  primero: si se sirvió algo, ningún error del SAT ni del cupo tira la petición (van a `errores`
+  con `tipo` "sat", "cupo" o "base"); si no se sirvió nada, los errores de siempre (402, 400, 503).
+  Un 5005 con una solicitud igual y viva en el catálogo (del piloto o manual sin filtros) sigue
+  esa en lugar de fallar. Con filtros por RFC no se sirve nada de la base (lo consolidado no está
+  filtrado), y si el índice falla se sigue como `/solicitar`. Fechas invertidas o un periodo que
+  empieza después de hoy: 400. `/solicitar` no cambia.
+- UI: el formulario de Web Service usa el endpoint nuevo para CFDI (Metadata sigue por
+  `/solicitar`); si todo estaba consolidado termina sin verificar ni descargar; con varias
+  solicitudes, la primera lleva el flujo y el resto lo baja el poller. Un aviso dice qué se sirvió
+  de la base, qué huecos se pidieron y qué rangos fallaron, con "Abrir carpeta" (descarga HTTP en
+  la web).
 
 ## Abierto
 
