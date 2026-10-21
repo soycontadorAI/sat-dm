@@ -1657,6 +1657,20 @@ export class SatApiClient {
   }
 
   // -----------------------------------------------------------------------
+  // Medición de anuncios (Meta): interruptor de "no participar"
+  // -----------------------------------------------------------------------
+
+  /** Si la cuenta participa en la medición de anuncios en Meta. */
+  async getMedicion(): Promise<{ participa: boolean }> {
+    return this.request<{ participa: boolean }>('/cuenta/medicion');
+  }
+
+  /** Con `false` el servicio no manda a Meta ningún evento de esta cuenta. */
+  async setMedicion(participa: boolean): Promise<{ participa: boolean }> {
+    return this.put<{ participa: boolean }>('/cuenta/medicion', { participa });
+  }
+
+  // -----------------------------------------------------------------------
   // API keys de la cuenta (gestión + conexión MCP)
   // -----------------------------------------------------------------------
   // El agente proxya a la API de servicios con el Bearer de la sesión; el

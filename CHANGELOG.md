@@ -8,6 +8,14 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Feature
 
+- **Medición de anuncios en Meta: el agente reenvía el contexto de la persona.** Para que
+  api.todoconta.com avise a Meta (API de conversiones) cuando alguien se registra, empieza la
+  prueba o paga, el agente manda en sus llamadas al servicio el user agent del navegador o de
+  Electron, el modo (`desktop` | `web`) y, solo en web, la IP del navegador (primer salto de
+  `X-Forwarded-For` detrás de Traefik). Todo en memoria: la IP nunca se escribe a disco, y las
+  llamadas del gateway (MCP, REST, Abacus) no cuentan (`sat_descarga/api/contexto_cliente.py`).
+  Ajustes trae una tarjeta **Privacidad** con el interruptor "Medición de anuncios" para no
+  participar (`/cuenta/medicion`, proxy a `/api/desktop/medicion`).
 - **Descargar CFDIs ya no vuelve a pedir al SAT lo que la base tiene consolidado.** En la
   descarga por Web Service, los días que el cuadro de control ya tiene consolidados (verificados
   contra el SAT por el cierre mensual) se sirven de la base: sus XML se guardan en la carpeta de

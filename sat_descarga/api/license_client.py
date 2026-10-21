@@ -273,14 +273,19 @@ def fetch_license_remote(session: Session) -> dict:
 
     En escritorio manda además la instalación (`X-TodoConta-Instalacion`): el
     servicio responde el campo `sesion` (sesión única, F1.1) y así esta
-    instalación se entera también aquí de que otra reclamó la cuenta."""
-    from . import sesion_unica
+    instalación se entera también aquí de que otra reclamó la cuenta.
+
+    También el contexto de la persona (user agent, modo y en web la IP): la
+    primera licencia de una cuenta arranca su prueba y el servicio avisa a Meta
+    (api/contexto_cliente.py)."""
+    from . import contexto_cliente, sesion_unica
 
     resp = _get_con_red(
         f"{API_BASE_URL}/api/desktop/license",
         headers={
             "Authorization": f"Bearer {session.access_token}",
             **sesion_unica.header_instalacion(),
+            **contexto_cliente.headers(),
         },
         timeout=10,
     )
@@ -601,12 +606,17 @@ def create_transfer_intent(
 def _post_desktop(
     session: Session, path: str, op: str, body: dict | None = None
 ) -> dict:
-    """POST a un endpoint `/api/desktop/*` con Bearer (body opcional). 401→PermissionError."""
+    """POST a un endpoint `/api/desktop/*` con Bearer (body opcional). 401→PermissionError.
+    Lleva el contexto de la persona: el checkout y la transferencia lo guardan
+    para el Purchase de Meta (api/contexto_cliente.py)."""
+    from . import contexto_cliente
+
     resp = _post_con_red(
         f"{API_BASE_URL}{path}",
         headers={
             "Authorization": f"Bearer {session.access_token}",
             "Content-Type": "application/json",
+            **contexto_cliente.headers(),
         },
         json=body,
         timeout=10,
@@ -635,7 +645,9 @@ def _request_desktop(
 ) -> requests.Response:
     """Request crudo a un endpoint `/api/desktop/*` con el Bearer del session.
     Fallos de red (DNS, timeout, TLS) → `ServicioNoDisponible`."""
-    headers = {"Authorization": f"Bearer {session.access_token}"}
+    from . import contexto_cliente
+
+    headers = {"Authorization": f"Bearer {session.access_token}", **contexto_cliente.headers()}
     if json_body is not None:
         headers["Content-Type"] = "application/json"
     try:
