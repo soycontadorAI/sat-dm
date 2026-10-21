@@ -34,6 +34,13 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Bug fix
 
+- **La sincronización de credenciales con el espacio en línea viene apagada.** Desde la 2.0.0
+  venía activada: la desktop copiaba la e.firma, su contraseña y la Contraseña del SAT al espacio
+  privado de la versión web, mientras la app decía que la e.firma nunca salía del equipo. Ahora
+  solo salen si se activa en Ajustes, Almacenamiento, o con "Usar en la web" en una empresa. Quien
+  la activó a mano la conserva; lo que ya se había copiado sigue en su espacio. Los textos del
+  alta de empresa, Empresas, la ayuda y el LÉEME del respaldo dicen dónde vive cada cosa, con su
+  versión para la web.
 - **Después de pagar con tarjeta ya no aparece un 404.** Stripe regresaba a
   `/desktop/checkout-success` y `/desktop/checkout-cancelled`, que nunca existieron. Ahora
   regresa a `/pago/listo` o `/pago/cancelado` en app.todoconta.com (sin pedir sesión: quien

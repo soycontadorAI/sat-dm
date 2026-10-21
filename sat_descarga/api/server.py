@@ -159,8 +159,8 @@ async def lifespan(app: "FastAPI"):
 app = FastAPI(
     title="SAT Descarga Masiva — Agente Local",
     description=(
-        "Servidor local para descargar CFDIs del SAT sin exponer la e-firma. "
-        "La e-firma nunca sale de tu máquina."
+        "Agente de TodoConta para descargar CFDIs del SAT sin exponer la e-firma. "
+        "En la desktop corre en tu equipo; en la web, en tu espacio privado."
     ),
     version="1.0.0",
     lifespan=lifespan,
