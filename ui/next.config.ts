@@ -46,6 +46,9 @@ const nextConfig: NextConfig = {
     // Versión visible en la UI (Ayuda, Ajustes → Acerca de). Se hornea en build
     // desde package.json — única fuente de verdad del renderer.
     NEXT_PUBLIC_APP_VERSION: packageJson.version,
+    // Entorno de Vercel (production | preview) para separar los reportes de
+    // Sentry de las previews en la versión web. Vacío fuera de Vercel.
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV || '',
   },
 };
 

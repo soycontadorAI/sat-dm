@@ -58,3 +58,30 @@ class TestBeforeSend:
         monkeypatch.setattr(telemetria, "_inicializado", False)
         # No debe lanzar aunque sentry no esté inicializado.
         telemetria.capturar_excepcion(ValueError("x"))
+
+
+class TestEntornoYRelease:
+    def test_environment_hosted_en_version_web(self, monkeypatch):
+        monkeypatch.delenv("SENTRY_ENVIRONMENT", raising=False)
+        monkeypatch.setenv("SAT_DM_MODO", "hosted")
+        assert telemetria._environment() == "hosted"
+
+    def test_environment_production_en_desktop(self, monkeypatch):
+        monkeypatch.delenv("SENTRY_ENVIRONMENT", raising=False)
+        monkeypatch.delenv("SAT_DM_MODO", raising=False)
+        assert telemetria._environment() == "production"
+
+    def test_environment_explicito_gana(self, monkeypatch):
+        monkeypatch.setenv("SENTRY_ENVIRONMENT", "development")
+        monkeypatch.setenv("SAT_DM_MODO", "hosted")
+        assert telemetria._environment() == "development"
+
+    def test_release_explicito_gana(self, monkeypatch):
+        monkeypatch.setenv("SENTRY_RELEASE", "9.9.9")
+        assert telemetria._release() == "9.9.9"
+
+    def test_release_cae_a_version_del_paquete(self, monkeypatch):
+        from importlib.metadata import version
+
+        monkeypatch.delenv("SENTRY_RELEASE", raising=False)
+        assert telemetria._release() == version("sat-descarga-masiva")

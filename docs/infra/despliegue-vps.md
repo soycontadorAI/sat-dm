@@ -105,6 +105,11 @@ bash deploy/vps/actualizar-agentes.sh   # desde el repo, por ssh
 
 ## Fuera del script (por ahora)
 
+- **Sentry de la versión web.** El agente trae el DSN horneado en la imagen
+  (`ENV SENTRY_DSN` en `docker/agente/Dockerfile`), así que todo contenedor
+  reporta en cuanto corre la imagen nueva, sin tocar `.env` ni el provisioner.
+  Mismo proyecto que la desktop, con `environment=hosted`. Para apagarlo en un
+  contenedor: recrearlo con `-e SENTRY_DSN=`.
 - **`agente-piloto`** (`/u/piloto`) es el agente de prueba de la fase 1 de la
   versión web, de antes del provisioner. No tiene tráfico real, pero mientras
   exista sigue la regla 4: `desplegar.sh agente` lo actualiza junto con los
