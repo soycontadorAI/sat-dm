@@ -17,6 +17,14 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 export const metadata: Metadata = {
   title: 'TodoConta',
   description: 'TodoConta: descarga masiva de CFDIs y trámites del SAT',
+  // Favicon de la web (en Electron no se ve): el mismo ícono de la app de escritorio.
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.png', type: 'image/png', sizes: '1024x1024' },
+    ],
+    apple: '/icon.png',
+  },
 };
 
 export default function RootLayout({

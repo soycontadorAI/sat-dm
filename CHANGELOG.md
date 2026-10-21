@@ -121,6 +121,9 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   haber borrado datos, el aviso lo dice; si al recuperarlo se pierde el UUID, un RFC o la
   fecha, se sigue rechazando. Al actualizar, el agente recorre otra vez, una sola vez, la
   carpeta de descargas de cada empresa para recuperar los que se habían quedado fuera.
+- **La web ya muestra el ícono de TodoConta en la pestaña del navegador.** app.todoconta.com
+  no declaraba favicon y `/favicon.ico` daba 404. Ahora usa el mismo ícono de la app de
+  escritorio (`favicon.ico` y `icon.png`, también como ícono de iOS).
 
 ## [2.4.0] - 2026-10-07
 
