@@ -19,6 +19,8 @@ def aislar(tmp_path, monkeypatch):
     monkeypatch.setattr(
         config_store, "descargas_dir_default", lambda: str(tmp_path / "TodoConta")
     )
+    monkeypatch.setattr(espacio_online, "_renovadas_aqui", set())
+    monkeypatch.setattr(espacio_online, "_revisadas_web", {})
 
 
 @pytest.fixture
@@ -223,6 +225,128 @@ class TestSincronizarCredenciales:
         resultado = espacio_online.sincronizar_credenciales()
         assert resultado["bajadas"] == [f"{test_rfc}:fiel"]
         assert list((tmp_path / "efirma" / test_rfc).glob("anterior_*"))
+
+
+class _Resp:
+    def __init__(self, data):
+        self._data = data
+        self.status_code = 200
+
+    def json(self):
+        return self._data
+
+
+class TestRenovadaConSincronizacionApagada:
+    """Con el ajuste apagado, una renovación solo cambia la e.firma revocada
+    donde el usuario ya la tenía: nada nuevo sube ni baja."""
+
+    @pytest.fixture(autouse=True)
+    def apagada(self, monkeypatch):
+        config_store.set_sync_credenciales(False)
+        self.conexiones = []
+
+        def conectar():
+            self.conexiones.append(1)
+            return ("http://esp", "tok")
+
+        monkeypatch.setattr(espacio_online, "_conectar_espacio", conectar)
+        self.subidas = []
+        monkeypatch.setattr(
+            espacio_online, "subir_credenciales",
+            lambda rfc, metodos, conexion=None: self.subidas.append((rfc, metodos)),
+        )
+
+    def test_renovada_aqui_reemplaza_la_de_la_web(self, monkeypatch, test_cer, test_key,
+                                                  test_password, test_rfc):
+        config_store.add_empresa("Local", test_cer, test_key, test_password)
+        config_store.add_empresa_ciec(test_rfc, "Local", "ciec-solo-aqui")
+        monkeypatch.setattr(espacio_online.requests, "get", lambda *a, **k: _Resp(
+            {"empresas": [{"rfc": test_rfc, "nombre": "Local", "metodos": ["fiel"],
+                           "vencimiento": "2001-01-01", "archived_at": None}]}
+        ))
+        espacio_online.marcar_renovada(test_rfc)
+
+        resultado = espacio_online.sincronizar_credenciales()
+        # Solo la e.firma: la CIEC nunca se subió y no se sube ahora.
+        assert self.subidas == [(test_rfc, ["fiel"])]
+        assert resultado == {"subidas": [test_rfc], "bajadas": []}
+        # Ya reemplazada: la siguiente pasada ni se conecta.
+        assert espacio_online.sincronizar_credenciales() is None
+        assert len(self.conexiones) == 1
+
+    def test_renovada_aqui_no_sube_si_la_web_no_la_tenia(self, monkeypatch, test_cer,
+                                                        test_key, test_password, test_rfc):
+        config_store.add_empresa("Local", test_cer, test_key, test_password)
+        monkeypatch.setattr(
+            espacio_online.requests, "get", lambda *a, **k: _Resp({"empresas": []})
+        )
+        espacio_online.marcar_renovada(test_rfc)
+
+        assert espacio_online.sincronizar_credenciales() == {"subidas": [], "bajadas": []}
+        assert self.subidas == []
+        assert espacio_online.sincronizar_credenciales() is None
+
+    def test_renovada_aqui_que_no_se_pudo_subir_se_reintenta(
+        self, monkeypatch, test_cer, test_key, test_password, test_rfc,
+    ):
+        config_store.add_empresa("Local", test_cer, test_key, test_password)
+        monkeypatch.setattr(espacio_online.requests, "get", lambda *a, **k: _Resp(
+            {"empresas": [{"rfc": test_rfc, "metodos": ["fiel"],
+                           "vencimiento": "2001-01-01", "archived_at": None}]}
+        ))
+
+        def falla(*a, **k):
+            raise espacio_online.EspacioOnlineError("sin red")
+
+        monkeypatch.setattr(espacio_online, "subir_credenciales", falla)
+        espacio_online.marcar_renovada(test_rfc)
+        espacio_online.sincronizar_credenciales()
+        assert espacio_online._renovadas_aqui == {test_rfc}
+
+    def test_renovada_en_la_web_reemplaza_la_de_aqui(self, monkeypatch, tmp_path, test_cer,
+                                                     test_key, test_password, test_rfc):
+        config_store.add_empresa("Local", test_cer, test_key, test_password)
+        # El catálogo trae, de la web, una e.firma que vence después.
+        config_store.aplicar_sync_remoto([{
+            "rfc": test_rfc, "nombre": "Local", "metodos": ["fiel"],
+            "vencimiento": "2099-12-31", "updated_at": "2099-01-01T00:00:00+00:00",
+        }])
+        assert config_store.get_empresa(test_rfc)["vencimiento"] != "2099-12-31"
+
+        with open(test_cer, "rb") as c, open(test_key, "rb") as k:
+            fiel_b64 = {
+                "cer_b64": base64.b64encode(c.read()).decode(),
+                "key_b64": base64.b64encode(k.read()).decode(),
+                "password": test_password,
+            }
+
+        def _get(url, **kwargs):
+            if url.endswith("/empresas"):
+                return _Resp({"empresas": [
+                    {"rfc": test_rfc, "nombre": "Local", "metodos": ["fiel", "ciec"],
+                     "vencimiento": "2099-12-31", "archived_at": None},
+                    {"rfc": "WEB010101AAA", "metodos": ["ciec"], "archived_at": None},
+                ]})
+            if url.endswith(f"/empresas/{test_rfc}/credenciales"):
+                return _Resp({"rfc": test_rfc, "nombre": "Local",
+                              "fiel": fiel_b64, "ciec": "ciec-solo-en-la-web"})
+            raise AssertionError(f"GET inesperado: {url}")
+
+        monkeypatch.setattr(espacio_online.requests, "get", _get)
+        resultado = espacio_online.sincronizar_credenciales()
+        # Solo la e.firma: ni la CIEC ni la empresa que nada más está en la web.
+        assert resultado == {"subidas": [], "bajadas": [f"{test_rfc}:fiel"]}
+        assert not config_store.get_empresa(test_rfc).get("ciec")
+        assert "WEB010101AAA" not in {e["rfc"] for e in config_store.list_empresas()}
+        assert list((tmp_path / "efirma" / test_rfc).glob("anterior_*"))
+        # Revisada: el poller no vuelve a conectarse por el mismo vencimiento.
+        assert espacio_online.sincronizar_credenciales() is None
+        assert len(self.conexiones) == 1
+
+    def test_sin_renovacion_no_se_conecta(self, test_cer, test_key, test_password):
+        config_store.add_empresa("Local", test_cer, test_key, test_password)
+        assert espacio_online.sincronizar_credenciales() is None
+        assert self.conexiones == []
 
 
 def test_export_no_incluye_paths_locales(client, monkeypatch):

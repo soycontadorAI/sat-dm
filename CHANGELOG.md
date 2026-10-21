@@ -15,8 +15,9 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   tarda en emitirlo, "Descargar certificado" lo busca en la Recuperación pública de
   certificados (con captcha) y solo acepta el que empareja con la llave nueva: la e.firma
   anterior ya quedó revocada y no sirve para entrar a CertiSAT. La e.firma renovada
-  reemplaza a la vieja en el otro lado (escritorio ⇄ web) con el sync de credenciales, y un
-  aviso diario recuerda una renovación a medias. Endpoint nuevo `POST /renovar/generar`;
+  reemplaza a la vieja en el otro lado (escritorio ⇄ web) con el sync de credenciales,
+  incluso con la sincronización apagada (solo donde ya estaba la vieja: nada nuevo sube ni
+  baja), y un aviso diario recuerda una renovación a medias. Endpoint nuevo `POST /renovar/generar`;
   CLI `sat-dm recuperar ren --publica`. Detalle:
   `docs/producto/renovacion-csd-ui-integracion.md`.
 - **Descargar CFDIs ya no vuelve a pedir al SAT lo que la base tiene consolidado.** En la

@@ -538,6 +538,9 @@ def list_empresas() -> list[dict]:
             # Sync de catálogo: métodos con credenciales EN OTRA instalación
             # (badge "requiere credenciales aquí" cuando local no tiene).
             "metodos_sync": info.get("metodos_sync", []),
+            # Vencimiento de la e.firma que reporta la otra instalación, cuando
+            # aquí también hay una (si vence después, allá se renovó).
+            "vencimiento_sync": info.get("vencimiento_sync"),
             "updated_at": info.get("updated_at"),
             # Descarga automática (piloto): incluida salvo que el usuario la saque.
             "piloto_incluida": info.get("piloto_incluida", True) is not False,
@@ -871,9 +874,14 @@ def aplicar_sync_remoto(remotas: list[dict]) -> int:
             ]
             local["archived_at"] = r.get("archived_at") or None
             # El vencimiento local viene del certificado real: solo se adopta
-            # el remoto cuando aquí NO hay e.firma cargada.
-            if not local.get("cer_path") and r.get("vencimiento"):
-                local["vencimiento"] = r["vencimiento"]
+            # el remoto cuando aquí NO hay e.firma cargada. Si la hay, se guarda
+            # aparte: uno más lejano quiere decir que allá se renovó y la de
+            # aquí quedó revocada (ver espacio_online.sincronizar_credenciales).
+            if r.get("vencimiento"):
+                if local.get("cer_path"):
+                    local["vencimiento_sync"] = r["vencimiento"]
+                else:
+                    local["vencimiento"] = r["vencimiento"]
             # Tracking de documentos: field-level y solo hacia adelante — una
             # fila remota más nueva por OTRO campo no borra lo descargado aquí.
             for campo in ("csf_descargada_en", "opinion_descargada_en"):

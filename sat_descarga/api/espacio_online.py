@@ -185,21 +185,56 @@ def _fiel_mas_nueva(a: dict, b: dict) -> bool:
     )
 
 
+# Renovaciones que, con la sincronización APAGADA, obligan a revisar el espacio:
+# la e.firma vieja quedó revocada y, si estaba en los dos lados, el otro se
+# quedaría con ella. En memoria: el sync corre justo después de renovar.
+_renovadas_aqui: set[str] = set()
+# Vencimientos de la web ya revisados en esta sesión: si el espacio no tenía la
+# e.firma nueva, no se vuelve a conectar en cada pasada del poller.
+_revisadas_web: dict[str, str] = {}
+
+
+def marcar_renovada(rfc: str) -> None:
+    """La e.firma de `rfc` se acaba de renovar en este equipo."""
+    _renovadas_aqui.add(rfc)
+
+
+def _renovada_en_la_web(empresa: dict) -> bool:
+    """El catálogo dice que la otra instalación tiene una e.firma que vence
+    después que la de aquí (allá se renovó), y aún no se revisó."""
+    vs = empresa.get("vencimiento_sync") or ""
+    return (
+        "fiel" in empresa.get("metodos", [])
+        and vs > (empresa.get("vencimiento") or "")
+        and _revisadas_web.get(empresa["rfc"]) != vs
+    )
+
+
 def sincronizar_credenciales() -> dict | None:
     """
     Replica credenciales entre este equipo y el espacio en línea del usuario,
     en ambos sentidos — la nube no puede alcanzar este equipo, así que la
     desktop siempre inicia: EMPUJA lo que a la web le falta y JALA lo que se
     capturó en la web (alta local automática). Una e.firma más nueva (renovada)
-    reemplaza a la del otro lado. Solo corre con el ajuste "sincronizar
-    credenciales" activado. Best-effort: nunca lanza.
+    reemplaza a la del otro lado.
+
+    Con el ajuste "sincronizar credenciales" apagado solo hace eso último, y
+    solo cuando hubo una renovación: cambia la e.firma revocada por la nueva
+    donde el usuario ya la tenía, nunca sube ni baja una que el otro lado no
+    tuviera. Sin renovación de por medio ni se conecta. Best-effort: nunca lanza.
     """
     import base64
     import tempfile
 
     from ..cli import config_store
 
-    if not config_store.get_sync_credenciales():
+    locales = {e["rfc"]: e for e in config_store.list_empresas()}
+    solo_renovadas = not config_store.get_sync_credenciales()
+    web_renovadas = {
+        rfc: loc["vencimiento_sync"]
+        for rfc, loc in locales.items() if _renovada_en_la_web(loc)
+    }
+    if solo_renovadas and not (_renovadas_aqui or web_renovadas):
         return None
     try:
         conexion = _conectar_espacio()
@@ -217,7 +252,9 @@ def sincronizar_credenciales() -> dict | None:
         remotas = {e["rfc"]: e for e in r.json().get("empresas", [])}
     except (requests.RequestException, ValueError):
         return None
-    locales = {e["rfc"]: e for e in config_store.list_empresas()}
+    _revisadas_web.update(web_renovadas)
+    renovadas = set(_renovadas_aqui)
+    reintentar: set[str] = set()
 
     subidas: list[str] = []
     bajadas: list[str] = []
@@ -227,7 +264,9 @@ def sincronizar_credenciales() -> dict | None:
         if loc.get("archived_at"):
             continue
         rem = remotas.get(rfc) or {}
-        faltan = [m for m in loc.get("metodos", []) if m not in rem.get("metodos", [])]
+        faltan = [] if solo_renovadas else [
+            m for m in loc.get("metodos", []) if m not in rem.get("metodos", [])
+        ]
         if _fiel_mas_nueva(loc, rem):
             faltan.append("fiel")
         if not faltan:
@@ -237,13 +276,16 @@ def sincronizar_credenciales() -> dict | None:
             subidas.append(rfc)
         except (EspacioOnlineError, KeyError) as e:
             logger.info("[espacio] push de %s omitido: %s", rfc, e)
+            reintentar.add(rfc)
+    # Una renovada que no se pudo subir se reintenta en la siguiente pasada.
+    _renovadas_aqui.difference_update(renovadas - reintentar)
 
     # Pull: credenciales capturadas en la web que aquí faltan.
     for rfc, rem in remotas.items():
         if rem.get("archived_at"):
             continue
         loc = locales.get(rfc)
-        faltan = [
+        faltan = [] if solo_renovadas else [
             m for m in rem.get("metodos", [])
             if m not in (loc or {}).get("metodos", [])
         ]

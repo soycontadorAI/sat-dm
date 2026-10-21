@@ -230,9 +230,12 @@ def _instalar_efirma_renovada(rfc: str, cer_nuevo: str, key_nueva: str, password
         except Exception as e:  # noqa: BLE001 — la sesión se recarga al reabrir
             logger.warning("No se pudo recargar la sesión con la e.firma renovada: %s", e)
     # La e.firma del otro lado (escritorio ⇄ web) quedó revocada: el sync de
-    # credenciales la reemplaza por esta, que vence después.
+    # credenciales la reemplaza por esta, que vence después, aunque la
+    # sincronización esté apagada (solo donde ya estaba la vieja).
+    from ..espacio_online import marcar_renovada
     from ..sync_empresas import sincronizar_async
 
+    marcar_renovada(rfc)
     sincronizar_async("renovacion")
 
 

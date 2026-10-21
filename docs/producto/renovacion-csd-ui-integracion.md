@@ -183,6 +183,14 @@ con cuatro cambios sobre lo de julio:
    (`api/espacio_online.py`) ya no solo sube/baja lo que "falta": si los dos lados
    tienen e.firma y una vence después, esa reemplaza a la otra (la otra quedó
    revocada), con respaldo `anterior_*` antes. La renovación dispara el sync.
+   - **Con la sincronización apagada** (el default desde la PR de "sincronización
+     apagada") el sync no se conecta, salvo para esto: si la e.firma se renovó en
+     este equipo (`marcar_renovada`) o el catálogo trae de la otra instalación un
+     vencimiento más lejano (`vencimiento_sync`), hace una pasada que solo
+     reemplaza la e.firma donde los dos lados ya tenían una. No sube ni baja
+     empresas, CIEC ni e.firmas que el otro lado no tuviera. Un vencimiento de la
+     web ya revisado no se vuelve a revisar en la sesión (el poller no se conecta
+     cada 30 min por lo mismo).
 4. **Web**: el copy del asistente distingue "este equipo" de "tu espacio en línea"
    (en la web la `.key` nueva nace en el contenedor, y el respaldo es la copia del
    usuario).
