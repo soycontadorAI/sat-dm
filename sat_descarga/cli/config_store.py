@@ -319,18 +319,35 @@ def _efirma_dir(rfc: str) -> Path:
 
 
 # Aviso que acompaña al respaldo VISIBLE de la e.firma en la carpeta de descargas.
-# Deja claro el modelo de privacidad: todo se queda en el equipo del usuario y la
-# contraseña NO se guarda en ningún archivo (solo cifrada en el keychain del SO).
+# Deja claro el modelo de privacidad tal como es: en la desktop todo se queda en el
+# equipo salvo que el usuario active la sincronización o "Usar en la web"; en modo
+# hosted la copia vive en su espacio privado en el VPS. En ningún caso la contraseña
+# va en un archivo legible.
 _LEEME_RESPALDO_FIEL = """\
 Respaldo de tu e.firma — {rfc}
 
 Esta carpeta contiene una COPIA de tu e.firma (fiel.cer y fiel.key) hecha por TodoConta.
 
-• Todo queda en tu equipo. TodoConta NUNCA sube tu e.firma a ningún servidor ni
-  conserva una copia fuera de tu computadora.
+• Tu e.firma se queda en este equipo. Solo sale si tú lo activas: la sincronización
+  con tu espacio en línea (Ajustes, Almacenamiento) o "Usar en la web" en esta
+  empresa. En ese caso viaja cifrada a tu espacio privado, nunca a otro lugar.
 • Tu CONTRASEÑA no se guarda aquí ni en ningún archivo. Vive cifrada en el llavero
   de tu sistema operativo (Windows Credential Manager / macOS Keychain), solo por
   comodidad para no pedírtela en cada descarga.
+• Resguarda tu contraseña en un lugar seguro: si la pierdes NO podemos recuperarla
+  (el .key está cifrado con esa misma contraseña). El camino oficial es revocar y
+  regenerar tu e.firma en sat.gob.mx con tu CURP y correo.
+"""
+
+_LEEME_RESPALDO_FIEL_WEB = """\
+Respaldo de tu e.firma — {rfc}
+
+Esta carpeta contiene una COPIA de tu e.firma (fiel.cer y fiel.key) hecha por TodoConta.
+
+• Está en tu espacio privado de TodoConta en línea, separado del de cualquier otra
+  cuenta. Desde aquí se hacen tus descargas directamente con el SAT.
+• Tu CONTRASEÑA no se guarda aquí. Vive cifrada en tu espacio, solo para no
+  pedírtela en cada descarga.
 • Resguarda tu contraseña en un lugar seguro: si la pierdes NO podemos recuperarla
   (el .key está cifrado con esa misma contraseña). El camino oficial es revocar y
   regenerar tu e.firma en sat.gob.mx con tu CURP y correo.
@@ -352,9 +369,10 @@ def _respaldar_fiel_en_descargas(rfc: str, cer_dest: Path, key_dest: Path) -> No
         backup_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(cer_dest, backup_dir / "fiel.cer")
         shutil.copy2(key_dest, backup_dir / "fiel.key")
-        (backup_dir / "LÉEME.txt").write_text(
-            _LEEME_RESPALDO_FIEL.format(rfc=rfc), encoding="utf-8"
-        )
+        from sat_descarga.core.config import es_modo_hosted
+
+        leeme = _LEEME_RESPALDO_FIEL_WEB if es_modo_hosted() else _LEEME_RESPALDO_FIEL
+        (backup_dir / "LÉEME.txt").write_text(leeme.format(rfc=rfc), encoding="utf-8")
     except Exception as e:  # noqa: BLE001 — best-effort, nunca debe romper el alta
         logger.warning(
             "No se pudo guardar el respaldo de la e.firma de %s en descargas: %s", rfc, e
@@ -1463,14 +1481,15 @@ def set_piloto_incluida(rfc: str, incluida: bool) -> None:
 
 
 def get_sync_credenciales() -> bool:
-    """Continuidad de credenciales con el espacio en línea (default: activada).
+    """Continuidad de credenciales con el espacio en línea (default: APAGADA).
 
-    ⚠️ El default cambia la promesa histórica "tu e.firma nunca sale de tu
-    equipo" → "…salvo a TU espacio privado": anunciado en el release y
-    desactivable aquí (Ajustes → Sincronización).
+    Por default la e.firma y la Contraseña del SAT se quedan solo en este equipo;
+    viajan a TU espacio privado únicamente si el usuario lo activa en Ajustes →
+    Almacenamiento (o con "Usar en la web" en una empresa). Quien lo activó a
+    mano conserva su valor; sin valor guardado cuenta como apagado (Israel,
+    2026-10-20: antes venía activado y contradecía el copy y el aviso).
     """
-    valor = _load_settings().get("sync_credenciales")
-    return True if valor is None else bool(valor)
+    return bool(_load_settings().get("sync_credenciales"))
 
 
 def set_sync_credenciales(activado: bool) -> bool:

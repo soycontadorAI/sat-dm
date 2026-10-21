@@ -21,6 +21,7 @@ import {
 import { Icon } from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { esWeb } from '@/lib/modo';
 import {
   Dialog,
   DialogContent,
@@ -326,13 +327,21 @@ function EmpresasContenido() {
 
       <div className="flex items-center gap-2.5 rounded-lg border bg-card px-4 py-3.5 text-[13px] text-muted-foreground">
         <Icon icon="ph:key-light" className="size-4.5 shrink-0" />
-        <span>
-          e.firma y Contraseña del SAT se guardan{' '}
-          <span className="font-semibold text-foreground">
-            protegidas y solo en este equipo
+        {esWeb() ? (
+          <span>
+            e.firma y Contraseña del SAT se guardan{' '}
+            <span className="font-semibold text-foreground">
+              cifradas en tu espacio privado
+            </span>
+            . Nunca se muestran a la vista y solo se usan para conectarte con el SAT.
           </span>
-          . Nunca se muestran a la vista ni se envían a internet.
-        </span>
+        ) : (
+          <span>
+            e.firma y Contraseña del SAT se guardan{' '}
+            <span className="font-semibold text-foreground">protegidas en este equipo</span>. Solo
+            salen de aquí si activas la sincronización con tu espacio en línea en Ajustes.
+          </span>
+        )}
       </div>
 
       <EmpresaAddDialog

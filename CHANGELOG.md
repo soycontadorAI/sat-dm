@@ -84,6 +84,13 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Bug fix
 
+- **La sincronización de credenciales con el espacio en línea viene apagada.** Desde la 2.0.0
+  venía activada: la desktop copiaba la e.firma, su contraseña y la Contraseña del SAT al espacio
+  privado de la versión web, mientras la app decía que la e.firma nunca salía del equipo. Ahora
+  solo salen si se activa en Ajustes, Almacenamiento, o con "Usar en la web" en una empresa. Quien
+  la activó a mano la conserva; lo que ya se había copiado sigue en su espacio. Los textos del
+  alta de empresa, Empresas, la ayuda y el LÉEME del respaldo dicen dónde vive cada cosa, con su
+  versión para la web.
 - **El agente de soporte ya lee la Constancia de Situación Fiscal que el cliente adjunta.** Antes ignoraba todos los adjuntos y el borrador pedía RFC, razón social y domicilio que ya venían en el PDF. Ahora lee los PDF en local (pdfplumber, sin LLM ni costo por correo): detecta la constancia y saca RFC, nombre, régimen y CP fiscal. Al modelo solo le llega qué se leyó, no los datos fiscales; el aviso a Israel trae esos datos listos para facturar. La imagen de ops suma `pdfplumber==0.11.10` (hay que reconstruirla al desplegar).
 - **Una solicitud del Web Service lista pero sin bajar ya no se reintenta para siempre.** Si sus
   paquetes no se pudieron descargar en 72 h (lo que el SAT los guarda), queda vencida con el

@@ -281,15 +281,16 @@ export default function AjustesPage() {
             sub="Las facturas se ordenan en subcarpetas por tipo y por RFC."
             control={<span className="text-xs text-muted-foreground">Automática</span>}
           />
-          {/* Continuidad de credenciales (solo desktop): viajan cifradas
-              directo al espacio privado del usuario, nunca a BD compartidas. */}
+          {/* Continuidad de credenciales (solo desktop, apagada por default):
+              al activarla viajan cifradas directo al espacio privado del
+              usuario, nunca a BD compartidas. */}
           {!web && (
             <AjRow
               label="Sincronizar credenciales con mi espacio en línea"
-              sub="Tu e.firma y Contraseña del SAT viajan cifradas directo a tu espacio privado (nunca a bases de datos compartidas) para que puedas seguir trabajando desde el navegador, y lo que captures en la web aparezca aquí."
+              sub="Apagado, tu e.firma y tu Contraseña del SAT se quedan solo en este equipo. Si lo activas, viajan cifradas directo a tu espacio privado (nunca a bases de datos compartidas) para que puedas trabajar también desde el navegador, y lo que captures en la web aparece aquí."
               control={
                 <Switch
-                  checked={syncCreds ?? true}
+                  checked={syncCreds ?? false}
                   disabled={syncCreds === null}
                   onCheckedChange={cambiarSyncCreds}
                 />
