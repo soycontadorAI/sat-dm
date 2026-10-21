@@ -31,6 +31,8 @@ TIPO_RENOVACION = "renovacion"  # e.firma: .ren/.key/acuse/cer del trámite de r
 TIPO_CSD = "csd"                # CSD: .sdg/.key/acuse/cer por solicitud de sello
 TIPO_CE = "ce"                  # contabilidad electrónica: acuses AR_/AP_ por envío
 TIPO_DECLARACION = "declaracion"  # declaraciones presentadas + acuses, por periodo YYYY-MM
+TIPO_METADATA = "metadata"      # metadata del Web Service (TXT del SAT), aparte de los XML
+SUB_FOLIOS = "folios"           # solicitudes por UUID (sin rango de fechas)
 
 SUB_EMITIDOS = "emitidos"       # colecciones en plural
 SUB_RECIBIDOS = "recibidos"
@@ -78,6 +80,29 @@ def dir_cfdi(
     if AGRUPAR_POR_EVENTO and desde is not None and hasta is not None:
         d = d / etiqueta_rango(desde, hasta)
     return d
+
+
+def dir_metadata(
+    rfc: str,
+    tipo: str,
+    desde: date,
+    hasta: date,
+    *,
+    salida_base: Optional[Union[str, Path]] = None,
+) -> Path:
+    """``descargas/metadata/{RFC}/{emitidos|recibidos}/{desde}_a_{hasta}/``
+
+    Aparte de los XML: el lector de metadata (`utils/metadata.py`) toma los ZIP
+    de la carpeta y no debe encontrarse con los paquetes de CFDI."""
+    return (_raiz(salida_base) / TIPO_METADATA / rfc.strip().upper()
+            / _SUB_POR_TIPO[tipo.strip().upper()] / etiqueta_rango(desde, hasta))
+
+
+def dir_folios(rfc: str, id_solicitud: str, *,
+               salida_base: Optional[Union[str, Path]] = None) -> Path:
+    """``descargas/cfdi/{RFC}/folios/{id_solicitud}/`` — solicitudes por UUID: sin
+    fechas no caben en un rango, y así su indexado no recorre toda la empresa."""
+    return dir_cfdi_base(rfc, salida_base=salida_base) / SUB_FOLIOS / id_solicitud
 
 
 def dir_cfdi_base(rfc: str, *, salida_base: Optional[Union[str, Path]] = None) -> Path:

@@ -17,6 +17,7 @@ import { StatusBar } from '@/components/layout/status-bar';
 import { Titlebar } from '@/components/layout/titlebar';
 import { useEfirmaReminder } from '@/hooks/use-efirma-reminder';
 import { useSolicitudesWatcher } from '@/hooks/use-solicitudes-watcher';
+import { usePilotoAvisos } from '@/hooks/use-piloto-avisos';
 import { useAuth, usePlanesV3 } from '@/providers/auth-provider';
 import { useNavegacion } from '@/providers/navegacion-provider';
 import { useServer } from '@/providers/server-provider';
@@ -34,6 +35,8 @@ export function AppShell({ children }: AppShellProps) {
   // las resuelve en background con el poller) y notifica éxitos/fallas por
   // empresa — en rojo cuando algo falló o venció.
   useSolicitudesWatcher();
+  // Avisos de la descarga automática (resumen del cierre, cancelaciones, e.firma).
+  usePilotoAvisos();
 
   const { license, loading } = useAuth();
   const { modo } = useNavegacion();
@@ -46,7 +49,10 @@ export function AppShell({ children }: AppShellProps) {
   // (Versión web) La vuelta de Google (/acceso/google) tampoco necesita sesión:
   // esa página canjea el código y conecta con el agente por su cuenta.
   const esAcceso = esWeb() && !!pathname && pathname.startsWith('/acceso');
-  const sinSesion = esConectar || esAcceso;
+  // (Versión web) La vuelta de Stripe (/pago/listo, /pago/cancelado) se abre en
+  // el navegador del SO, también para quien pagó desde la desktop sin sesión web.
+  const esPago = esWeb() && !!pathname && pathname.startsWith('/pago');
+  const sinSesion = esConectar || esAcceso || esPago;
 
   if (loading && !sinSesion) {
     return (

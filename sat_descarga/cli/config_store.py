@@ -319,18 +319,35 @@ def _efirma_dir(rfc: str) -> Path:
 
 
 # Aviso que acompaña al respaldo VISIBLE de la e.firma en la carpeta de descargas.
-# Deja claro el modelo de privacidad: todo se queda en el equipo del usuario y la
-# contraseña NO se guarda en ningún archivo (solo cifrada en el keychain del SO).
+# Deja claro el modelo de privacidad tal como es: en la desktop todo se queda en el
+# equipo salvo que el usuario active la sincronización o "Usar en la web"; en modo
+# hosted la copia vive en su espacio privado en el VPS. En ningún caso la contraseña
+# va en un archivo legible.
 _LEEME_RESPALDO_FIEL = """\
 Respaldo de tu e.firma — {rfc}
 
 Esta carpeta contiene una COPIA de tu e.firma (fiel.cer y fiel.key) hecha por TodoConta.
 
-• Todo queda en tu equipo. TodoConta NUNCA sube tu e.firma a ningún servidor ni
-  conserva una copia fuera de tu computadora.
+• Tu e.firma se queda en este equipo. Solo sale si tú lo activas: la sincronización
+  con tu espacio en línea (Ajustes, Almacenamiento) o "Usar en la web" en esta
+  empresa. En ese caso viaja cifrada a tu espacio privado, nunca a otro lugar.
 • Tu CONTRASEÑA no se guarda aquí ni en ningún archivo. Vive cifrada en el llavero
   de tu sistema operativo (Windows Credential Manager / macOS Keychain), solo por
   comodidad para no pedírtela en cada descarga.
+• Resguarda tu contraseña en un lugar seguro: si la pierdes NO podemos recuperarla
+  (el .key está cifrado con esa misma contraseña). El camino oficial es revocar y
+  regenerar tu e.firma en sat.gob.mx con tu CURP y correo.
+"""
+
+_LEEME_RESPALDO_FIEL_WEB = """\
+Respaldo de tu e.firma — {rfc}
+
+Esta carpeta contiene una COPIA de tu e.firma (fiel.cer y fiel.key) hecha por TodoConta.
+
+• Está en tu espacio privado de TodoConta en línea, separado del de cualquier otra
+  cuenta. Desde aquí se hacen tus descargas directamente con el SAT.
+• Tu CONTRASEÑA no se guarda aquí. Vive cifrada en tu espacio, solo para no
+  pedírtela en cada descarga.
 • Resguarda tu contraseña en un lugar seguro: si la pierdes NO podemos recuperarla
   (el .key está cifrado con esa misma contraseña). El camino oficial es revocar y
   regenerar tu e.firma en sat.gob.mx con tu CURP y correo.
@@ -352,9 +369,10 @@ def _respaldar_fiel_en_descargas(rfc: str, cer_dest: Path, key_dest: Path) -> No
         backup_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(cer_dest, backup_dir / "fiel.cer")
         shutil.copy2(key_dest, backup_dir / "fiel.key")
-        (backup_dir / "LÉEME.txt").write_text(
-            _LEEME_RESPALDO_FIEL.format(rfc=rfc), encoding="utf-8"
-        )
+        from sat_descarga.core.config import es_modo_hosted
+
+        leeme = _LEEME_RESPALDO_FIEL_WEB if es_modo_hosted() else _LEEME_RESPALDO_FIEL
+        (backup_dir / "LÉEME.txt").write_text(leeme.format(rfc=rfc), encoding="utf-8")
     except Exception as e:  # noqa: BLE001 — best-effort, nunca debe romper el alta
         logger.warning(
             "No se pudo guardar el respaldo de la e.firma de %s en descargas: %s", rfc, e
@@ -539,6 +557,8 @@ def list_empresas() -> list[dict]:
             # (badge "requiere credenciales aquí" cuando local no tiene).
             "metodos_sync": info.get("metodos_sync", []),
             "updated_at": info.get("updated_at"),
+            # Descarga automática (piloto): incluida salvo que el usuario la saque.
+            "piloto_incluida": info.get("piloto_incluida", True) is not False,
         })
     return result
 
@@ -1063,6 +1083,14 @@ def set_default(rfc: str):
 #   "descargada"  — paquetes descargados con éxito
 ESTADOS_PENDIENTES = frozenset({"solicitada", "1", "2"})
 
+
+def es_metadata(sol: Optional[dict]) -> bool:
+    """¿La solicitud del catálogo es de Metadata (TXT del SAT, no XML)? Las de
+    antes no traen `tipo_solicitud`: se reconoce por su `tipo` ("Metadata · …")."""
+    sol = sol or {}
+    tipo = str(sol.get("tipo_solicitud") or sol.get("tipo") or "")
+    return tipo.strip().lower().startswith("metadata")
+
 # El SAT se compromete a resolver una solicitud en máximo 72 horas. Pasado ese
 # plazo (con margen) la marcamos vencida localmente para que no quede "abierta"
 # para siempre — el usuario puede volver a solicitarla.
@@ -1132,9 +1160,15 @@ def save_solicitud(
     *,
     tipo_comprobante: Optional[str] = None,  # "E" (emitidos) / "R" (recibidos)
     cuando: Optional[datetime] = None,
+    **extra,
 ):
     """Guarda una solicitud WS. `tipo_comprobante` se conserva para luego ubicar la
-    descarga en la carpeta correcta (`{RFC}/{emitidos|recibidos}/{rango}/`)."""
+    descarga en la carpeta correcta (`{RFC}/{emitidos|recibidos}/{rango}/`).
+
+    `extra`: campos estructurados que no caben en `tipo` (texto para la UI):
+    `tipo_solicitud` ("CFDI" | "Metadata"), `uuids` (por folio), y los de la
+    descarga automática: `origen` ("piloto"), `proposito` y `periodo`. Los
+    `None` no se guardan."""
     with _solicitudes_lock:
         data = _load_solicitudes(rfc)
         registro = {
@@ -1147,6 +1181,7 @@ def save_solicitud(
         }
         if tipo_comprobante:
             registro["tipo_comprobante"] = tipo_comprobante.strip().upper()
+        registro.update({k: v for k, v in extra.items() if v is not None})
         data["solicitudes"].append(registro)
         _save_solicitudes(rfc, data)
 
@@ -1159,14 +1194,20 @@ def update_solicitud(
     *,
     mensaje: Optional[str] = None,
     numero_cfdis: Optional[int] = None,
+    cod_estatus: Optional[str] = None,
+    codigo_estado_solicitud: Optional[str] = None,
 ):
     """Actualiza el estado y, opcionalmente, los campos auxiliares que devuelve el
-    SAT en /verificar (mensaje, numero_cfdis). Estos últimos alimentan los detalles
-    de la fila expandida en la UI."""
+    SAT en /verificar (mensaje, numero_cfdis, cod_estatus y
+    codigo_estado_solicitud). Alimentan los detalles de la fila expandida en la UI
+    y el cuadro de control (CodigoEstadoSolicitud 5004 = sin datos en el periodo)."""
     with _solicitudes_lock:
         data = _load_solicitudes(rfc)
         for sol in data["solicitudes"]:
             if sol["id_solicitud"] == id_solicitud:
+                if estado == "3" and not sol.get("lista_en"):
+                    # Desde aquí corren las 72 h de vida de sus paquetes.
+                    sol["lista_en"] = _marca_de_tiempo(None)
                 sol["estado"] = estado
                 if package_ids is not None:
                     sol["package_ids"] = package_ids
@@ -1174,8 +1215,25 @@ def update_solicitud(
                     sol["mensaje"] = mensaje
                 if numero_cfdis is not None:
                     sol["numero_cfdis"] = numero_cfdis
+                if cod_estatus is not None:
+                    sol["cod_estatus"] = cod_estatus
+                if codigo_estado_solicitud:
+                    sol["codigo_estado_solicitud"] = codigo_estado_solicitud
                 break
         _save_solicitudes(rfc, data)
+
+
+def marcar_solicitud(rfc: str, id_solicitud: str, **campos) -> bool:
+    """Agrega o cambia campos estructurados de una solicitud (p. ej. que la
+    descarga automática ya la revisó). True si la encontró."""
+    with _solicitudes_lock:
+        data = _load_solicitudes(rfc)
+        for sol in data["solicitudes"]:
+            if sol["id_solicitud"] == id_solicitud:
+                sol.update(campos)
+                _save_solicitudes(rfc, data)
+                return True
+    return False
 
 
 def delete_solicitud(rfc: str, id_solicitud: str) -> bool:
@@ -1212,6 +1270,23 @@ def marcar_solicitudes_vencidas(
     with _solicitudes_lock:
         data = _load_solicitudes(rfc)
         for sol in data["solicitudes"]:
+            if sol.get("estado") == "3":
+                # Lista pero sin bajar: sus paquetes viven 72 h en el SAT (5007
+                # después). Sin esto el poller la reintentaría para siempre.
+                ts = sol.get("lista_en") or sol.get("timestamp")
+                try:
+                    lista = datetime.fromisoformat(ts) if ts else None
+                except ValueError:
+                    lista = None
+                if lista is not None and lista > limite:
+                    continue
+                sol["estado"] = "vencida"
+                sol["mensaje"] = (
+                    f"Los paquetes del SAT vencieron ({horas} horas) sin bajarse. "
+                    "Vuelve a solicitar el periodo."
+                )
+                vencidas.append(dict(sol))
+                continue
             if sol.get("estado") not in ESTADOS_PENDIENTES:
                 continue
             ts = sol.get("timestamp")
@@ -1363,15 +1438,58 @@ def asegurar_descargas_dir() -> str:
     return d
 
 
-def get_sync_credenciales() -> bool:
-    """Continuidad de credenciales con el espacio en línea (default: activada).
+# ---------------------------------------------------------------------------
+# Descarga automática (piloto, docs/producto/descarga-programada.md fase 4)
+# ---------------------------------------------------------------------------
 
-    ⚠️ El default cambia la promesa histórica "tu e.firma nunca sale de tu
-    equipo" → "…salvo a TU espacio privado": anunciado en el release y
-    desactivable aquí (Ajustes → Sincronización).
+PILOTO_DEFAULT = {
+    "activo": False,       # copiloto: solo corre si el usuario lo activa
+    "dia_cierre": 5,       # día del mes en que se cierra el mes anterior
+    "activado_en": None,   # ISO; el primer cierre es el del mes previo a esta fecha
+    "historial_desde": None,  # "YYYY-MM-01": hasta dónde se llena el historial (None = no)
+    "historial_fijado_en": None,  # ISO UTC: cuándo se fijó `historial_desde` (para el aviso final)
+    "historial_revisado": None,   # {clave, hasta: {RFC: "YYYY-MM"}, avisos}: lo ya revisado del historial
+}
+
+
+def get_piloto_config() -> dict:
+    """Configuración global del piloto (settings.json → `piloto`), con defaults."""
+    guardada = _load_settings().get("piloto")
+    return {**PILOTO_DEFAULT, **(guardada if isinstance(guardada, dict) else {})}
+
+
+def set_piloto_config(patch: dict) -> dict:
+    """Actualiza la configuración del piloto (solo las llaves conocidas)."""
+    with _catalogo_lock:
+        data = _load_settings()
+        actual = {**PILOTO_DEFAULT, **(data.get("piloto") if isinstance(data.get("piloto"), dict) else {})}
+        actual.update({k: v for k, v in patch.items() if k in PILOTO_DEFAULT})
+        data["piloto"] = actual
+        _save_settings(data)
+    return actual
+
+
+def set_piloto_incluida(rfc: str, incluida: bool) -> None:
+    """Incluye o excluye la empresa de la descarga automática (default: incluida).
+    Vive en el catálogo local; todavía no viaja en el sync de empresas."""
+    with _catalogo_lock:
+        data = load_empresas()
+        if rfc not in data["empresas"]:
+            raise KeyError(f"No se encontró empresa con RFC {rfc}")
+        data["empresas"][rfc]["piloto_incluida"] = bool(incluida)
+        save_empresas(data)
+
+
+def get_sync_credenciales() -> bool:
+    """Continuidad de credenciales con el espacio en línea (default: APAGADA).
+
+    Por default la e.firma y la Contraseña del SAT se quedan solo en este equipo;
+    viajan a TU espacio privado únicamente si el usuario lo activa en Ajustes →
+    Almacenamiento (o con "Usar en la web" en una empresa). Quien lo activó a
+    mano conserva su valor; sin valor guardado cuenta como apagado (Israel,
+    2026-10-20: antes venía activado y contradecía el copy y el aviso).
     """
-    valor = _load_settings().get("sync_credenciales")
-    return True if valor is None else bool(valor)
+    return bool(_load_settings().get("sync_credenciales"))
 
 
 def set_sync_credenciales(activado: bool) -> bool:

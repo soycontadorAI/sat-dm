@@ -46,11 +46,14 @@ ESTADO_VENCIDA = "6"        # La solicitud/paquetes expiraron sin descargarse
 @dataclass
 class EstadoSolicitud:
     cod_estado: str           # CodEstado: 1-5
-    cod_estatus: str          # CodEstatus HTTP-like
+    cod_estatus: str          # CodEstatus HTTP-like (el de la verificación misma)
     mensaje: str
     numero_cfdis: int
     package_ids: List[str]
     terminada: bool
+    # CodigoEstadoSolicitud: el resultado de la SOLICITUD (5000 ok, 5002, 5003,
+    # 5004 sin información, 5005). El 5004 llega aquí con CodEstatus=5000.
+    codigo_estado_solicitud: str = ""
 
 
 def verificar_solicitud(
@@ -268,6 +271,7 @@ def _parse_estado(resp_xml: bytes) -> EstadoSolicitud:
 
     cod_estado = result.get("EstadoSolicitud", "")
     cod_estatus = result.get("CodEstatus", "")
+    codigo_estado_solicitud = result.get("CodigoEstadoSolicitud", "")
     mensaje = result.get("Mensaje", "")
     numero_cfdis_str = result.get("NumeroCFDIs", "0")
 
@@ -295,4 +299,5 @@ def _parse_estado(resp_xml: bytes) -> EstadoSolicitud:
         numero_cfdis=numero_cfdis,
         package_ids=package_ids,
         terminada=terminada,
+        codigo_estado_solicitud=codigo_estado_solicitud,
     )

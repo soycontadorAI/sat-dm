@@ -112,7 +112,7 @@ const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: '¿Es seguro guardar mi e.firma y mi Contraseña del SAT?',
-        a: 'Sí. Se guardan protegidas y solo en este equipo; nunca se muestran a la vista ni se envían a internet. Solo se usan en el momento de conectarte con el SAT.',
+        a: 'Sí. En la app de escritorio se guardan protegidas en tu equipo, y salen de ahí solo si activas la sincronización con tu espacio en línea (Ajustes, Almacenamiento). En la web se guardan cifradas en tu espacio privado. Nunca se muestran a la vista y solo se usan para conectarte con el SAT.',
       },
       {
         q: '¿Dónde se guardan mis facturas?',

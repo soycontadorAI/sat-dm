@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Optional
 from lxml import etree
 
-from ..core.xml_seguro import parser_seguro
+from ..core.xml_seguro import leer_tolerante, nombre_local
 
 
 # Namespaces comunes en CFDIs — usamos local-name() para ser agnosticos
@@ -59,11 +59,17 @@ def leer_cfdi(xml_path: str) -> CfdiHeader:
     Raises:
         ValueError: Si el archivo no es un CFDI válido.
     """
-    tree = etree.parse(xml_path, parser=parser_seguro())
-    root = tree.getroot()
+    # Tolerante como el procesador (core/xml_seguro.py::leer_tolerante), pero solo
+    # con lo que se lee completo (namespace mal declarado, codificación): el
+    # organizador mueve y renombra con estos datos.
+    with open(xml_path, "rb") as f:
+        lectura = leer_tolerante(f.read())
+    if lectura.avisos and not lectura.sin_perdida:
+        raise ValueError(f"XML mal formado: {lectura.avisos[-1]}")
+    root = lectura.raiz
 
     # Usar local-name() para ser namespace-agnostic
-    local = etree.QName(root).localname
+    local = nombre_local(root)
     if local != "Comprobante":
         raise ValueError(f"No es un CFDI: elemento raíz es '{local}', esperado 'Comprobante'")
 
@@ -84,6 +90,9 @@ def leer_cfdi(xml_path: str) -> CfdiHeader:
     tfd = _find_local(root, "TimbreFiscalDigital")
     uuid = tfd.get("UUID") or tfd.get("uuid", "") if tfd is not None else ""
     fecha_timbrado = tfd.get("FechaTimbrado") if tfd is not None else None
+
+    if lectura.avisos and not uuid:
+        raise ValueError(f"XML mal formado sin UUID: {lectura.avisos[0]}")
 
     return CfdiHeader(
         uuid=uuid.upper(),
@@ -132,13 +141,11 @@ def leer_directorio(directorio: str, recursive: bool = True) -> list[CfdiHeader]
 
 
 def _find_local(elem, local_name: str):
-    """Busca un descendiente por local-name, ignorando namespace.
-
-    Salta nodos que no son elementos (comentarios, PIs): su `.tag` no es un str
-    y `etree.QName()` los rechaza con ValueError.
-    """
+    """Busca un descendiente por nombre local, ignorando namespace y prefijo
+    (también el prefijo sin declarar de la lectura tolerante). Comentarios e
+    instrucciones de proceso no son elementos: `nombre_local` les da ""."""
     for child in elem.iter():
-        if isinstance(child.tag, str) and etree.QName(child).localname == local_name:
+        if nombre_local(child) == local_name:
             return child
     return None
 

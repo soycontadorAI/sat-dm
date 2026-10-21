@@ -17,8 +17,11 @@ Cada corrida:
   1. Busca correos al alias en la ventana (Gmail X-GM-RAW; fallback IMAP
      estándar), descartando auto-respuestas/boletines, correo propio y lo ya
      procesado.
-  2. Clasifica con Claude (categoría, urgencia, resumen) y redacta un borrador
-     con contexto real del producto.
+  2. Lee en local (sin LLM, lib/adjuntos.py) los PDF adjuntos —la Constancia de
+     Situación Fiscal incluida— y clasifica con Claude (categoría, urgencia,
+     resumen) redactando un borrador con contexto real del producto. Al modelo
+     solo le llega QUÉ se leyó; los datos fiscales van únicamente en el aviso a
+     Israel.
   3. Deja el borrador EN LA CARPETA BORRADORES (hilado a la conversación, con
      remitente soporte@todoconta.com — Gmail lo respeta como send-as del
      alias) y avisa a Israel por correo con el original + la clasificación.
@@ -47,7 +50,7 @@ from email.header import decode_header
 from email.mime.text import MIMEText
 from pathlib import Path
 
-from lib import correo, llm
+from lib import adjuntos, correo, llm
 
 ESTADO = Path("/data/soporte_estado.json")
 MAX_PROCESADOS_GUARDADOS = 500
@@ -64,15 +67,21 @@ SISTEMA = (
     "$2,990 MXN y Anual con IA $4,990 MXN (incluye Abacus, asistente fiscal por "
     "WhatsApp); métodos de acceso al SAT: e.firma (sin captcha), Contraseña del "
     "SAT (antes CIEC, con captcha) y Web Service para volumen; la e.firma y las "
-    "contraseñas se guardan cifradas en el equipo del usuario — «tú decides "
-    "dónde viven tus datos»; descargas: CFDI emitidos/recibidos, Constancia de "
+    "contraseñas se guardan cifradas en el equipo del usuario (\"tú decides "
+    "dónde viven tus datos\"); descargas: CFDI emitidos/recibidos, Constancia de "
     "Situación Fiscal, Opinión de cumplimiento 32-D, DIOT 2025; procesadores "
     "XML→Excel y calculadoras fiscales; soporte humano: Israel Castro. Redacta "
     "en español de México, cálido y directo, máximo 180 palabras, firmando "
-    "«Israel — TodoConta». Si el problema requiere datos que no tienes (logs, "
+    "\"Israel — TodoConta\". Si el problema requiere datos que no tienes (logs, "
     "capturas, versión), pídelos. NUNCA prometas fechas de features ni "
     "reembolsos: eso lo decide Israel (déjalo como [ISRAEL DECIDE] si aplica). "
-    "Nunca digas «CIEC» a secas ni «espejo» (di «versión web»)."
+    "Nunca digas \"CIEC\" a secas ni \"espejo\" (di \"versión web\"). Si el correo "
+    "trae un bloque ADJUNTOS, ahí dice qué archivos leyó el sistema: lo que ya "
+    "se leyó NO se vuelve a pedir (si la Constancia de Situación Fiscal ya fue "
+    "leída, confirma que la recibimos y no pidas razón social, RFC, domicilio "
+    "ni régimen; ante una solicitud de factura pide solo lo que falte, como el "
+    "uso de CFDI si el cliente no lo dijo). No menciones el cifrado ni dónde se "
+    "guardan los datos salvo que el cliente pregunte por privacidad o seguridad."
 )
 
 
@@ -230,13 +239,16 @@ def main() -> int:
                 continue
 
             cuerpo = _cuerpo_texto(msg)[:6000]
+            analisis = adjuntos.analizar(msg)
+            resumen_adjuntos = adjuntos.para_israel(analisis)
             resultado_llm = llm.generar_json(
                 "Clasifica este correo de soporte y redacta el borrador de "
                 'respuesta. Responde JSON: {"categoria": "tecnico|facturacion|'
                 'ventas|cuenta|otro|no_requiere_respuesta", "urgencia": "alta|'
                 'media|baja", "resumen": "1-2 oraciones", "borrador": "texto '
                 'plano con saltos \\n (vacío si no requiere respuesta)"}\n\n'
-                f"DE: {de_nombre} <{de_email}>\nASUNTO: {asunto}\n\nCUERPO:\n{cuerpo}",
+                f"DE: {de_nombre} <{de_email}>\nASUNTO: {asunto}\n\nCUERPO:\n{cuerpo}"
+                f"{adjuntos.para_llm(analisis)}",
                 sistema=SISTEMA,
                 max_tokens=1200,
             ) or {
@@ -253,7 +265,9 @@ def main() -> int:
             if dry_run:
                 print(
                     f"\n───── {de_email} — {asunto} ─────\n"
-                    f"[{categoria}/{urgencia}] {resumen}\n\nBORRADOR:\n{borrador or '(sin respuesta)'}\n"
+                    f"[{categoria}/{urgencia}] {resumen}\n\n"
+                    + (f"{resumen_adjuntos}\n\n" if resumen_adjuntos else "")
+                    + f"BORRADOR:\n{borrador or '(sin respuesta)'}\n"
                 )
                 atendidos += 1
                 continue
@@ -298,7 +312,8 @@ def main() -> int:
                 f"De: {de_nombre} <{de_email}>\nAsunto: {asunto}\n"
                 f"Clasificación: {categoria} / urgencia {urgencia}\n\n"
                 f"Resumen: {resumen}\n\n{nota_borrador}\n\n"
-                f"── BORRADOR PROPUESTO ──\n{borrador or '(sin borrador)'}\n\n"
+                + (f"{resumen_adjuntos}\n\n" if resumen_adjuntos else "")
+                + f"── BORRADOR PROPUESTO ──\n{borrador or '(sin borrador)'}\n\n"
                 f"── MENSAJE ORIGINAL ──\n{cuerpo[:3000]}"
             )
             html_aviso = (
@@ -307,7 +322,13 @@ def main() -> int:
                 f"<b>Asunto:</b> {html_mod.escape(asunto)}<br>"
                 f"<b>Clasificación:</b> {html_mod.escape(categoria)} · urgencia {html_mod.escape(urgencia)}</p>"
                 f"<p>{html_mod.escape(resumen)}</p><p><i>{html_mod.escape(nota_borrador)}</i></p>"
-                f'<h4 style="margin-bottom:4px">Borrador propuesto</h4>'
+                + (
+                    '<div style="white-space:pre-wrap;background:#eef4ee;border-radius:8px;'
+                    f'padding:12px;margin-bottom:12px">{html_mod.escape(resumen_adjuntos)}</div>'
+                    if resumen_adjuntos
+                    else ""
+                )
+                + f'<h4 style="margin-bottom:4px">Borrador propuesto</h4>'
                 f'<div style="white-space:pre-wrap;background:#f6f6f3;border-radius:8px;padding:12px">{html_mod.escape(borrador or "(sin borrador)")}</div>'
                 f'<h4 style="margin-bottom:4px">Mensaje original</h4>'
                 f'<div style="white-space:pre-wrap;color:#52514e">{html_mod.escape(cuerpo[:3000])}</div></div>'

@@ -50,6 +50,24 @@ class TestEmpresas:
         assert (backup / "fiel.key").exists()
         assert (backup / "LÉEME.txt").exists()
 
+    def test_leeme_dice_donde_vive_la_efirma(
+        self, test_cer, test_key, test_password, tmp_path, monkeypatch
+    ):
+        monkeypatch.delenv("SAT_DM_MODO", raising=False)
+        rfc = config_store.add_empresa("Test", test_cer, test_key, test_password)
+        leeme = (tmp_path / "TodoConta" / "fiel" / rfc / "LÉEME.txt").read_text(encoding="utf-8")
+        assert "se queda en este equipo" in leeme
+        assert "NUNCA sube" not in leeme
+
+    def test_leeme_en_la_web_no_dice_que_esta_en_tu_equipo(
+        self, test_cer, test_key, test_password, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("SAT_DM_MODO", "hosted")
+        rfc = config_store.add_empresa("Test", test_cer, test_key, test_password)
+        leeme = (tmp_path / "TodoConta" / "fiel" / rfc / "LÉEME.txt").read_text(encoding="utf-8")
+        assert "espacio privado" in leeme
+        assert "este equipo" not in leeme
+
     def test_respaldo_no_guarda_password(self, test_cer, test_key, test_password, tmp_path):
         rfc = config_store.add_empresa("Test", test_cer, test_key, test_password)
         backup = tmp_path / "TodoConta" / "fiel" / rfc

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
 import { Icon } from '@/components/ui/icon';
@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/icon';
 import { PageHeading } from '@/components/layout/page-heading';
 import { DescargaForm, type DescargaFormParams } from '@/components/descarga/descarga-form';
 import { PollingDisplay } from '@/components/descarga/polling-display';
+import { ServidoBaseAviso } from '@/components/descarga/servido-base-aviso';
 import { PackageList } from '@/components/descarga/package-list';
 import { SolicitudesList } from '@/components/descarga/solicitudes-list';
 import { PortalDescargaForm } from '@/components/descarga/portal-descarga-form';
@@ -21,6 +22,8 @@ import { useSolicitudes } from '@/hooks/use-solicitudes';
 import { useEmpresas } from '@/hooks/use-empresas';
 import { useHistorial } from '@/hooks/use-historial';
 import { mensajeDeError } from '@/lib/errores';
+import { resumenDeRespuesta } from '@/lib/servir-base';
+import type { ResumenServido } from '@/lib/types';
 
 /**
  * Convierte errores técnicos de requests al SAT (timeouts, conexión rota,
@@ -65,6 +68,7 @@ export default function DescargaPage() {
     packageIds,
     archivosDescargados,
     error,
+    resumen,
     solicitar,
     descargar,
     reset,
@@ -91,6 +95,18 @@ export default function DescargaPage() {
   // sin cambio durante 5–10s, dando la impresión de que nada pasaba.
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Resumen de lo servido de la base por las solicitudes "previas" de Ambos
+  // (las que no pasan por el hook); se muestran junto al del hook, uno por dirección.
+  const [resumenPrevias, setResumenPrevias] = useState<ResumenServido[]>([]);
+  // Generación de la solicitud: sube en cada envío y en "Nueva solicitud", para
+  // que la respuesta tardía de una "previa" vieja no pinte sobre la actual.
+  const generacionRef = useRef(0);
+  // Cambio de empresa: los resúmenes de las "previas" son de la anterior; se
+  // limpian y se invalida cualquier respuesta tardía que siga en vuelo.
+  useEffect(() => {
+    generacionRef.current += 1;
+    setResumenPrevias([]);
+  }, [fielStatus.rfc]);
   // True después de SLOW_NOTICE_MS sin haber resuelto: muestra un aviso
   // intermedio al usuario para que sepa que el SAT está tardando y le
   // sugiere CIEC como alternativa sin tener que esperar el error final.
@@ -135,6 +151,8 @@ export default function DescargaPage() {
   const handleSubmit = useCallback(
     async (params: DescargaFormParams) => {
       setSubmitError(null);
+      setResumenPrevias([]);
+      const generacion = ++generacionRef.current;
       setSubmitting(true);
       setEsperaLarga(false);
       const slowTimer = setTimeout(() => setEsperaLarga(true), SLOW_NOTICE_MS);
@@ -158,12 +176,21 @@ export default function DescargaPage() {
         const previasPromise = Promise.all(
           previas.map(async (t) => {
             try {
-              await apiClient.solicitar({
+              const req = {
                 fecha_inicio: params.fecha_inicio,
                 fecha_fin: params.fecha_fin,
                 tipo_solicitud: params.tipo_solicitud,
                 tipo_comprobante: t,
-              });
+              };
+              if (params.tipo_solicitud === 'CFDI') {
+                const res = await apiClient.solicitarDesdeBase(req);
+                if (generacionRef.current === generacion) {
+                  const r = resumenDeRespuesta(res, t);
+                  setResumenPrevias((prev) => [...prev, r]);
+                }
+              } else {
+                await apiClient.solicitar(req);
+              }
               return null;
             } catch (e) {
               const msg = mensajeDeError(e);
@@ -204,7 +231,10 @@ export default function DescargaPage() {
   const isRequesting = state === 'requesting' || submitting;
   const showForm = state === 'idle' || state === 'error' || isRequesting;
   const showPolling = state === 'polling' || isRequesting || state === 'ready';
-  const showPackages = state === 'ready' || state === 'downloading' || state === 'done';
+  // Sin requestId (todo se sirvió de la base) no hay paquetes que mostrar.
+  const showPackages =
+    !!requestId && (state === 'ready' || state === 'downloading' || state === 'done');
+  const resumenes = resumen ? [...resumenPrevias, resumen] : resumenPrevias;
 
   // -------------------------------------------------------------------------
   // Despacho según credenciales de la empresa activa.
@@ -229,12 +259,30 @@ export default function DescargaPage() {
         title="Descargar CFDIs"
         description={description}
         action={
-          tieneFiel && state !== 'idle' ? (
-            <Button variant="outline" size="sm" onClick={reset}>
-              <Icon icon="ph:arrow-counter-clockwise-light" className="size-4" />
-              Nueva solicitud
-            </Button>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {empresaActiva && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/descarga/calendario">
+                  <Icon icon="ph:calendar-check-light" className="size-4" />
+                  Cuadro de control
+                </Link>
+              </Button>
+            )}
+            {tieneFiel && state !== 'idle' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  generacionRef.current += 1;
+                  reset();
+                  setResumenPrevias([]);
+                }}
+              >
+                <Icon icon="ph:arrow-counter-clockwise-light" className="size-4" />
+                Nueva solicitud
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -400,6 +448,9 @@ export default function DescargaPage() {
               rfcActivo={empresaActiva?.rfc ?? null}
             />
           )}
+
+          {/* Servido desde la base + huecos + rangos con error */}
+          <ServidoBaseAviso resumenes={resumenes} />
 
           {/* Polling status */}
           {showPolling && (
