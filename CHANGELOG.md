@@ -84,6 +84,7 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Bug fix
 
+- **El agente de soporte ya lee la Constancia de Situación Fiscal que el cliente adjunta.** Antes ignoraba todos los adjuntos y el borrador pedía RFC, razón social y domicilio que ya venían en el PDF. Ahora lee los PDF en local (pdfplumber, sin LLM ni costo por correo): detecta la constancia y saca RFC, nombre, régimen y CP fiscal. Al modelo solo le llega qué se leyó, no los datos fiscales; el aviso a Israel trae esos datos listos para facturar. La imagen de ops suma `pdfplumber==0.11.10` (hay que reconstruirla al desplegar).
 - **Una solicitud del Web Service lista pero sin bajar ya no se reintenta para siempre.** Si sus
   paquetes no se pudieron descargar en 72 h (lo que el SAT los guarda), queda vencida con el
   aviso de volver a pedir el periodo, en lugar de que el poller la intentara cada minuto.
