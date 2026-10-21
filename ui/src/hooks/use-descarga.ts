@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useServer } from '@/providers/server-provider';
 import { ApiError } from '@/lib/api-client';
 import { VERIFICAR_POLL_INTERVAL_MS } from '@/lib/constants';
-import type { Solicitud, SolicitudRequest } from '@/lib/types';
+import type { ResumenServido, Solicitud, SolicitudRequest } from '@/lib/types';
+import { resumenDeRespuesta } from '@/lib/servir-base';
 import { mensajeDeError } from '@/lib/errores';
 
 // ---------------------------------------------------------------------------
@@ -95,6 +96,8 @@ export interface UseDescargaReturn {
   packageIds: string[];
   archivosDescargados: string[];
   error: string | null;
+  /** Lo que se sirvió de la base en la última solicitud CFDI (null si nada). */
+  resumen: ResumenServido | null;
   solicitar: (request: SolicitudRequest) => Promise<void>;
   descargar: () => Promise<void>;
   reset: () => void;
@@ -123,6 +126,7 @@ export function useDescarga(
   const [packageIds, setPackageIds] = useState<string[]>([]);
   const [archivosDescargados, setArchivosDescargados] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [resumen, setResumen] = useState<ResumenServido | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
@@ -138,6 +142,10 @@ export function useDescarga(
   // Permite re-descargar manualmente (descargar() puede llamarse de nuevo) sin
   // que el efecto auto-dispare otra vez por el mismo state→ready transition.
   const autoDescargaDispatchedRef = useRef<string | null>(null);
+  // Generación de `solicitar`: sube al enviar, en reset() y al cambiar de
+  // empresa. La respuesta de /solicitar/desde-base (que puede tardar mientras
+  // se piden varios rangos) solo se aplica si su generación sigue vigente.
+  const solicitarGenRef = useRef(0);
 
   // -----------------------------------------------------------------------
   // Cleanup interval
@@ -197,6 +205,8 @@ export function useDescarga(
         setMensaje(null);
         setNumeroCfdis(null);
         setPackageIds([]);
+        // El resumen se queda: lo servido de la base sigue siendo cierto y solo
+        // se limpia con "Nueva solicitud", al cambiar de empresa o al enviar otra.
       } else {
         setError(sol?.mensaje || 'La solicitud fue rechazada o venció en el SAT.');
         setState('error');
@@ -313,6 +323,8 @@ export function useDescarga(
 
   const solicitar = useCallback(
     async (request: SolicitudRequest) => {
+      const gen = ++solicitarGenRef.current;
+      const vigente = () => mountedRef.current && solicitarGenRef.current === gen;
       try {
         setState('requesting');
         setError(null);
@@ -321,15 +333,39 @@ export function useDescarga(
         setNumeroCfdis(null);
         setPackageIds([]);
         setArchivosDescargados([]);
+        setResumen(null);
+
+        // CFDI: primero lo consolidado sale de la base y solo los huecos van al
+        // SAT. Metadata no se consolida: sigue por /solicitar.
+        if (request.tipo_solicitud === 'CFDI') {
+          const res = await apiClient.solicitarDesdeBase(request);
+          // Reset, cambio de empresa o una solicitud más nueva: respuesta vieja.
+          if (!vigente()) return;
+
+          setResumen(resumenDeRespuesta(res, request.tipo_comprobante === 'E' ? 'E' : 'R'));
+          if (!res.id_solicitud) {
+            // Todo estaba consolidado: no hay nada que verificar ni descargar.
+            setRequestId(null);
+            saveRequestId(rfcRef.current, null);
+            setState('done');
+            return;
+          }
+          // La primera solicitud lleva el flujo; el resto queda en la lista y
+          // el poller del agente las baja solas.
+          setRequestId(res.id_solicitud);
+          saveRequestId(rfcRef.current, res.id_solicitud);
+          startPolling(res.id_solicitud);
+          return;
+        }
 
         const res = await apiClient.solicitar(request);
-        if (!mountedRef.current) return;
+        if (!vigente()) return;
 
         setRequestId(res.id_solicitud);
         saveRequestId(rfcRef.current, res.id_solicitud);
         startPolling(res.id_solicitud);
       } catch (err) {
-        if (!mountedRef.current) return;
+        if (!vigente()) return;
         const msg = mensajeDeError(err);
         setError(`Error al solicitar descarga: ${msg}`);
         setState('error');
@@ -375,6 +411,7 @@ export function useDescarga(
   // -----------------------------------------------------------------------
 
   const reset = useCallback(() => {
+    solicitarGenRef.current++;
     stopPolling();
     setState('idle');
     setRequestId(null);
@@ -384,6 +421,7 @@ export function useDescarga(
     setPackageIds([]);
     setArchivosDescargados([]);
     setError(null);
+    setResumen(null);
     saveRequestId(rfcRef.current, null);
     autoDescargaDispatchedRef.current = null;
   }, [stopPolling]);
@@ -419,6 +457,7 @@ export function useDescarga(
 
     // Cambio de empresa: estado en memoria a cero (sin tocar localStorage de
     // la empresa anterior — su flujo sigue guardado y el poller lo atiende).
+    solicitarGenRef.current++;
     stopPolling();
     setState('idle');
     setRequestId(null);
@@ -428,6 +467,7 @@ export function useDescarga(
     setPackageIds([]);
     setArchivosDescargados([]);
     setError(null);
+    setResumen(null);
     autoDescargaDispatchedRef.current = null;
 
     const savedId = loadRequestId(rfc);
@@ -463,6 +503,7 @@ export function useDescarga(
     packageIds,
     archivosDescargados,
     error,
+    resumen,
     solicitar,
     descargar,
     reset,

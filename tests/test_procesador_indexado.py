@@ -237,6 +237,50 @@ def test_descarga_de_cfdi_se_indexa_sola(db, tmp_path, monkeypatch):
         assert cur.execute("SELECT origen FROM cfdis").fetchall()[0][0] == "sat_ws"
 
 
+def test_descarga_con_subcarpetas_indexa_solo_lo_que_bajo(db, tmp_path, monkeypatch):
+    """Dos huecos que bajan a la misma carpeta del rango: el segundo solo indexa
+    sus paquetes, no lo del primero ni los XML servidos de la base."""
+    pytest.importorskip("fastapi")
+    from sat_descarga.api import state
+
+    monkeypatch.delenv("SAT_DM_SIN_INDEXADO")
+    salida = tmp_path / "rango"
+    for pid in ("p1", "p2"):
+        (salida / pid).mkdir(parents=True)
+    (salida / "servido.xml").write_bytes(_xml())
+
+    trabajos = []
+    monkeypatch.setattr(indexar_mod, "indexar_descarga",
+                        lambda rfc, ruta, canal, carpetas=None: trabajos.append(carpetas))
+    registradas = []
+    monkeypatch.setattr(config_store, "registrar_descarga",
+                        lambda *a, **k: registradas.append(k["ruta"]))
+
+    state._registrar_descarga(MI_RFC, "ws", "cfdi", ruta=str(salida), paquetes=["p1"])
+    state._registrar_descarga(MI_RFC, "ws", "cfdi", ruta=str(salida), paquetes=["p2", "no_existe"])
+    # Un solo trabajo por descarga, solo con las carpetas de sus paquetes.
+    assert trabajos == [[str(salida / "p1")], [str(salida / "p2")]]
+    assert registradas == [str(salida), str(salida)]
+
+    trabajos.clear()
+    state._registrar_descarga(MI_RFC, "ws", "cfdi", ruta=str(salida), paquetes=["no_existe"])
+    assert trabajos == [[]]  # nada extraído: un trabajo sin carpetas (no lee la del rango)
+    state._registrar_descarga(MI_RFC, "ws", "cfdi", ruta=str(salida))
+    assert trabajos == [[], None]  # otros canales: la carpeta completa
+
+
+def test_un_trabajo_sin_carpetas_no_lee_nada_pero_pone_al_dia_el_calendario(db, tmp_path, monkeypatch):
+    salida = tmp_path / "rango"
+    salida.mkdir()
+    (salida / "servido.xml").write_bytes(_xml())
+    sincronizadas = []
+    monkeypatch.setattr(indexar_mod, "_sincronizar_calendario", lambda rfc: sincronizadas.append(rfc))
+    indexar_mod._indexar_registrando(MI_RFC, str(salida), "sat_ws", carpetas=[])
+    assert sincronizadas == [MI_RFC]
+    with db.cursor() as cur:
+        assert cur.execute("SELECT COUNT(*) FROM cfdis").fetchone()[0] == 0
+
+
 def test_kill_switch_apaga_el_indexado_automatico(db, tmp_path):
     # conftest deja SAT_DM_SIN_INDEXADO=1
     assert indexar_mod.indexar_descarga(MI_RFC, str(tmp_path), "ws") is None
@@ -254,7 +298,7 @@ def test_carpeta_existente_se_indexa_una_vez_por_empresa(db, tmp_path, monkeypat
 
     indexar_mod.indexar_descargas_existentes(tmp_path).join(timeout=10)
     assert db.count() == 1
-    assert db.meta_get(f"indexado_carpeta:{MI_RFC}") == "1"
+    assert db.meta_get(f"indexado_carpeta:{MI_RFC}") == indexar_mod.INDEXADO_CARPETA_VERSION
     assert db.meta_get(f"indexado_carpeta:{OTRO_RFC}") is None  # archivada
 
     # La segunda vez no vuelve a recorrer la carpeta.

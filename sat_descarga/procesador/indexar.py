@@ -16,12 +16,16 @@ Kill switch del indexado automático: `SAT_DM_SIN_INDEXADO=1`.
 
 from __future__ import annotations
 
+import itertools
 import logging
 import os
 import threading
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Union
 
+from lxml import etree
+
+from ..core.xml_seguro import fromstring_seguro
 from .cfdi_parser import CfdiParseError, parse_cfdi
 from .db import abrir_db, normalizar_mi_rfc
 from .validaciones import validar_y_anotar
@@ -34,8 +38,26 @@ ORIGEN_POR_CANAL = {"ws": "sat_ws", "ciec": "sat_portal", "fiel": "sat_portal"}
 # CFDIs por transacción: acota la memoria con carpetas de decenas de miles.
 LOTE = 500
 
+# Versión del indexado inicial de la carpeta de cada empresa. La 2 trae la
+# lectura tolerante: una carpeta indexada con la 1 se recorre otra vez, una sola
+# vez, solo por los XML que la 1 rechazaba (los que no se leen en modo estricto,
+# `solo_mal_formados`); lo demás ya está en el índice.
+INDEXADO_CARPETA_VERSION = "2"
+
 # Un indexado en segundo plano a la vez: comparten CPU y el candado de la DB.
 _en_curso = threading.Lock()
+# Indexados de fondo lanzados que no han terminado, por empresa ("*" = todas: el
+# de las descargas existentes al arrancar). Se cuentan al lanzarlos, no al
+# empezar: quien ve una descarga ya registrada sabe que su indexado cuenta.
+_pendientes: dict = {}
+_pendientes_cv = threading.Condition()
+
+
+def _clave(nombre: str) -> str:
+    """Empresa de un hilo de indexado (`indexar-{RFC}`); cualquier otro, "*"."""
+    if nombre.startswith("indexar-") and nombre != "indexar-existentes":
+        return nombre[len("indexar-"):]
+    return "*"
 
 Contenido = Union[bytes, Path]
 
@@ -58,11 +80,15 @@ def indexar(
     direccion_fija: Optional[str] = None,
     desde: str = "",
     hasta: str = "",
+    solo_mal_formados: bool = False,
 ) -> dict:
     """Indexa `(nombre, bytes o ruta)` bajo la empresa `mi_rfc`.
 
-    `desde`/`hasta` (ISO, opcionales) filtran por fecha de emisión. Devuelve
-    `{agregados, duplicados, omitidos_rfc, errores, archivos_encontrados}`.
+    `desde`/`hasta` (ISO, opcionales) filtran por fecha de emisión. Con
+    `solo_mal_formados`, un XML que se lee en modo estricto se salta (cuenta como
+    duplicado): lo usa el reindexado de la carpeta al subir de versión, porque
+    esos ya los indexó la versión anterior y solo faltan los que rechazaba.
+    Devuelve `{agregados, duplicados, omitidos_rfc, errores, archivos_encontrados}`.
     """
     mi_rfc = normalizar_mi_rfc(mi_rfc)
     db = abrir_db()
@@ -85,6 +111,9 @@ def indexar(
         total["archivos_encontrados"] += 1
         try:
             xml = contenido.read_bytes() if isinstance(contenido, Path) else contenido
+            if solo_mal_formados and _lee_estricto(xml):
+                total["duplicados"] += 1
+                continue
             cfdi = parse_cfdi(xml, file_name=nombre)
             if desde and cfdi.fecha_emision and cfdi.fecha_emision < desde:
                 continue
@@ -112,6 +141,14 @@ def indexar(
     return total
 
 
+def _lee_estricto(xml: bytes) -> bool:
+    try:
+        fromstring_seguro(xml)
+        return True
+    except etree.XMLSyntaxError:
+        return False
+
+
 def xmls_de_carpeta(carpeta: Union[str, Path]) -> Iterator[tuple[str, Path]]:
     """`(nombre, ruta)` de cada `.xml` bajo `carpeta` (recursivo)."""
     base = Path(carpeta)
@@ -131,13 +168,15 @@ def automatico_activo() -> bool:
     return os.environ.get("SAT_DM_SIN_INDEXADO") != "1"
 
 
-def indexar_descarga(rfc: str, ruta: str, canal: str) -> Optional[threading.Thread]:
-    """Indexa en segundo plano lo que acaba de bajar una descarga de CFDI.
-    Best-effort: un fallo aquí nunca afecta la descarga."""
+def indexar_descarga(rfc: str, ruta: str, canal: str,
+                     carpetas: Optional[list] = None) -> Optional[threading.Thread]:
+    """Indexa en segundo plano lo que acaba de bajar una descarga de CFDI: la
+    carpeta `ruta` o, si vienen, solo esas `carpetas` (las de sus paquetes, en
+    un solo trabajo). Best-effort: un fallo aquí nunca afecta la descarga."""
     if not (automatico_activo() and rfc and ruta):
         return None
     origen = ORIGEN_POR_CANAL.get(canal, canal)
-    return _en_hilo(f"indexar-{rfc}", _indexar_registrando, rfc, ruta, origen)
+    return _en_hilo(f"indexar-{rfc}", _indexar_registrando, rfc, ruta, origen, carpetas)
 
 
 def indexar_descargas_existentes(base: Union[str, Path]) -> Optional[threading.Thread]:
@@ -149,24 +188,58 @@ def indexar_descargas_existentes(base: Union[str, Path]) -> Optional[threading.T
 
 
 def _en_hilo(nombre: str, fn, *args) -> threading.Thread:
+    clave = _clave(nombre)
+    with _pendientes_cv:
+        _pendientes[clave] = _pendientes.get(clave, 0) + 1
+
     def _correr():
-        with _en_curso:
-            try:
-                fn(*args)
-            except Exception:  # noqa: BLE001 — el indexado nunca tumba al agente
-                logger.exception("[indexar] falló %s", nombre)
+        try:
+            with _en_curso:
+                try:
+                    fn(*args)
+                except Exception:  # noqa: BLE001 — el indexado nunca tumba al agente
+                    logger.exception("[indexar] falló %s", nombre)
+        finally:
+            with _pendientes_cv:
+                _pendientes[clave] -= 1
+                _pendientes_cv.notify_all()
 
     hilo = threading.Thread(target=_correr, name=nombre, daemon=True)
     hilo.start()
     return hilo
 
 
-def _indexar_registrando(rfc: str, ruta: str, origen: str) -> None:
-    r = indexar_carpeta(rfc, ruta, origen=origen)
+def esperar_indexado(mi_rfc: str, timeout: float) -> bool:
+    """Espera a que termine el indexado de fondo ya lanzado para la empresa (el de
+    las descargas que acaban de bajar, y el de arranque). True si terminó; False
+    si sigue después de `timeout` s."""
+    with _pendientes_cv:
+        return _pendientes_cv.wait_for(
+            lambda: not _pendientes.get(mi_rfc) and not _pendientes.get("*"), timeout=timeout)
+
+
+
+def _indexar_registrando(rfc: str, ruta: str, origen: str,
+                         carpetas: Optional[list] = None) -> None:
+    fuentes = [ruta] if carpetas is None else carpetas
+    r = indexar(rfc, itertools.chain.from_iterable(xmls_de_carpeta(c) for c in fuentes),
+                origen=origen)
     logger.info(
         "[indexar] %s: %d nuevos, %d ya estaban, %d errores (%s)",
         rfc, r["agregados"], r["duplicados"], len(r["errores"]), ruta,
     )
+    _sincronizar_calendario(rfc)
+
+
+def _sincronizar_calendario(rfc: str) -> None:
+    """El cuadro de control cuenta lo que hay en el índice: tras indexar se pone
+    al día (`total_bd` y días solo del índice). Best-effort."""
+    try:
+        from . import calendario
+
+        calendario.sincronizar(rfc)
+    except Exception:  # noqa: BLE001 - el calendario nunca rompe el indexado
+        logger.warning("[indexar] %s: no se pudo poner al día el calendario", rfc, exc_info=True)
 
 
 def _indexar_existentes(base: Path) -> None:
@@ -179,12 +252,14 @@ def _indexar_existentes(base: Path) -> None:
             continue
         rfc = emp["rfc"]
         llave = f"indexado_carpeta:{normalizar_mi_rfc(rfc)}"
-        if db.meta_get(llave):
+        previa = db.meta_get(llave)
+        if previa == INDEXADO_CARPETA_VERSION:
             continue
         carpeta = paths.dir_cfdi_base(rfc, salida_base=base)
-        r = indexar_carpeta(rfc, carpeta, origen="carpeta")
-        db.meta_set(llave, "1")
+        r = indexar_carpeta(rfc, carpeta, origen="carpeta", solo_mal_formados=previa == "1")
+        db.meta_set(llave, INDEXADO_CARPETA_VERSION)
         logger.info(
             "[indexar] %s: carpeta de descargas indexada — %d nuevos, %d ya estaban",
             rfc, r["agregados"], r["duplicados"],
         )
+        _sincronizar_calendario(rfc)

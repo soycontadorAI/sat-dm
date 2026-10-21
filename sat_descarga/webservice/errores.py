@@ -9,7 +9,23 @@ Verificado en vivo (2026-07-12): la misma solicitud falla igual desde
 cualquier red, y minutos u horas después vuelve a funcionar sin cambios.
 """
 
+import re
+
 from sat_descarga.core.errores import ErrorEsperado
+
+_CODESTATUS = re.compile(r"CodEstatus=(\d+)")
+
+
+def codestatus(mensaje: str) -> str:
+    """El `CodEstatus` que trae el texto de un error del WS ('' si no trae)."""
+    m = _CODESTATUS.search(mensaje or "")
+    return m.group(1) if m else ""
+
+
+def trae_codestatus(mensaje: str, codigo: str) -> bool:
+    """¿El texto trae ese `CodEstatus` en cualquier parte (un error puede encadenar
+    varios)?"""
+    return codigo in _CODESTATUS.findall(mensaje or "")
 
 # Códigos de estatus del WS que indican fallo interno transitorio del SAT
 # (no un rechazo de la solicitud). Hoy solo el 404; si aparecen otros se

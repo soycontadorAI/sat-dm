@@ -56,6 +56,53 @@ export interface SolicitudResponse {
   id_solicitud: string;
 }
 
+// POST /solicitar/desde-base — response (sirve de la base lo consolidado y
+// pide al SAT solo los huecos). `id_solicitud` es null si TODO estaba
+// consolidado (no se fue al SAT).
+export interface SolicitudHueco {
+  id_solicitud: string;
+  fecha_inicio: string; // ISO date
+  fecha_fin: string;
+}
+
+export interface ServidosBase {
+  dias: number;
+  cfdis: number;
+  /** Carpeta de la descarga; null si no se escribió ningún XML. */
+  ruta: string | null;
+  sin_xml: number;
+}
+
+export interface ErrorRangoBase {
+  /**
+   * "sat": un hueco no se pudo solicitar; "base": no se pudo guardar lo
+   * consolidado; "cupo": el tope de descargas del plan no dejó pedir los huecos.
+   */
+  tipo: 'sat' | 'base' | 'cupo';
+  /** [desde, hasta] ISO. */
+  rango: [string, string];
+  mensaje: string;
+  /** Solo "cupo": los datos del tope (tope, usadas, reinicia, siguiente plan…). */
+  datos?: Record<string, unknown>;
+}
+
+export interface SolicitudDesdeBaseResponse {
+  ok: boolean;
+  id_solicitud: string | null;
+  solicitudes: SolicitudHueco[];
+  servidos: ServidosBase;
+  errores?: ErrorRangoBase[];
+}
+
+/** Resumen de lo servido de la base en una solicitud (lo que muestra la UI). */
+export interface ResumenServido {
+  /** Dirección de la solicitud: en "Ambos" hay un resumen por cada una. */
+  direccion: 'E' | 'R';
+  servidos: ServidosBase;
+  solicitudes: SolicitudHueco[];
+  errores: ErrorRangoBase[];
+}
+
 // POST /verificar — request body
 export interface VerificarRequest {
   id_solicitud: string;
@@ -326,6 +373,8 @@ export interface Empresa {
   renovacion_pendiente?: RenovacionPendiente | null;
   /** Certificados de Sello Digital solicitados desde la app. */
   csds?: CsdInfo[];
+  /** ¿Entra en la descarga automática (piloto)? */
+  piloto_incluida?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -485,7 +534,8 @@ export interface SolicitudesActividadResponse {
 // Historial de descargas completadas (GET /historial y /empresas/{rfc}/historial)
 // ---------------------------------------------------------------------------
 
-export type CanalDescarga = 'ws' | 'ciec' | 'fiel';
+/** `base`: servido del índice local por la solicitud inteligente (sin ir al SAT). */
+export type CanalDescarga = 'ws' | 'ciec' | 'fiel' | 'base';
 export type TipoDescarga = 'cfdi' | 'metadata' | 'constancia' | 'opinion';
 
 export interface HistorialItem {
@@ -1917,4 +1967,154 @@ export interface TareaPatchRequest {
   estado?: TareaEstado;
   prioridad?: TareaPrioridad;
   fecha?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Cuadro de control (calendario año × día de descargas por empresa)
+// GET /calendario/{rfc}?anio=  y  /calendario/{rfc}/dia?fecha=
+// ---------------------------------------------------------------------------
+
+export type EstadoDia =
+  | 'pendiente'
+  | 'en_proceso'
+  | 'provisional'
+  | 'consolidado'
+  | 'diferencia'
+  | 'error';
+
+export type DireccionCfdi = 'E' | 'R';
+
+export interface CalendarioCelda {
+  estado: EstadoDia;
+  total_bd: number;
+  total_sat?: number | null;
+  error_codigo?: string | null;
+  error_mensaje?: string | null;
+  intentos?: number | null;
+  actualizado_en?: string | null;
+}
+
+export type CalendarioDias = Record<string, Partial<Record<DireccionCfdi, CalendarioCelda>>>;
+
+export interface CalendarioAnio {
+  rfc: string;
+  anio: number;
+  /** Fecha de hoy según el agente (YYYY-MM-DD). */
+  hoy: string;
+  anios: number[];
+  /** Solo trae fechas con algo; lo ausente es `pendiente` con 0. */
+  dias: CalendarioDias;
+  resumen: Partial<Record<DireccionCfdi, Partial<Record<EstadoDia, number>>>>;
+}
+
+export interface CalendarioSolicitud {
+  id_solicitud: string;
+  tipo_comprobante: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  estado: string;
+  mensaje?: string | null;
+  numero_cfdis?: number | null;
+  timestamp?: string | null;
+}
+
+export interface CalendarioCfdi {
+  uuid: string;
+  direccion: DireccionCfdi;
+  tipo?: string | null;
+  serie?: string | null;
+  folio?: string | null;
+  fecha: string;
+  emisor_rfc?: string | null;
+  emisor_nombre?: string | null;
+  receptor_rfc?: string | null;
+  receptor_nombre?: string | null;
+  total: number;
+  moneda?: string | null;
+  estado_sat?: string | null;
+}
+
+export interface CalendarioDia {
+  rfc: string;
+  fecha: string;
+  E?: CalendarioCelda;
+  R?: CalendarioCelda;
+  solicitudes: CalendarioSolicitud[];
+  cfdis: CalendarioCfdi[];
+  cfdis_total: number;
+}
+
+// ---------------------------------------------------------------------------
+// Descarga automática (piloto): GET /piloto/estado, PUT /piloto/config, etc.
+// ---------------------------------------------------------------------------
+
+export type PilotoPausadoPor = 'inactivo' | 'licencia' | 'sesion' | null;
+export type PilotoTipoAviso = 'resumen' | 'cancelacion' | 'efirma' | 'error';
+export type PilotoEstadoEjecucion = 'en_curso' | 'completa' | 'error';
+
+export interface PilotoEmpresa {
+  rfc: string;
+  nombre: string;
+  incluida: boolean;
+  elegible: boolean;
+  /** "Archivada" | "No incluida" | "Sin e.firma" | "e.firma vencida" */
+  motivo: string | null;
+  /** Meses del historial ya en la base / meses que se pidieron para esta empresa. */
+  historial_completos?: number;
+  historial_total?: number;
+}
+
+export interface PilotoHistorial {
+  /** Primer día del mes más antiguo pedido; null si no está activo. */
+  desde: string | null;
+  /** Límite del SAT (5 años), primer día del mes. */
+  minimo: string;
+  /** Mes más reciente que se puede pedir, primer día del mes. */
+  maximo: string;
+  meses_total: number;
+  meses_completos: number;
+  meses_con_diferencia: number;
+  /** Meses que fallaron sin reintento (ya no se vuelven a pedir). */
+  meses_con_error?: number;
+  /** "YYYY-MM" del mes que sigue; null si ya no hay trabajo pendiente. */
+  siguiente: string | null;
+  /** Meses del rango y empresas elegibles (los totales cuentan empresa x mes). */
+  meses?: number;
+  empresas?: number;
+  /** Cierres del historial que siguen con trabajo, aunque `desde` sea null. */
+  empezados?: number;
+}
+
+export interface PilotoEjecucion {
+  rfc: string;
+  tipo: string;
+  periodo: string;
+  estado: PilotoEstadoEjecucion;
+  intentos: number;
+  error_mensaje: string | null;
+  actualizado_en: string;
+}
+
+export interface PilotoAviso {
+  id: number;
+  tipo: PilotoTipoAviso;
+  rfc: string | null;
+  periodo: string | null;
+  mensaje: string;
+  creado_en: string;
+  leido: boolean;
+}
+
+export interface PilotoEstado {
+  disponible: boolean;
+  activo: boolean;
+  dia_cierre: number;
+  activado_en: string | null;
+  pausado_por: PilotoPausadoPor;
+  proxima_pasada: string | null;
+  cierre: { periodo: string; fecha: string } | null;
+  empresas: PilotoEmpresa[];
+  ejecuciones: PilotoEjecucion[];
+  avisos: PilotoAviso[];
+  historial?: PilotoHistorial;
 }

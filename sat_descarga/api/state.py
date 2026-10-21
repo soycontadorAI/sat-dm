@@ -21,7 +21,8 @@ import logging
 import os
 import threading
 from datetime import date
-from typing import Optional
+from pathlib import Path
+from typing import Iterable, Optional
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -149,9 +150,48 @@ def _descargas_base() -> str:
     return config_store.get_descargas_dir()
 
 
-def _registrar_descarga(rfc, canal, tipo, descripcion="", ruta="", total=None):
+def direcciones_de(tipo_comprobante: Optional[str]) -> list[str]:
+    """Direcciones (E/R) que descarga un `tipo_comprobante` de la API. Misma
+    regla que el portal (`portal/cfdi.py::_normalizar_tipos`, que no se importa
+    aquí porque arrastra Playwright): E/EMITIDOS, R/RECIBIDOS y cualquier otra
+    cosa ("RE", "AMBOS", vacío) son las dos."""
+    t = (tipo_comprobante or "").strip().upper()
+    if t in ("E", "EMITIDOS"):
+        return ["E"]
+    if t in ("R", "RECIBIDOS"):
+        return ["R"]
+    return ["E", "R"]
+
+
+def _marcar_calendario(rfc, rango, direcciones) -> None:
+    """Marca como provisional el rango descargado en el cuadro de control.
+    El calendario vive en el índice (`procesador.db`): con el indexado automático
+    apagado (`SAT_DM_SIN_INDEXADO=1`) tampoco se toca. Best-effort: nunca lanza."""
+    try:
+        from ..procesador import calendario
+        from ..procesador.indexar import automatico_activo
+
+        if not automatico_activo():
+            return
+
+        desde, hasta = rango
+        for d in direcciones:
+            calendario.marcar(rfc, desde, hasta, d, "provisional")
+    except Exception:  # noqa: BLE001 - el calendario tampoco rompe la descarga
+        logger.warning("No se pudo marcar el calendario", exc_info=True)
+
+
+def _registrar_descarga(rfc, canal, tipo, descripcion="", ruta="", total=None,
+                        rango: Optional[tuple[date, date]] = None,
+                        direcciones: Optional[Iterable[str]] = None,
+                        paquetes: Optional[list] = None):
     """Registra una descarga completada en el historial y, si son CFDIs, los
-    indexa al procesador en segundo plano. Best-effort: nunca lanza."""
+    indexa al procesador en segundo plano. Con `rango` y `direcciones` marca
+    además esos días como provisionales en el cuadro de control (solo quien
+    llama sabe si la descarga quedó completa). Con `paquetes` (los del Web Service)
+    se indexan solo las carpetas de esos paquetes, en un solo trabajo: `ruta` puede
+    ser una carpeta compartida con otras descargas (la del rango pedido); el
+    historial sigue con `ruta`. Best-effort: nunca lanza."""
     try:
         from ..cli import config_store
         config_store.registrar_descarga(
@@ -162,9 +202,20 @@ def _registrar_descarga(rfc, canal, tipo, descripcion="", ruta="", total=None):
     if tipo == "cfdi":
         try:
             from ..procesador.indexar import indexar_descarga
-            indexar_descarga(rfc, ruta, canal)
+            from ..webservice.descarga import carpeta_paquete
+
+            if paquetes is None:
+                indexar_descarga(rfc, ruta, canal)
+            else:
+                # Solo las extraídas; sin ninguna (bajó sin extraer) el trabajo no lee
+                # nada y solo pone al día el cuadro de control, como cualquier indexado.
+                carpetas = [str(c) for c in (carpeta_paquete(Path(ruta), pid) for pid in paquetes)
+                            if c.is_dir()]
+                indexar_descarga(rfc, ruta, canal, carpetas=carpetas)
         except Exception:  # noqa: BLE001 - el índice tampoco
             logger.warning("No se pudo indexar la descarga", exc_info=True)
+        if rango and direcciones:
+            _marcar_calendario(rfc, rango, list(direcciones))
 
 
 def _salida_descarga_ws(rfc: str, id_solicitud: str) -> str:
@@ -182,15 +233,34 @@ def _salida_descarga_ws(rfc: str, id_solicitud: str) -> str:
         sol = config_store.get_solicitud(rfc, id_solicitud) or {}
     except Exception:  # noqa: BLE001
         sol = {}
+    if sol.get("uuids"):
+        # Por folio: sin rango de fechas; su propia carpeta para no reindexar
+        # toda la empresa al terminar.
+        return str(paths.dir_folios(rfc, id_solicitud, salida_base=base))
     tipo = sol.get("tipo_comprobante")
     fi, ff = sol.get("fecha_inicio"), sol.get("fecha_fin")
+    rango = sol.get("carpeta_rango")
+    if isinstance(rango, (list, tuple)) and len(rango) == 2:
+        # Parte de una petición que se sirvió en parte de la base
+        # (/solicitar/desde-base): baja a la carpeta del rango que pidió el
+        # usuario, junto con lo servido.
+        fi, ff = rango
     if tipo in ("E", "R") and fi and ff:
         try:
-            return str(paths.dir_cfdi(rfc, tipo, _date.fromisoformat(fi),
-                                      _date.fromisoformat(ff), salida_base=base))
+            desde, hasta = _date.fromisoformat(fi), _date.fromisoformat(ff)
+            if es_metadata(sol):
+                return str(paths.dir_metadata(rfc, tipo, desde, hasta, salida_base=base))
+            return str(paths.dir_cfdi(rfc, tipo, desde, hasta, salida_base=base))
         except ValueError:
             pass  # fechas malformadas → fallback
     return str(paths.dir_cfdi_base(rfc, salida_base=base))
+
+
+def es_metadata(sol: Optional[dict]) -> bool:
+    """¿La solicitud del catálogo es de Metadata? (`config_store.es_metadata`)."""
+    from ..cli import config_store
+
+    return config_store.es_metadata(sol)
 
 
 # ---------------------------------------------------------------------------

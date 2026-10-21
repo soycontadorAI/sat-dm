@@ -175,7 +175,7 @@ def verificar(rfc: str, id_solicitud: str):
         return EstadoSolicitud("2", "5000", "Solicitud Aceptada", 0, [], False)
     comps = _comprobantes(sol)
     if not comps:
-        return EstadoSolicitud("5", "5004", "No se encontró la información", 0, [], False)
+        return EstadoSolicitud("5", "5000", "Solicitud Aceptada", 0, [], False, "5004")
     paquetes = math.ceil(len(comps) / PAQUETE_MAX)
     ids = [f"{id_solicitud.upper()}_{i:02d}" for i in range(1, paquetes + 1)]
     return EstadoSolicitud("3", "5000", "Solicitud Aceptada", len(comps), ids, True)
@@ -195,7 +195,9 @@ def paquete_zip(rfc: str, package_id: str) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         if _es_metadata(sol):
-            zf.writestr(f"{package_id}.txt", cfdi.metadata_txt(parte))
+            meses = {(c.fecha.year, c.fecha.month) for c in parte}
+            cancelados = frozenset().union(*(cfdi.cancelados_despues(rfc, a, m) for a, m in meses))
+            zf.writestr(f"{package_id}.txt", cfdi.metadata_txt(parte, cancelados))
         else:
             for c in parte:
                 zf.writestr(cfdi.nombre_archivo(c), cfdi.xml(c))
@@ -271,7 +273,9 @@ def portal_cfdi(rfc: str, fecha_inicio, fecha_fin, tipo_comprobante: str = "RE",
             if i % max(paso * 5, 1) == 0 and i != total:
                 _avisar(f"Descargando XML {i} de {total}…")
     _avisar(f"Descarga completada: {len(descargados)} XML.", "ok")
-    return descargados
+    from ..portal.cfdi import DescargaPortal
+
+    return DescargaPortal(descargados, completa=len(descargados) < max_registros)
 
 
 def _hoy() -> date:

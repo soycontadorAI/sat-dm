@@ -330,7 +330,10 @@ def test_web_service_otra_empresa_no_ve_la_solicitud(modo, perfil, sin_red):
 def test_web_service_periodo_sin_cfdis_es_rechazo_como_el_sat(modo, perfil, sin_red):
     id_sol = sat_demo.solicitar(EL_ROBLE, date(2021, 1, 1), date(2021, 1, 31), "CFDI", "R")
     estado = sat_demo.verificar(EL_ROBLE, id_sol)
-    assert (estado.cod_estado, estado.mensaje) == ("5", "No se encontró la información")
+    # Como el SAT real: la verificación salió bien (5000) y el 5004 viene en
+    # CodigoEstadoSolicitud.
+    assert (estado.cod_estado, estado.cod_estatus, estado.codigo_estado_solicitud) == (
+        "5", "5000", "5004")
 
 
 def test_metadata_de_demo(modo, perfil, sin_red):

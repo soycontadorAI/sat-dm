@@ -35,6 +35,7 @@ const CANAL_LABEL: Record<CanalDescarga, string> = {
   ws: 'Web Service',
   ciec: 'Contraseña',
   fiel: 'e.firma',
+  base: 'De la base',
 };
 
 function fechaLegible(iso: string): string {

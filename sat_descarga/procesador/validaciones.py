@@ -17,6 +17,9 @@ def validar(cfdi: CfdiData) -> list[str]:
     """
     Devuelve la lista de warnings del CFDI (vacía si todo coherente).
 
+    Los avisos de lectura (XML mal formado leído en modo tolerante) van
+    primero, para que `validar_y_anotar` no los pierda al sobrescribir.
+
     Cubre:
     - Integridad de montos: Total ≈ SubTotal − Descuento + IVA Trasladado
       − IVA Retenido − ISR Retenido (tolerancia ±0.02).
@@ -24,7 +27,7 @@ def validar(cfdi: CfdiData) -> list[str]:
     - Tipo de comprobante no reconocido.
     - Fecha de emisión en el futuro.
     """
-    warnings: list[str] = []
+    warnings: list[str] = list(cfdi.avisos_lectura)
 
     # UUID
     if not cfdi.uuid:

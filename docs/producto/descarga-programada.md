@@ -184,14 +184,18 @@ En la desktop, `procesador.db` sigue existiendo como caché local (y como único
 
 1. **Tres capas + indexado automático (local).** ✅ Rama `feat/indexado-tres-capas`. Ver
    "Fase 1: lo que se implementó" abajo.
-2. **Calendario local.** `descarga_dias` en `procesador.db`, alimentado por descargas manuales y
-   por el poller; pantalla del cuadro de control. Visible en todos los planes.
+2. **Calendario local.** ✅ `descarga_dias` en `procesador.db`, alimentado por descargas manuales
+   y por el poller; pantalla del cuadro de control. Visible en todos los planes. Ver "Fase 2: lo
+   que se implementó" abajo.
 3. **Supabase.** Tablas `sat_cfdis`, `sat_descarga_dias` y el bucket; subida desde el agente con
    plan de pago; la desktop baja lo que no tenga.
-4. **Planificador** (`sat_descarga/api/piloto.py`, F7): pasada diaria con rezago, cierre mensual
-   con metadata, cancelaciones y candado `piloto_ejecuciones`. Gateado por `piloto`.
-5. **Llenado del historial** desde la fecha elegida.
+4. **Planificador** (`sat_descarga/api/piloto.py`, F7): ✅ pasada diaria con rezago, cierre
+   mensual con metadata, cancelaciones y candado `piloto_ejecuciones` (local; el de Supabase,
+   pendiente). Gateado por `piloto`. Ver "Fase 4: lo que se implementó" abajo.
+5. **Llenado del historial** desde la fecha elegida. ✅ Mismo cierre del planificador, mes por mes
+   hacia atrás. Ver "Fase 5: lo que se implementó" abajo.
 6. **Solicitud manual inteligente**: servir de la base lo consolidado y pedir solo los huecos.
+   ✅ Ver "Fase 6: lo que se implementó" abajo.
 7. **Reportes personalizables** sobre `nodos` (plantillas). ✅ Adelantada: ver
    [`plantillas-export.md`](plantillas-export.md).
 
@@ -221,12 +225,173 @@ ingreso 58 KB de XML (5 KB comprimido), nómina 6 KB, pago 6 KB.
 **Pendientes que salieron de la fase 1:**
 - `raw_json` ya es redundante con XML + `nodos`; quitarlo (regenerando lo que lo lea) baja la
   DB a menos de la mitad.
-- 45 XML reales no se pueden leer: traen un atributo mal formado
-  (`xmlns:schemaLocation`, complemento de registro fiscal). El parser ya los rechazaba antes.
-  Hay que leerlos en modo tolerante, o el conteo del cierre mensual nunca va a cuadrar.
+- ✅ 45 XML reales no se podían leer: traen un atributo mal formado
+  (`xmlns:schemaLocation`, complemento de registro fiscal). Ya se leen en modo tolerante
+  (`core/xml_seguro.py::leer_tolerante`): el CFDI entra completo, con su UUID y un aviso de
+  validación; si al leerlo se pierde el UUID, se sigue rechazando. El indexado inicial de la
+  carpeta subió a la versión 2 (`INDEXADO_CARPETA_VERSION`) para recuperarlos una vez.
+
+## Fase 2: lo que se implementó
+
+- Migración `011_descarga_dias.sql` y `procesador/calendario.py`: una fila por (empresa, día de
+  emisión, dirección); un día sin fila es `pendiente`.
+- `sincronizar(rfc)` traduce el catálogo de solicitudes de CFDI (la Metadata no cuenta): viva →
+  `en_proceso`; `descargada`, o rechazada con CodigoEstadoSolicitud 5004 (se guarda desde la
+  verificación; llega con CodEstatus 5000) → `provisional`; 4, 5 o vencida → `error` con su
+  código y mensaje. Gana `provisional`, luego `en_proceso`, luego `error`. Un día con CFDI en el
+  índice es al menos `provisional`. Si el usuario borra la solicitud que puso un día en proceso o
+  en error, el día vuelve a `pendiente`. Solo el cierre mensual (fase 4) escribe `consolidado` y
+  `diferencia` (`marcar(..., forzar=True)`); nada más los degrada.
+- Conteo (`total_bd`) alineado con el SAT: E = la empresa es emisora, R = receptora (una
+  autofactura cuenta en las dos, también en la lista del día); los cancelados no cuentan.
+- `hoy()` es la fecha de la Ciudad de México (UTC-6 fijo) en escritorio y en la nube, para que el
+  calendario y el piloto cuenten el mismo día.
+- Se pone al día al abrir la pantalla, cuando el poller ve un cambio (incluido el vencimiento a
+  72 h), al terminar de indexar una descarga y al registrar una descarga completa del portal (si
+  topó con `max_registros` no se marca el rango). Con `SAT_DM_SIN_INDEXADO=1` las descargas no
+  lo tocan, igual que al índice.
+- API: `GET /calendario/{rfc}?anio=`, `/dia?fecha=` y `/zip?anio=&mes=[&direccion=]` (XML del
+  índice; los CFDI sin XML guardado van listados en `sin_xml.txt`). Igual en escritorio y web.
+- Pantalla `/descarga/calendario`: año × día, filtro E/R/Ambos, detalle del día y export del mes.
+
+## Fase 4: lo que se implementó
+
+- `api/piloto.py`: hilo como el poller (cada 5 min, 45 s después de arrancar; `despertar()` lo
+  adelanta). Corre solo con la capacidad `piloto` en la licencia en cache, si el usuario lo activó
+  (`settings.json → piloto.activo`, nunca solo) y si la sesión única no lo pausó. Por empresa: no
+  archivada, incluida (`piloto_incluida` en empresas.json, local; aún no viaja en el sync), con
+  e.firma que abre y vigente. Las solicitudes van al catálogo con `origen: "piloto"`, `proposito`
+  y `periodo`; el poller las termina (verificándolas a lo más cada 10 min).
+- Pasada diaria: desde la 1:00 de la Ciudad de México más un desfase estable por cuenta (hasta 4 h).
+  Pide D-3…D-1 (menos los días cerrados o en error) más los días por descargar desde la
+  activación o los últimos 31 días, sin los que ya tienen solicitud viva o un reintento en curso.
+  Rangos contiguos mínimos, a lo más 4 por dirección. Una pausa de 90 s (más variación) entre
+  empresas que tocaron al SAT, y una sola autenticación por empresa en cada vuelta (el token se
+  reusa unos 4 min; si falla, lo demás de la empresa espera su reintento sin volver a tocar al SAT).
+- Cierre mensual: el `dia_cierre` del mes siguiente pero no antes del día 4 (rezago del último
+  día), y solo cuando ya no hay solicitudes vivas del mes ni días de una pasada esperando su
+  reintento. Pide Metadata de los **últimos 12 meses** con estatus `Todos` (decisión: una sola consulta por dirección da el conteo del mes y
+  las cancelaciones; 12 meses y no "el ejercicio" porque en enero-abril siguen llegando
+  cancelaciones del año anterior). Aplica las cancelaciones (`estado_sat`, `fecha_cancelacion`,
+  columna nueva) y avisa las de meses anteriores. Antes de comparar espera al indexado de fondo
+  de esa empresa (unos segundos; si sigue, compara en la siguiente vuelta). Compara por día con la
+  regla del conteo; lo que falte se pide una vez (por folio si son hasta 10, y si el SAT no acepta
+  esa solicitud, por los días) y, cuando baja y el poller lo indexa, se vuelve a comparar (si
+  ese indexado falla, esos días quedan en diferencia y se pueden reintentar). Si el SAT falla
+  al pedir lo que falta, el cierre espera y lo vuelve a pedir (no se cierra en diferencia por
+  eso). Una metadata que el SAT no completa se vuelve a pedir; una que bajó y no se puede leer
+  completa (un ZIP que no abre o el de algún paquete que falta, porque en local se conservan; se
+  borró la carpeta)
+  se vuelve a bajar una vez
+  (pedirla igual da 5005 y el SAT limita las descargas por paquete) y, si sigue igual, se pide otra;
+  en total hasta 3 veces, y la dirección que sí llegó no se vuelve a pedir.
+  Resultado con `calendario.cerrar_dias`: consolidado o diferencia con el detalle. Los meses que
+  vencieron con la app cerrada se cierran también, uno a la vez (el siguiente empieza cuando el
+  anterior termina).
+- Pausa: mientras está pausada no se pide nada. Reanudarla empieza desde ese día, como una
+  activación nueva (`activado_en`): los meses de la pausa no se piden solos, se llenan con el
+  historial. Un cierre que ya había empezado sí se termina.
+- Errores: red, 404, 5006, errores sin CodEstatus (un SOAP Fault) y respuestas que no se pueden
+  leer (una página HTML) → reintento a los 30 min, 2 h,
+  6 h, 12 h y 24 h (también de días anteriores) y, a las 72 h de la primera falla seguida, error
+  (sin pisar días que ya cerró el cierre o que ya tienen datos). e.firma (300-305 o no abre) →
+  error y aviso, y se vuelve a probar cada 6 h por si ya se corrigió (la pasada se retoma aunque
+  haya cambiado el día). 5002, 5001, 301 → error sin reintento (sin el truco de variar los
+  segundos, que gasta cuota). 5005 → nunca se varían los segundos: en la pasada diaria los días
+  quedan en proceso (el cierre los resuelve); en el cierre se usa la solicitud igual que ya se
+  tenía y, si no hay (la pidió otra instalación), se espera como a una falla del SAT. El piloto
+  reusa sus propias solicitudes; ante un 5005 de lo que falta, también una manual guardada sin
+  filtros (las manuales guardan ahora su contraparte y `sin_filtros`; las de antes no se toman);
+  si no hay una que sirva, esperar no ayuda (el SAT seguirá contestando 5005): ese rango queda en
+  diferencia, a la vista y con Reintentar por día, y los demás se siguen pidiendo.
+  5004 → día con 0.
+- Avisos (`piloto_avisos`): resumen del cierre cuando todas las empresas lo terminan,
+  cancelaciones de meses ya cerrados (una sola por comparación: el primer cierre puede traer las
+  de todo un año), e.firma y cierres fallidos. En la app, como notificación (si llegan más de 3 a
+  la vez, una sola que manda al cuadro de control); el correo (SES de todoconta-apps) queda
+  pendiente.
+- API: `GET /piloto/estado`, `PUT /piloto/config` (402 sin la capacidad), `PUT
+  /empresas/{rfc}/piloto`, `POST /piloto/correr`, `POST /piloto/avisos/leidos` y `POST
+  /calendario/{rfc}/reintentar`. Reintentar solo crea la solicitud del día; si su mes ya estaba
+  cerrado, al terminar el planificador (el único que escribe los cierres) vuelve a comparar el mes
+  con la metadata que ya tenía. Por eso no se puede con la descarga automática en pausa ni en una
+  empresa que no está incluida; si el SAT contesta 5005 (ese día ya se pidió igual), se explica.
+- Poller: una solicitud en 3 que no se baja en 72 h vence (`lista_en`), y también una cuyos
+  paquetes el SAT ya no deja bajar (5008; lo que sí bajó se registra e indexa); la Metadata va a
+  su carpeta y se registra como metadata; las de folio, a `cfdi/{RFC}/folios/{id}/`.
+- Pendiente fuera de este repo: el candado entre instalaciones (`piloto_ejecuciones` en Supabase,
+  migración 044 de todoconta-apps), `empresas_catalogo.piloto_incluida`, el correo del resumen y
+  el despertar por agenda del provisioner.
+- Solo el SAT real puede confirmar: `EstadoComprobante=Todos` en Metadata de recibidos, cuántos
+  UUID acepta una solicitud por folio (si rechaza la lista, el cierre pide por días), el tope de
+  registros de una Metadata de 12 meses, si contesta 5005 a una solicitud igual a otra que ya
+  terminó y los límites por RFC e IP con muchas cuentas.
+
+## Fase 5: lo que se implementó
+
+- `settings.json → piloto.historial_desde` ("YYYY-MM-01" o `null`), por `PUT /piloto/config`
+  (se normaliza al día 1; fijarlo exige la capacidad `piloto`, detenerlo no). Rango válido: del
+  mes siguiente a hoy menos 5 años (límite del WS v1.5, se mueve cada día) al mes anterior al
+  primer cierre del piloto (`activado_en`); fuera de él, 400 con el rango en palabras.
+- Cada mes del historial es un **cierre** (`piloto_ejecuciones`, `tipo = 'cierre'`) marcado
+  desde la reserva con `detalle.origen = "historial"` e `iniciado` (día de la Ciudad de México).
+  Dos diferencias con el cierre normal: la metadata pide **solo ese mes** (con 12 meses las
+  ventanas de los meses vecinos se encimarían) y las cancelaciones se aplican sin aviso. Un mes
+  que ya cubre la metadata de 12 meses de un cierre normal completo la reusa en lugar de pedirla
+  otra vez al SAT. El mes conserva su origen si la metadata se vuelve a pedir.
+- Ritmo: a lo más un mes nuevo por empresa al día y 8 por cuenta (`HISTORIAL_MESES_POR_DIA` y
+  `HISTORIAL_MESES_POR_DIA_CUENTA`); un mes empezado sigue sus pasos sin límite. Solo después de
+  la hora de la pasada diaria y si ningún cierre normal tocó al SAT en la vuelta (los cierres
+  normales van primero). Detener (`null`) no empieza meses nuevos. Un mes que reusa la metadata
+  de un cierre normal cuenta igual en el cupo: no pide metadata, pero sí puede pedir los XML que
+  falten.
+- Sin `_resumen_si_toca`: al terminar todo el historial de todas las empresas incluidas, un solo
+  aviso ("El historial desde julio de 2026 ya está en la base: 2 meses, 0 con diferencias."; con
+  varias empresas cuenta cierres, un mes por empresa), con los que fallaron sin reintento
+  contados aparte. Habla del rango que de verdad se cubrió: el límite de 5 años se mueve cada día
+  y un mes que sale antes de pedirse ya no se pide. El aviso es uno por elección del usuario (no
+  se repite porque el límite avance), y cambiar de mes a un rango que ya estaba completo no
+  vuelve a avisar. Si después se suman meses que el historial llena (al reanudar tras una
+  pausa) o una empresa que no estaba incluida, otro aviso cuenta solo eso ("Ya está en la base
+  lo que se sumó al historial (septiembre de 2026 a octubre de 2026): 2 meses, 0 con
+  diferencias."; si es una de varias empresas, dice cuál); los meses que entran ya cerrados por
+  el cierre normal ni avisan ni se cuentan. `piloto.historial_revisado` guarda hasta qué mes ya
+  se revisó cada empresa, así lo revisado no se vuelve a leer.
+- `GET /piloto/estado` trae el bloque `historial` (desde, mínimo, máximo, meses totales,
+  completos, con diferencia, con error y el siguiente con trabajo) y `historial_completos` /
+  `historial_total` por empresa. UI: selector "Llenar historial desde…" con avance y Detener en
+  el panel, el mismo selector opcional al activar y "Historial: 3/20" en la lista de empresas.
+
+## Fase 6: lo que se implementó
+
+- `procesador/servir_base.py` (sin FastAPI): `plan(rfc, desde, hasta, dirección)` parte el rango
+  (recortado a hoy) en los días `consolidado` del calendario, que se sirven, y los huecos, que son
+  todo lo demás (también `diferencia` y `provisional`: no hay garantía de que el índice esté
+  completo; y un día consolidado con algún CFDI sin XML guardado), en rangos contiguos mínimos;
+  si son más de 6 se juntan los más cercanos (la misma regla del planificador, ahora
+  `calendario.rangos_contiguos`). `materializar` escribe los `{UUID}.xml` de esos días (regla E/R
+  del calendario, sin cancelados) en la carpeta convencional del rango **pedido** y lo registra
+  en el historial con canal `base`, sin reindexar. Lo que después baja cada hueco se indexa solo
+  desde las carpetas de sus paquetes (`webservice.descarga.carpeta_paquete`), no desde la del
+  rango, que comparte con lo servido.
+- `POST /solicitar/desde-base` (solo CFDI): sin huecos no toca al SAT ni al cupo y `id_solicitud`
+  es null; con huecos, una solicitud por hueco con el mismo código de `/solicitar` y cada hueco
+  queda en proceso en el calendario. Con tope de descargas en el plan se pide un solo rango del
+  primer hueco al último (cuesta 1 descarga, como `/solicitar`). Lo que bajen esas solicitudes va
+  a la misma carpeta del rango pedido (`carpeta_rango` en el catálogo). Lo consolidado se sirve
+  primero: si se sirvió algo, ningún error del SAT ni del cupo tira la petición (van a `errores`
+  con `tipo` "sat", "cupo" o "base"); si no se sirvió nada, los errores de siempre (402, 400, 503).
+  Un 5005 con una solicitud igual y viva en el catálogo (del piloto o manual sin filtros) sigue
+  esa en lugar de fallar. Con filtros por RFC no se sirve nada de la base (lo consolidado no está
+  filtrado), y si el índice falla se sigue como `/solicitar`. Fechas invertidas o un periodo que
+  empieza después de hoy: 400. `/solicitar` no cambia.
+- UI: el formulario de Web Service usa el endpoint nuevo para CFDI (Metadata sigue por
+  `/solicitar`); si todo estaba consolidado termina sin verificar ni descargar; con varias
+  solicitudes, la primera lleva el flujo y el resto lo baja el poller. Un aviso dice qué se sirvió
+  de la base, qué huecos se pidieron y qué rangos fallaron, con "Abrir carpeta" (descarga HTTP en
+  la web).
 
 ## Abierto
 
 - Ritmo del llenado del historial frente a los límites reales del SAT por RFC e IP. Medir en el
   VPS (riesgo ya listado en F7).
-- Si el cierre mensual pide metadata del ejercicio completo cada mes o solo de los últimos N meses.
