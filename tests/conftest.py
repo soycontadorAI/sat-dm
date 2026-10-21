@@ -99,6 +99,16 @@ def indexado_apagado(monkeypatch):
     monkeypatch.setenv("SAT_DM_SIN_INDEXADO", "1")
 
 
+@pytest.fixture(autouse=True)
+def piloto_apagado(monkeypatch):
+    """
+    El hilo de la descarga automática (api/piloto.py) nunca arranca en las
+    pruebas, ni con el lifespan del agente: sus pruebas llaman al planificador
+    directo, con el reloj y el SAT simulados.
+    """
+    monkeypatch.setenv("SAT_DM_SIN_PILOTO", "1")
+
+
 @pytest.fixture
 def fixtures_dir():
     """Ruta al directorio de fixtures."""

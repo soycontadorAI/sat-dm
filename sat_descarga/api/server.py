@@ -63,6 +63,7 @@ from .routers import (
     tareas_router,
     system_router,
     calendario_router,
+    piloto_router,
     descargas_router,
     sesion_router,
 )
@@ -123,6 +124,17 @@ async def lifespan(app: "FastAPI"):
         logger.exception("No se pudo iniciar el poller de solicitudes WS")
         detener_poller = None
 
+    # Descarga automática (api/piloto.py): hilo daemon que crea a tiempo las
+    # solicitudes de la pasada diaria y del cierre mensual. Solo corre si el
+    # usuario lo activó y el plan lo trae; al abrir la app se pone al corriente.
+    try:
+        from .piloto import iniciar_piloto, detener_piloto
+
+        iniciar_piloto()
+    except Exception:
+        logger.exception("No se pudo iniciar la descarga automática")
+        detener_piloto = None
+
     # Índice permanente del procesador: una vez por empresa, indexa en segundo
     # plano los XML que ya estaban en la carpeta de descargas (las descargas
     # nuevas se indexan solas al terminar; ver procesador/indexar.py).
@@ -152,6 +164,8 @@ async def lifespan(app: "FastAPI"):
     yield
     if detener_poller is not None:
         detener_poller()
+    if detener_piloto is not None:
+        detener_piloto()
     if detener_latidos is not None:
         detener_latidos()
     uso.detener()
@@ -274,6 +288,7 @@ app.include_router(diot_router)
 app.include_router(ce_router)
 app.include_router(tareas_router)
 app.include_router(calendario_router)
+app.include_router(piloto_router)
 app.include_router(descargas_router)
 app.include_router(sesion_router)
 

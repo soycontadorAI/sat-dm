@@ -8,6 +8,24 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Feature
 
+- **Descarga automática (piloto).** Con la capacidad `piloto` del plan (Pro, Completo y la
+  prueba) y una vez que el usuario la activa en el cuadro de control, el agente pide solo al SAT
+  los CFDI de cada empresa incluida: cada madrugada, emitidos y recibidos de los últimos 3 días
+  (el SAT acepta timbrar hasta 72 h después) más lo que falte desde la última vez si la app
+  estuvo cerrada; y el día de cierre (default el 5, nunca antes de 3 días después de fin de mes)
+  verifica el mes anterior contra la metadata del SAT: aplica las cancelaciones de los últimos 12
+  meses (con aviso si son de un mes ya cerrado), pide por folio o por días lo que falte y deja
+  cada día consolidado o con diferencia ("SAT 120 · BD 118"). Al terminar todas las empresas
+  llega un solo resumen. No consume las descargas del mes. Respeta los códigos del SAT: 5002 es
+  error sin reintentos, una e.firma que no abre o que el SAT rechaza es error con aviso (se vuelve
+  a probar cada 6 h por si ya se corrigió), 5005 nunca se burla variando segundos y las fallas del
+  SAT se reintentan con espera creciente hasta 3 días. En escritorio corre con la
+  app abierta y al abrirla se pone al corriente; en la web, en el espacio en línea. Pausarla
+  detiene todo; al reanudarla empieza desde ese día (lo de la pausa no se pide solo). Candado
+  local contra duplicados (`piloto_ejecuciones`, migración `012_piloto.sql`); el candado entre
+  web y escritorio queda pendiente de Supabase. Interruptor por empresa en su fila y
+  "Reintentar" en el detalle del día. Kill switch `SAT_DM_SIN_PILOTO=1`. Fase 4 de
+  `docs/producto/descarga-programada.md`.
 - **Cuadro de control de descargas.** Pantalla nueva en Descargar CFDIs (botón "Cuadro de
   control", también en el espacio SAT y en ⌘K): un calendario por empresa, con una fila por
   mes y una columna por día, que muestra qué días ya están en la base, cuáles están en proceso
@@ -45,6 +63,13 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Bug fix
 
+- **Una solicitud del Web Service lista pero sin bajar ya no se reintenta para siempre.** Si sus
+  paquetes no se pudieron descargar en 72 h (lo que el SAT los guarda), queda vencida con el
+  aviso de volver a pedir el periodo, en lugar de que el poller la intentara cada minuto.
+- **La metadata del Web Service ya no se mezcla con los XML.** Va a
+  `descargas/metadata/{RFC}/…` y se registra en el historial como metadata (antes caía en la
+  carpeta de CFDI del mismo rango y se registraba como descarga de CFDI). Las solicitudes por
+  folio tienen su propia carpeta y al terminar ya no se reindexa toda la empresa.
 - **Después de pagar con tarjeta ya no aparece un 404.** Stripe regresaba a
   `/desktop/checkout-success` y `/desktop/checkout-cancelled`, que nunca existieron. Ahora
   regresa a `/pago/listo` o `/pago/cancelado` en app.todoconta.com (sin pedir sesión: quien

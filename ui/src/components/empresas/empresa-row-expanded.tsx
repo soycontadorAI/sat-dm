@@ -9,6 +9,9 @@ import { useJob } from '@/hooks/use-job';
 import { cn } from '@/lib/utils';
 import { Icon } from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { useAuth } from '@/providers/auth-provider';
+import { tienePiloto } from '@/lib/calendario';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CaptchaModal } from '@/components/descarga/captcha-modal';
 import { JobProgress } from '@/components/descarga/job-progress';
@@ -56,7 +59,27 @@ function formatoFecha(iso: string | null | undefined): string | null {
  */
 export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarIniciado }: Props) {
   const { apiClient } = useServer();
+  const { license } = useAuth();
   const job = useJob();
+  // Descarga automática: el valor sale de la empresa; se refleja de inmediato.
+  const [pilotoIncluida, setPilotoIncluida] = useState(!!empresa.piloto_incluida);
+  const [pilotoBusy, setPilotoBusy] = useState(false);
+  useEffect(() => setPilotoIncluida(!!empresa.piloto_incluida), [empresa.piloto_incluida]);
+
+  async function cambiarPiloto(v: boolean) {
+    setPilotoBusy(true);
+    setPilotoIncluida(v);
+    try {
+      await apiClient.pilotoEmpresa(empresa.rfc, v);
+      toast.success(v ? 'Entra en la descarga automática' : 'Sale de la descarga automática');
+      onJobDone();
+    } catch (e) {
+      setPilotoIncluida(!v);
+      toast.error(mensajeDeError(e));
+    } finally {
+      setPilotoBusy(false);
+    }
+  }
   // Estado FIEL por documento: /constancia/fiel y /opinion/fiel son endpoints
   // distintos y pueden correr en paralelo. Solo CIEC se serializa (el agente
   // rechaza jobs CIEC concurrentes con 409).
@@ -415,6 +438,26 @@ export function EmpresaRowExpanded({ empresa, onJobDone, autoBajar, onAutoBajarI
           )}
         </DocCardShell>
       </div>
+
+      {tienePiloto(license) && tieneFiel && !archivada && (
+        <label className="flex items-start gap-3 rounded-xl border border-border bg-card p-3.5">
+          <Switch
+            size="sm"
+            className="mt-0.5"
+            checked={pilotoIncluida}
+            disabled={pilotoBusy}
+            onCheckedChange={(v) => void cambiarPiloto(v)}
+          />
+          <span className="space-y-0.5">
+            <span className="block text-[13px] font-bold tracking-tight">
+              Incluir en la descarga automática
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Pide sus CFDI cada madrugada y verifica cada mes contra el SAT. Usa su e.firma.
+            </span>
+          </span>
+        </label>
+      )}
 
       {/* Expediente fiscal: pantalla en camino — entrada deshabilitada a propósito. */}
       {!archivada && (

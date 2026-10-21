@@ -195,7 +195,9 @@ def paquete_zip(rfc: str, package_id: str) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         if _es_metadata(sol):
-            zf.writestr(f"{package_id}.txt", cfdi.metadata_txt(parte))
+            meses = {(c.fecha.year, c.fecha.month) for c in parte}
+            cancelados = frozenset().union(*(cfdi.cancelados_despues(rfc, a, m) for a, m in meses))
+            zf.writestr(f"{package_id}.txt", cfdi.metadata_txt(parte, cancelados))
         else:
             for c in parte:
                 zf.writestr(cfdi.nombre_archivo(c), cfdi.xml(c))

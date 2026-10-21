@@ -219,15 +219,28 @@ def _salida_descarga_ws(rfc: str, id_solicitud: str) -> str:
         sol = config_store.get_solicitud(rfc, id_solicitud) or {}
     except Exception:  # noqa: BLE001
         sol = {}
+    if sol.get("uuids"):
+        # Por folio: sin rango de fechas; su propia carpeta para no reindexar
+        # toda la empresa al terminar.
+        return str(paths.dir_folios(rfc, id_solicitud, salida_base=base))
     tipo = sol.get("tipo_comprobante")
     fi, ff = sol.get("fecha_inicio"), sol.get("fecha_fin")
     if tipo in ("E", "R") and fi and ff:
         try:
-            return str(paths.dir_cfdi(rfc, tipo, _date.fromisoformat(fi),
-                                      _date.fromisoformat(ff), salida_base=base))
+            desde, hasta = _date.fromisoformat(fi), _date.fromisoformat(ff)
+            if es_metadata(sol):
+                return str(paths.dir_metadata(rfc, tipo, desde, hasta, salida_base=base))
+            return str(paths.dir_cfdi(rfc, tipo, desde, hasta, salida_base=base))
         except ValueError:
             pass  # fechas malformadas → fallback
     return str(paths.dir_cfdi_base(rfc, salida_base=base))
+
+
+def es_metadata(sol: Optional[dict]) -> bool:
+    """¿La solicitud del catálogo es de Metadata? (`config_store.es_metadata`)."""
+    from ..cli import config_store
+
+    return config_store.es_metadata(sol)
 
 
 # ---------------------------------------------------------------------------

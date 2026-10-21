@@ -18,6 +18,7 @@ las del monolito original (la UI y el CLI las consumen tal cual).
 - tareas     — tareas personales (CRUD) + descartes de sugerencias.
 - system     — health, abrir en el SO, ajustes y auth de licencia (todoconta).
 - calendario — cuadro de control: estado de la descarga por empresa, día y dirección.
+- piloto     — descarga automática: estado, activar, empresas incluidas, reintentar un día.
 - descargas  — descarga de archivos/ZIP por HTTP (reemplaza a /abrir en la web).
 - sesion     — una sesión activa a la vez (reclamar, latido, estado).
 """
@@ -35,6 +36,7 @@ from .diot import router as diot_router
 from .tareas import router as tareas_router
 from .system import router as system_router
 from .calendario import router as calendario_router
+from .piloto import router as piloto_router
 from .descargas import router as descargas_router
 from .sesion import router as sesion_router
 
@@ -52,6 +54,7 @@ __all__ = [
     "tareas_router",
     "system_router",
     "calendario_router",
+    "piloto_router",
     "descargas_router",
     "sesion_router",
 ]

@@ -42,9 +42,11 @@ Notas de diseño:
 """
 
 import logging
+from pathlib import Path
 import os
-from datetime import datetime
 import threading
+import time
+from datetime import datetime
 from typing import Optional
 
 import requests
@@ -53,12 +55,14 @@ from ..core.errores import ErrorEsperado
 from ..core.fiel import FIEL
 from ..webservice.auth import obtener_token
 from ..webservice.descarga import descargar_todos
+from ..webservice.errores import trae_codestatus
 from ..webservice.verificacion import consultar_solicitud, ESTADO_TERMINADA
 from .state import (
     _iniciar_descarga_ws,
     _registrar_descarga,
     _salida_descarga_ws,
     _terminar_descarga_ws,
+    es_metadata,
 )
 from .uso import rango, tipo_de_solicitud, track
 
@@ -66,6 +70,13 @@ logger = logging.getLogger(__name__)
 
 POLL_INTERVAL_S = 60          # entre pasadas completas
 ARRANQUE_DELAY_S = 20         # deja arrancar el agente antes de la 1.ª pasada
+# Las solicitudes de la descarga automática no tienen a nadie esperando en la
+# pantalla: se verifican a lo más cada 10 min, no cada pasada (son muchas y
+# todas salen de la misma IP en la nube).
+VERIFICAR_PILOTO_CADA_S = 600
+
+# id_solicitud → time.monotonic() de la próxima verificación (solo las del piloto).
+_proxima_verificacion: dict = {}
 
 _stop = threading.Event()
 _thread: Optional[threading.Thread] = None
@@ -166,6 +177,7 @@ def _procesar_empresa(rfc: str, emp: dict) -> None:
     # 1) Vencimiento local: cierra lo que el SAT dejó colgado más de 72 h.
     vencidas = config_store.marcar_solicitudes_vencidas(rfc)
     for v in vencidas:
+        _proxima_verificacion.pop(v.get("id_solicitud"), None)
         logger.warning(
             "[poller] %s: solicitud %s marcada como vencida (creada %s)",
             rfc, v.get("id_solicitud"), v.get("timestamp"),
@@ -196,6 +208,10 @@ def _procesar_empresa(rfc: str, emp: dict) -> None:
             if _stop.is_set():
                 return
             id_sol = sol["id_solicitud"]
+            if sol.get("origen") == "piloto":
+                if time.monotonic() < _proxima_verificacion.get(id_sol, 0):
+                    continue
+                _proxima_verificacion[id_sol] = time.monotonic() + VERIFICAR_PILOTO_CADA_S
             try:
                 estado = consultar_solicitud(token, fiel.rfc, id_sol, fiel)
             except Exception as e:  # noqa: BLE001 — red/SSL del SAT: reintenta luego
@@ -205,6 +221,8 @@ def _procesar_empresa(rfc: str, emp: dict) -> None:
                 continue
             estado_catalogo = "vencida" if estado.cod_estado == "6" else estado.cod_estado
             cambio = cambio or estado_catalogo != sol.get("estado")
+            if estado_catalogo not in config_store.ESTADOS_PENDIENTES:
+                _proxima_verificacion.pop(id_sol, None)  # ya no se vuelve a verificar
             config_store.update_solicitud(
                 rfc, id_sol, estado_catalogo,
                 package_ids=estado.package_ids or None,
@@ -276,8 +294,9 @@ def _descargar_lista(rfc: str, fiel: FIEL, sol: dict) -> bool:
             fiel=fiel,
             extraer=True,
         )
+        # La metadata es un TXT del SAT: va al historial como tal y no se indexa.
         _registrar_descarga(
-            rfc, "ws", "cfdi",
+            rfc, "ws", "metadata" if es_metadata(sol) else "cfdi",
             descripcion=f"Descarga WS · solicitud {id_sol[:8]}… (automática)",
             ruta=salida, total=numero_cfdis,
         )
@@ -289,6 +308,25 @@ def _descargar_lista(rfc: str, fiel: FIEL, sol: dict) -> bool:
         logger.info("[poller] %s: solicitud %s descargada en %s", rfc, id_sol, salida)
         return True
     except Exception as e:  # noqa: BLE001 — reintenta en la siguiente pasada (sigue en 3)
+        if trae_codestatus(str(e), "5008"):
+            # El SAT ya no deja bajar esos paquetes (máximo de descargas): reintentar
+            # cada pasada no sirve de nada. Lo que sí bajó de esta solicitud (otros
+            # paquetes; la carpeta es del rango y puede traer de otras) se registra y
+            # se indexa.
+            salida = _salida_descarga_ws(rfc, id_sol)
+            if any((Path(salida) / f"{pid}.zip").is_file() for pid in package_ids or []):
+                _registrar_descarga(
+                    rfc, "ws", "metadata" if es_metadata(sol) else "cfdi",
+                    descripcion=f"Descarga WS · solicitud {id_sol[:8]}… (incompleta, 5008)",
+                    ruta=salida, total=None,
+                )
+            config_store.update_solicitud(
+                rfc, id_sol, "vencida",
+                mensaje="El SAT ya no permite bajar estos paquetes otra vez (5008). "
+                        "Vuelve a pedir el periodo.",
+            )
+            logger.warning("[poller] %s: %s llegó al máximo de descargas (5008)", rfc, id_sol)
+            return True
         logger.warning("[poller] %s: descarga de %s falló: %s", rfc, id_sol, e)
         return False
     finally:

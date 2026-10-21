@@ -119,6 +119,22 @@ def test_pieza1_descarga_por_web_service(client, monkeypatch):
     assert client.get("/descargas/cupo").json()["usadas"] == 0
 
 
+def test_descargar_metadata_queda_en_el_historial_como_metadata(client):
+    """La metadata es un TXT del SAT: /descargar la registra como tal (no como
+    CFDI que el procesador intentaría indexar)."""
+    assert client.post(f"/empresas/{EL_ROBLE}/activar").json()["efirma_lista"]
+    r = client.post("/solicitar", json={
+        "fecha_inicio": "2026-09-01", "fecha_fin": "2026-09-30",
+        "tipo_solicitud": "Metadata", "tipo_comprobante": "R",
+    })
+    assert r.status_code == 200, r.text
+    id_sol = r.json()["id_solicitud"]
+    assert client.post("/verificar", json={"id_solicitud": id_sol, "poll": False}).json()["terminada"]
+    assert client.post("/descargar", params={"id_solicitud": id_sol}).json()["ok"]
+    ultima = client.get("/historial").json()["descargas"][0]
+    assert ultima["rfc"] == EL_ROBLE and ultima["tipo"] == "metadata"
+
+
 def test_pieza1_descarga_rapida_con_captcha_y_avance(client):
     r = client.post("/ciec/cfdi", json={
         "rfc": MOLINA, "fecha_inicio": "2026-09-01", "fecha_fin": "2026-09-30",
