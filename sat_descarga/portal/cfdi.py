@@ -44,6 +44,22 @@ logger = logging.getLogger(__name__)
 PORTAL_URL = "https://portalcfdi.facturaelectronica.sat.gob.mx"
 DOWNLOAD_TIMEOUT_MS = 30_000
 
+# El portal muestra a lo más 500 filas por consulta (docs/producto/protocolo-sat.md):
+# una consulta que llega a ese número pudo quedarse con más CFDIs afuera.
+MAX_FILAS_CONSULTA = 500
+
+
+class DescargaPortal(list):
+    """Los XML descargados (la `List[Path]` de siempre) más si la descarga quedó
+    completa. `completa=False` si una fila no traía URL, si un XML no se pudo
+    bajar, si se detuvo por la cuota, si una consulta llegó al máximo de filas
+    del portal o si se topó con `max_registros`. Solo una descarga completa da
+    por descargado su rango en el cuadro de control."""
+
+    def __init__(self, archivos=(), completa: bool = True):
+        super().__init__(archivos)
+        self.completa = completa
+
 
 class CIECClient:
     """Cliente para descargar CFDIs vía el portal web del SAT (CIEC)."""
@@ -108,6 +124,7 @@ class CIECClient:
         base_dir = Path(directorio_salida)
         base_dir.mkdir(parents=True, exist_ok=True)
         descargados: List[Path] = []
+        self._completa = True  # `_descargar_tipo` lo apaga si algo se quedó afuera
 
         with sync_playwright() as p:
             browser = lanzar_chromium(p, headless=self.headless, slow_mo=80)
@@ -173,7 +190,7 @@ class CIECClient:
 
         logger.info("[CIEC] Descarga completada: %d XMLs en %s",
                     len(descargados), base_dir)
-        return descargados
+        return DescargaPortal(descargados, self._completa and len(descargados) < max_registros)
 
     def _descargar_tipo(
         self, page, tipo: str, fecha_inicio: date, fecha_fin: date,
@@ -194,6 +211,7 @@ class CIECClient:
         fallos_seguidos = 0
         for fi, ff in bloques:
             if len(descargados) >= max_registros:
+                self._completa = False
                 break
             buscar(fi, ff)
             # Se extraen TODAS las URLs de las filas antes de descargar, así
@@ -201,11 +219,14 @@ class CIECClient:
             filas = self._extraer_filas(page)
             if not filas:
                 continue
+            if len(filas) >= MAX_FILAS_CONSULTA:
+                self._completa = False
             logger.info("[CIEC] %s%s: %d CFDIs en resultados.",
                         fi, "" if fi == ff else f"→{ff}", len(filas))
 
             for fila in filas:
                 if len(descargados) >= max_registros:
+                    self._completa = False
                     break
                 uuid = fila["uuid"]
                 url = fila["url"]
@@ -218,12 +239,14 @@ class CIECClient:
                     continue
                 if not url:
                     logger.warning("[CIEC] %s sin URL de descarga.", uuid)
+                    self._completa = False
                     continue
                 if self._descargar_xml(page, url, dest):
                     descargados.append(dest)
                     fallos_seguidos = 0
                     logger.info("[CIEC] ✓ %s (%d)", uuid, len(descargados))
                 else:
+                    self._completa = False
                     fallos_seguidos += 1
                     logger.warning("[CIEC] ✗ no se pudo descargar %s", uuid)
                     # 3 fallos seguidos: probable cuota diaria agotada o
@@ -524,7 +547,7 @@ def descargar_cfdi_ciec(
     max_registros: int = 2000,
     headless: bool = True,
     pedir_captcha=None,
-) -> List[Path]:
+) -> "DescargaPortal":
     """
     Descarga CFDIs del portal del SAT usando autenticación CIEC.
 
@@ -560,7 +583,7 @@ def descargar_cfdi_fiel(
     directorio_salida: str = "./cfdi/",
     max_registros: int = 2000,
     headless: bool = True,
-) -> List[Path]:
+) -> "DescargaPortal":
     """
     Descarga CFDIs del portal del SAT usando e.firma (FIEL) en vez de CIEC.
 

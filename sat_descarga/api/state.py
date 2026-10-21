@@ -21,7 +21,7 @@ import logging
 import os
 import threading
 from datetime import date
-from typing import Optional
+from typing import Iterable, Optional
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -149,9 +149,44 @@ def _descargas_base() -> str:
     return config_store.get_descargas_dir()
 
 
-def _registrar_descarga(rfc, canal, tipo, descripcion="", ruta="", total=None):
+def direcciones_de(tipo_comprobante: Optional[str]) -> list[str]:
+    """Direcciones (E/R) que descarga un `tipo_comprobante` de la API. Misma
+    regla que el portal (`portal/cfdi.py::_normalizar_tipos`, que no se importa
+    aquí porque arrastra Playwright): E/EMITIDOS, R/RECIBIDOS y cualquier otra
+    cosa ("RE", "AMBOS", vacío) son las dos."""
+    t = (tipo_comprobante or "").strip().upper()
+    if t in ("E", "EMITIDOS"):
+        return ["E"]
+    if t in ("R", "RECIBIDOS"):
+        return ["R"]
+    return ["E", "R"]
+
+
+def _marcar_calendario(rfc, rango, direcciones) -> None:
+    """Marca como provisional el rango descargado en el cuadro de control.
+    El calendario vive en el índice (`procesador.db`): con el indexado automático
+    apagado (`SAT_DM_SIN_INDEXADO=1`) tampoco se toca. Best-effort: nunca lanza."""
+    try:
+        from ..procesador import calendario
+        from ..procesador.indexar import automatico_activo
+
+        if not automatico_activo():
+            return
+
+        desde, hasta = rango
+        for d in direcciones:
+            calendario.marcar(rfc, desde, hasta, d, "provisional")
+    except Exception:  # noqa: BLE001 - el calendario tampoco rompe la descarga
+        logger.warning("No se pudo marcar el calendario", exc_info=True)
+
+
+def _registrar_descarga(rfc, canal, tipo, descripcion="", ruta="", total=None,
+                        rango: Optional[tuple[date, date]] = None,
+                        direcciones: Optional[Iterable[str]] = None):
     """Registra una descarga completada en el historial y, si son CFDIs, los
-    indexa al procesador en segundo plano. Best-effort: nunca lanza."""
+    indexa al procesador en segundo plano. Con `rango` y `direcciones` marca
+    además esos días como provisionales en el cuadro de control (solo quien
+    llama sabe si la descarga quedó completa). Best-effort: nunca lanza."""
     try:
         from ..cli import config_store
         config_store.registrar_descarga(
@@ -165,6 +200,8 @@ def _registrar_descarga(rfc, canal, tipo, descripcion="", ruta="", total=None):
             indexar_descarga(rfc, ruta, canal)
         except Exception:  # noqa: BLE001 - el índice tampoco
             logger.warning("No se pudo indexar la descarga", exc_info=True)
+        if rango and direcciones:
+            _marcar_calendario(rfc, rango, list(direcciones))
 
 
 def _salida_descarga_ws(rfc: str, id_solicitud: str) -> str:

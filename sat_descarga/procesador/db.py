@@ -1152,6 +1152,14 @@ class ProcesadorDB:
     # ------------------------------------------------------------------
 
     @contextmanager
+    def transaccion(self):
+        """Conexión bajo el candado y dentro de una transacción (commit al
+        salir, rollback si falla): para escrituras de varias sentencias desde
+        otros módulos (calendario) sin tocar los atributos privados."""
+        with self._lock, self._conn:
+            yield self._conn
+
+    @contextmanager
     def cursor(self):
         """Context manager que retorna un cursor bajo lock."""
         with self._lock:

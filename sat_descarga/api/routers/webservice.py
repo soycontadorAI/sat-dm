@@ -31,6 +31,7 @@ from ..state import (
     _autocargar_empresa_default,
     _descargas_base,
     _registrar_descarga,
+    direcciones_de,
     _salida_descarga_ws,
     _iniciar_descarga_ws,
     _terminar_descarga_ws,
@@ -311,6 +312,8 @@ def verificar(req: VerificarRequest):
                 package_ids=estado.package_ids if estado.package_ids else None,
                 mensaje=estado.mensaje,
                 numero_cfdis=estado.numero_cfdis,
+                cod_estatus=estado.cod_estatus,
+                codigo_estado_solicitud=estado.codigo_estado_solicitud,
             )
         return {
             "cod_estado": estado.cod_estado,
@@ -452,6 +455,8 @@ def descarga_completa(req: DescargaCompletaRequest):
             _session["rfc"], "ws", "cfdi",
             descripcion=f"Descarga WS completa · {req.fecha_inicio} a {req.fecha_fin}",
             ruta=req.directorio_salida,
+            rango=(req.fecha_inicio, req.fecha_fin),
+            direcciones=direcciones_de(req.tipo_comprobante),
         )
         cupo_descargas.registrar("cfdi", rfc=_session["rfc"])
         # Solicitud y descarga en una sola llamada: cuenta como las dos acciones.
@@ -618,16 +623,19 @@ def _actualizar_solicitud_ws(
     *,
     mensaje: Optional[str] = None,
     numero_cfdis: Optional[int] = None,
+    cod_estatus: Optional[str] = None,
+    codigo_estado_solicitud: Optional[str] = None,
 ) -> None:
     """Actualiza el estado de una solicitud WS guardada. Best-effort.
 
-    También persiste `mensaje` y `numero_cfdis` cuando vienen (los devuelve el SAT
+    También persiste `mensaje`, `numero_cfdis` y `cod_estatus` cuando vienen (los devuelve el SAT
     en /verificar) para mostrarlos en la fila expandida de la UI."""
     try:
         from ...cli import config_store
         config_store.update_solicitud(
             rfc, id_solicitud, estado, package_ids=package_ids,
-            mensaje=mensaje, numero_cfdis=numero_cfdis,
+            mensaje=mensaje, numero_cfdis=numero_cfdis, cod_estatus=cod_estatus,
+            codigo_estado_solicitud=codigo_estado_solicitud,
         )
     except Exception:  # noqa: BLE001
         logger.warning("No se pudo actualizar la solicitud en el historial", exc_info=True)
