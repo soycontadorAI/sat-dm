@@ -28,6 +28,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import type { CfdiFiltros, PlantillaExport } from '@/lib/types';
 import { mensajeDeError } from '@/lib/errores';
+import { descargarBlob } from '@/lib/descargas';
 
 interface Props {
   /** RFC de la empresa activa: el export sale de SU índice. */
@@ -35,16 +36,6 @@ interface Props {
   filtros: Partial<CfdiFiltros>;
 }
 
-function descargarBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 /**
  * Exportar con plantilla (procesador/plantillas.py): qué columnas, y dos

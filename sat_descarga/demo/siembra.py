@@ -177,7 +177,7 @@ def _descarga(rfc: str, tipo: str, anio: int, mes: int, canal: str, cuando: date
     solicitud "Descargada" (Web Service) y renglón en el historial."""
     from ..cli import config_store
     from ..core import paths
-    from ..webservice.descarga import _extraer_zip
+    from ..webservice.descarga import _extraer_zip, zip_paquete
 
     desde, hasta = _rango(anio, mes)
     cuales = {"E": "emitidos", "R": "recibidos"}[tipo]
@@ -192,7 +192,7 @@ def _descarga(rfc: str, tipo: str, anio: int, mes: int, canal: str, cuando: date
         salida.mkdir(parents=True, exist_ok=True)
         paquete = f"{id_sol.upper()}_01"
         zip_bytes = _zip(comps)
-        (salida / f"{paquete}.zip").write_bytes(zip_bytes)
+        zip_paquete(salida, paquete).write_bytes(zip_bytes)
         _extraer_zip(zip_bytes, salida, paquete)
         config_store.save_solicitud(
             rfc, id_sol, desde.isoformat(), hasta.isoformat(), tipo=f"CFDI · {cuales}",

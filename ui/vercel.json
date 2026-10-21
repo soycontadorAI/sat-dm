@@ -1,4 +1,8 @@
 {
+  "redirects": [
+    { "source": "/desktop/checkout-success", "destination": "/pago/listo", "permanent": false },
+    { "source": "/desktop/checkout-cancelled", "destination": "/pago/cancelado", "permanent": false }
+  ],
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://api.todoconta.com/api/:path*" },
     { "source": "/desktop/:path*", "destination": "https://api.todoconta.com/desktop/:path*" },

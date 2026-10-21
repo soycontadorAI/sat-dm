@@ -144,12 +144,14 @@ def extraer_metadata_de_zip(zip_path: str) -> List[MetadataCFDI]:
     return parse_metadata_csv(csv_text)
 
 
-def extraer_metadata_de_directorio(directorio: str) -> List[MetadataCFDI]:
+def extraer_metadata_de_directorio(directorio: str,
+                                   errores: Optional[list] = None) -> List[MetadataCFDI]:
     """
     Busca archivos ZIP o CSV en un directorio y extrae la metadata.
 
     Args:
         directorio: Ruta al directorio con ZIPs de metadata.
+        errores: si se pasa, recibe la ruta de cada archivo que no se pudo leer.
 
     Returns:
         Lista combinada de MetadataCFDI de todos los archivos.
@@ -163,6 +165,8 @@ def extraer_metadata_de_directorio(directorio: str) -> List[MetadataCFDI]:
             records.extend(extraer_metadata_de_zip(str(zip_file)))
         except (zipfile.BadZipFile, Exception) as e:
             logger.warning("[Metadata] Error leyendo %s: %s", zip_file, e)
+            if errores is not None:
+                errores.append(str(zip_file))
 
     # Si no hubo ZIPs, buscar TXTs/CSVs sueltos
     if not records:
@@ -182,6 +186,8 @@ def extraer_metadata_de_directorio(directorio: str) -> List[MetadataCFDI]:
                         records.extend(parse_metadata_csv(csv_text))
                 except Exception as e:
                     logger.warning("[Metadata] Error leyendo %s: %s", text_file, e)
+                    if errores is not None:
+                        errores.append(str(text_file))
 
     # Deduplicar por UUID (múltiples solicitudes pueden tener los mismos registros)
     seen = set()

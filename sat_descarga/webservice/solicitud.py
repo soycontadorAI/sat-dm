@@ -46,9 +46,14 @@ def solicitar_descarga(
     rfc_emisor: Optional[str] = None,
     rfc_receptor: Optional[str] = None,
     estado_comprobante: Optional[str] = None,
+    reintentar_5002: bool = True,
 ) -> str:
     """
     Solicita una descarga masiva de CFDIs (API v1.5).
+
+    `reintentar_5002=False` desactiva el truco de variar los segundos ante un
+    5002: la descarga automática no lo usa (gasta cuota del SAT y su regla es
+    "5002 → error sin reintentos").
 
     Args:
         fiel: Instancia de FIEL. Cada solicitud se firma con la e-firma.
@@ -80,7 +85,7 @@ def solicitar_descarga(
     # del rango restando 1 segundo a fecha_fin en cada reintento — un truco
     # conocido del WS (la cuota es por hash del rango, no por fechas semánticas).
     last_error: Optional[Exception] = None
-    for intento in range(5):
+    for intento in range(5 if reintentar_5002 else 1):
         ff_override = fecha_fin.strftime(f"%Y-%m-%dT23:59:{max(0, 57 - intento):02d}")
         try:
             if tipo_comprobante.upper() == "E":
@@ -96,7 +101,7 @@ def solicitar_descarga(
             )
         except RuntimeError as e:
             last_error = e
-            if "5002" not in str(e):
+            if "5002" not in str(e) or not reintentar_5002:
                 raise
             logger.warning(
                 "[Solicitud] CodEstatus=5002 (rango agotado); reintento %d con FechaFinal=%s",

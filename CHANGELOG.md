@@ -8,6 +8,56 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Feature
 
+- **Descargar CFDIs ya no vuelve a pedir al SAT lo que la base tiene consolidado.** En la
+  descarga por Web Service, los días que el cuadro de control ya tiene consolidados (verificados
+  contra el SAT por el cierre mensual) se sirven de la base: sus XML se guardan en la carpeta de
+  la descarga sin ir al SAT ni gastar descargas del mes, y al SAT solo se piden los días que
+  faltan, en rangos contiguos (a lo más 6). Todo cae en la carpeta del rango pedido. La pantalla
+  dice qué se sirvió y qué se pidió ("12 días ya estaban consolidados en la base (340 CFDI)… Al
+  SAT se pidieron solo los huecos: 10 al 12 de marzo"), con "Abrir carpeta", y el historial lo
+  registra como "De la base". Sin días consolidados (plan sin descarga automática) el flujo es el
+  de siempre; con tope de descargas en el plan se pide un solo rango, que cuesta una descarga como
+  antes. Endpoint nuevo `POST /solicitar/desde-base`; `/solicitar` no cambia (lo usan la API
+  pública y la MCP). Fase 6 de `docs/producto/descarga-programada.md`.
+- **Llenar el historial desde la descarga automática.** En el panel de la descarga automática (y
+  al activarla) se elige desde qué mes llenar la base, hasta 5 años atrás (el límite del Web
+  Service). El agente cierra esos meses hacia atrás, del más reciente al más antiguo, con la
+  misma verificación del cierre mensual (metadata del mes, lo que falte por folio o por días,
+  cada día consolidado o con diferencia), a ritmo pausado (un mes nuevo por empresa al día y a lo
+  más 8 por cuenta, siempre después de los cierres normales) y sin avisos de cancelación: es
+  historia, no un mes ya declarado con la app. Avance en el panel ("3 de 20 meses en la base, 1
+  con diferencia; va en julio de 2026") y en cada empresa, y un aviso al terminar (otro, solo de
+  lo nuevo, si al reanudar se suman meses que el historial llena). Se puede detener (los meses
+  empezados terminan). Fase 5 de `docs/producto/descarga-programada.md`.
+- **Descarga automática (piloto).** Con la capacidad `piloto` del plan (Pro, Completo y la
+  prueba) y una vez que el usuario la activa en el cuadro de control, el agente pide solo al SAT
+  los CFDI de cada empresa incluida: cada madrugada, emitidos y recibidos de los últimos 3 días
+  (el SAT acepta timbrar hasta 72 h después) más lo que falte desde la última vez si la app
+  estuvo cerrada; y el día de cierre (default el 5, nunca antes de 3 días después de fin de mes)
+  verifica el mes anterior contra la metadata del SAT: aplica las cancelaciones de los últimos 12
+  meses (con aviso si son de un mes ya cerrado), pide por folio o por días lo que falte y deja
+  cada día consolidado o con diferencia ("SAT 120 · BD 118"). Al terminar todas las empresas
+  llega un solo resumen. No consume las descargas del mes. Respeta los códigos del SAT: 5002 es
+  error sin reintentos, una e.firma que no abre o que el SAT rechaza es error con aviso (se vuelve
+  a probar cada 6 h por si ya se corrigió), 5005 nunca se burla variando segundos y las fallas del
+  SAT se reintentan con espera creciente hasta 3 días. En escritorio corre con la
+  app abierta y al abrirla se pone al corriente; en la web, en el espacio en línea. Pausarla
+  detiene todo; al reanudarla empieza desde ese día (lo de la pausa no se pide solo). Candado
+  local contra duplicados (`piloto_ejecuciones`, migración `012_piloto.sql`); el candado entre
+  web y escritorio queda pendiente de Supabase. Interruptor por empresa en su fila y
+  "Reintentar" en el detalle del día. Kill switch `SAT_DM_SIN_PILOTO=1`. Fase 4 de
+  `docs/producto/descarga-programada.md`.
+- **Cuadro de control de descargas.** Pantalla nueva en Descargar CFDIs (botón "Cuadro de
+  control", también en el espacio SAT y en ⌘K): un calendario por empresa, con una fila por
+  mes y una columna por día, que muestra qué días ya están en la base, cuáles están en proceso
+  y cuáles fallaron, con filtro Emitidos / Recibidos / Ambos (en Ambos la celda va partida:
+  arriba emitidos, abajo recibidos). Clic en un día: lo que hay en la base, las solicitudes al
+  SAT que lo llenaron y el error si lo hubo. Clic en un mes: ZIP de XML (para CONTPAQi) o
+  Excel con la plantilla predeterminada. Se llena solo con las solicitudes al Web Service (un
+  periodo sin CFDI, el 5004 del SAT, cuenta como día con 0), las descargas completas por el
+  portal y el índice de comprobantes. Se ve en todos los planes; en gratis, con la invitación a
+  Pro para la descarga automática. Tabla `descarga_dias` (migración `011_descarga_dias.sql`) y
+  `GET /calendario/{rfc}` (`/dia`, `/zip`). Fase 2 de `docs/producto/descarga-programada.md`.
 - **Plantillas de exportación del procesador de CFDI.** "Exportar" abre un diálogo: se elige la
   plantilla (qué columnas, en qué orden y con qué encabezado) y dos opciones apagadas por
   default, "Una fila por concepto" (repite los datos del CFDI en cada renglón con cantidad,
@@ -35,6 +85,19 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 ### Bug fix
 
 - **El agente de soporte ya lee la Constancia de Situación Fiscal que el cliente adjunta.** Antes ignoraba todos los adjuntos y el borrador pedía RFC, razón social y domicilio que ya venían en el PDF. Ahora lee los PDF en local (pdfplumber, sin LLM ni costo por correo): detecta la constancia y saca RFC, nombre, régimen y CP fiscal. Al modelo solo le llega qué se leyó, no los datos fiscales; el aviso a Israel trae esos datos listos para facturar. La imagen de ops suma `pdfplumber==0.11.10` (hay que reconstruirla al desplegar).
+- **Una solicitud del Web Service lista pero sin bajar ya no se reintenta para siempre.** Si sus
+  paquetes no se pudieron descargar en 72 h (lo que el SAT los guarda), queda vencida con el
+  aviso de volver a pedir el periodo, en lugar de que el poller la intentara cada minuto.
+- **La metadata del Web Service ya no se mezcla con los XML.** Va a
+  `descargas/metadata/{RFC}/…` y se registra en el historial como metadata (antes caía en la
+  carpeta de CFDI del mismo rango y se registraba como descarga de CFDI). Las solicitudes por
+  folio tienen su propia carpeta y al terminar ya no se reindexa toda la empresa.
+- **Después de pagar con tarjeta ya no aparece un 404.** Stripe regresaba a
+  `/desktop/checkout-success` y `/desktop/checkout-cancelled`, que nunca existieron. Ahora
+  regresa a `/pago/listo` o `/pago/cancelado` en app.todoconta.com (sin pedir sesión: quien
+  pagó desde la desktop no la tiene en el navegador), con botón para volver a la app de
+  escritorio o entrar a Suscripción en la web. Las rutas viejas redirigen ahí
+  (`ui/vercel.json`) para los checkouts que ya estaban abiertos.
 - **Los textos del XML ya no se escriben como fórmulas en el Excel ni en el CSV del procesador.**
   Una descripción de concepto que empezaba con `=` (la escribe el emisor) quedaba como fórmula
   de Excel en el export; ahora se escribe como texto.
@@ -49,6 +112,15 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   `http://localhost:8787` y la CSP del navegador lo bloqueaba, con errores en la consola.
   Ahora la web solo habla con el agente de su conexión; el escritorio y el desarrollo local
   siguen usando el suyo.
+- **Los CFDI con un namespace mal declarado ya entran al índice.** Hay XML reales que traen
+  `xmlns:schemaLocation` con dos direcciones (en el complemento de registro fiscal) y el lector
+  los rechazaba: no llegaban al procesador ni al organizador, y el conteo de su mes nunca iba
+  a cuadrar con el del SAT. Ahora se leen en modo tolerante, igual que los que traen acentos en
+  Windows-1252 aunque declaren UTF-8: el CFDI entra completo, con su UUID, y queda con un aviso
+  de validación ("XML mal formado…") que sale con el filtro de errores. Si el defecto puede
+  haber borrado datos, el aviso lo dice; si al recuperarlo se pierde el UUID, un RFC o la
+  fecha, se sigue rechazando. Al actualizar, el agente recorre otra vez, una sola vez, la
+  carpeta de descargas de cada empresa para recuperar los que se habían quedado fuera.
 
 ## [2.4.0] - 2026-10-07
 
