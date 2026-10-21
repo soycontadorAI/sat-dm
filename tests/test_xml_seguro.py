@@ -35,3 +35,20 @@ class TestParserSeguro:
         parser = parser_seguro(huge_tree=True)
         root = etree.fromstring(b"<r><hijo/></r>", parser=parser)
         assert len(root) == 1
+
+
+class TestLeerTolerante:
+
+    def test_modo_recover_tampoco_resuelve_entidades_externas(self, tmp_path):
+        from sat_descarga.core.xml_seguro import leer_tolerante
+
+        objetivo = tmp_path / "datos.txt"
+        objetivo.write_text("contenido-privado")
+        # `xmlns:x="a b"` fuerza la vía tolerante con el mismo XXE de arriba.
+        xml = (
+            f'<!DOCTYPE r [<!ENTITY xxe SYSTEM "file://{objetivo}">]>'
+            f'<r xmlns:x="a b">&xxe;</r>'
+        ).encode()
+        lectura = leer_tolerante(xml)
+        assert lectura.avisos
+        assert "contenido-privado" not in (lectura.raiz.text or "")

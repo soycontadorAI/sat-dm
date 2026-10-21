@@ -254,7 +254,7 @@ def test_carpeta_existente_se_indexa_una_vez_por_empresa(db, tmp_path, monkeypat
 
     indexar_mod.indexar_descargas_existentes(tmp_path).join(timeout=10)
     assert db.count() == 1
-    assert db.meta_get(f"indexado_carpeta:{MI_RFC}") == "1"
+    assert db.meta_get(f"indexado_carpeta:{MI_RFC}") == indexar_mod.INDEXADO_CARPETA_VERSION
     assert db.meta_get(f"indexado_carpeta:{OTRO_RFC}") is None  # archivada
 
     # La segunda vez no vuelve a recorrer la carpeta.
