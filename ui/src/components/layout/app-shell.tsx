@@ -49,7 +49,10 @@ export function AppShell({ children }: AppShellProps) {
   // (Versión web) La vuelta de Google (/acceso/google) tampoco necesita sesión:
   // esa página canjea el código y conecta con el agente por su cuenta.
   const esAcceso = esWeb() && !!pathname && pathname.startsWith('/acceso');
-  const sinSesion = esConectar || esAcceso;
+  // (Versión web) La vuelta de Stripe (/pago/listo, /pago/cancelado) se abre en
+  // el navegador del SO, también para quien pagó desde la desktop sin sesión web.
+  const esPago = esWeb() && !!pathname && pathname.startsWith('/pago');
+  const sinSesion = esConectar || esAcceso || esPago;
 
   if (loading && !sinSesion) {
     return (
