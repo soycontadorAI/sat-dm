@@ -194,13 +194,22 @@ def test_estados_de_falla_son_error(db, estado, cod, esperado):
 
 
 def test_5004_es_provisional_en_cero(db):
-    _sol("S1", "2026-03-01", "2026-03-02", estado="5", cod_estatus="5004")
+    _sol("S1", "2026-03-01", "2026-03-02", estado="5", codigo_estado_solicitud="5004")
     _sol("S2", "2026-03-05", "2026-03-05", estado="5",
          mensaje="No se encontró la información")
     calendario.sincronizar(MI_RFC)
     for dia in ("2026-03-01", "2026-03-02", "2026-03-05"):
         f = _fila(dia, "E")
         assert f["estado"] == "provisional" and f["total_bd"] == 0
+
+
+def test_el_5004_de_la_verificacion_no_es_sin_informacion(db):
+    # CodEstatus 5004 es de la verificación misma: "no se encontró la solicitud".
+    _sol("S1", "2026-03-01", "2026-03-01", estado="5", cod_estatus="5004",
+         mensaje="No se encontró la solicitud")
+    calendario.sincronizar(MI_RFC)
+    f = _fila("2026-03-01", "E")
+    assert f["estado"] == "error" and f["error_codigo"] == "5004"
 
 
 def test_descargada_gana_a_error_en_el_mismo_dia(db):

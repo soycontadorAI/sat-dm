@@ -28,6 +28,13 @@ Por empresa incluida y con e.firma vigente:
   por días lo que falte y al final cada día queda consolidado o diferencia. Los
   meses que vencieron con la app cerrada se cierran también.
 
+- **Historial** (fase 5): si el usuario eligió `historial_desde`, los meses anteriores
+  al primer cierre se llenan hacia atrás, del más reciente al más antiguo, con la
+  misma máquina del cierre (`detalle.origen == "historial"`): la metadata pide solo
+  ese mes, las cancelaciones no avisan y un solo resumen cierra todo el historial.
+  Ritmo pausado (`HISTORIAL_MESES_POR_DIA` por empresa y `..._CUENTA` por cuenta al
+  día) y solo cuando los cierres normales no tocaron al SAT en la vuelta.
+
 Errores (tabla "Errores" del doc): red, 404 o 5006 → reintento con espera
 creciente y, tras 3 días, error; e.firma (no abre, vencida, 300-305) → error
 inmediato con aviso y la empresa se salta hasta que cambie; 5002 → error sin
@@ -77,6 +84,10 @@ AL_CORRIENTE_DIAS = 31       # cuántos días hacia atrás recupera tras tener l
 MAX_RANGOS = 4               # solicitudes por dirección en una pasada (se juntan los huecos)
 RESPIRO_CIERRE_DIAS = 3      # el cierre espera el rezago de timbrado del último día
 MESES_METADATA = 12          # ventana de la metadata del cierre (cancelaciones)
+HISTORIAL_MARGEN_DIAS = 7           # colchón del límite de 5 años del SAT (ver historial_minimo)
+HISTORIAL_MESES_POR_DIA = 1         # meses NUEVOS del historial por empresa y día (Ciudad de México)
+HISTORIAL_MESES_POR_DIA_CUENTA = 8  # …y por cuenta, para que un despacho no dispare todo el mismo día
+HISTORIAL_ANIOS = 5                 # límite del WS v1.5
 FOLIOS_MAX = 10              # faltantes que se piden por UUID; más, se piden los días
 METADATA_INTENTOS_MAX = 3    # metadata que el SAT no completa o que no se puede leer
 INDEXADO_ESPERA_S = 5        # cuánto espera el cierre al indexado de fondo de la empresa
@@ -339,15 +350,15 @@ def _fila(rfc: str, tipo: str, periodo: str) -> Optional[dict]:
     return fila
 
 
-def _reservar(rfc: str, tipo: str, periodo: str) -> bool:
+def _reservar(rfc: str, tipo: str, periodo: str, detalle: Optional[dict] = None) -> bool:
     """Reserva la ejecución. False si otra evaluación ya la tiene."""
     db = abrir_db()
     ahora = _utc(_ahora())
     with db.transaccion() as conn:
         cur = conn.execute(
             "INSERT OR IGNORE INTO piloto_ejecuciones (mi_rfc, tipo, periodo, estado, detalle,"
-            " creado_en, actualizado_en) VALUES (?, ?, ?, 'en_curso', '{}', ?, ?)",
-            (rfc, tipo, periodo, ahora, ahora),
+            " creado_en, actualizado_en) VALUES (?, ?, ?, 'en_curso', ?, ?, ?)",
+            (rfc, tipo, periodo, json.dumps(detalle or {}, ensure_ascii=False), ahora, ahora),
         )
         return cur.rowcount == 1
 
@@ -536,9 +547,11 @@ def _estado_solicitud(rfc: str, id_sol: str) -> str:
         return "viva"
     if estado == "descargada":
         return "lista"
-    codigo = str(sol.get("codigo_estado_solicitud") or sol.get("cod_estatus") or "")
-    if estado == "5" and (codigo == "5004" or not codigo):
-        return "lista"  # sin información en el periodo
+    # El 5004 de "sin información" viene en CodigoEstadoSolicitud; el CodEstatus es el de
+    # la verificación misma (su 5004 es "no se encontró la solicitud").
+    codigo = str(sol.get("codigo_estado_solicitud") or "")
+    if estado == "5" and (codigo == "5004" or not (codigo or sol.get("cod_estatus"))):
+        return "lista"  # sin información en el periodo (o guardada sin ningún código)
     return "fallida"
 
 
@@ -801,7 +814,8 @@ def meses_por_cerrar(rfc: str, hoy: Optional[date] = None) -> list[str]:
 
 def _cierres_empezados(rfc: str) -> list[str]:
     """Cierres con trabajo pendiente (en curso o esperando a la e.firma), del más
-    reciente al más antiguo."""
+    reciente al más antiguo. Los del historial no: esos los lleva
+    `_avanzar_historial`, con su ritmo."""
     db = abrir_db()
     with db.cursor() as cur:
         periodos = [r[0] for r in cur.execute(
@@ -811,6 +825,7 @@ def _cierres_empezados(rfc: str) -> list[str]:
         ).fetchall()]
     filas_ = ((p, _fila(rfc, "cierre", p)) for p in periodos)
     return [p for p, f in filas_ if f is not None
+            and (f.get("detalle") or {}).get("origen") != "historial"
             and (f["estado"] == "en_curso" or (f.get("detalle") or {}).get("reintentable"))]
 
 
@@ -865,14 +880,16 @@ def _leer_metadata(rfc: str, ids: dict) -> tuple[list, list[str]]:
     return registros, ilegibles
 
 
-def _cancelaciones(rfc: str, periodo: str, registros: list) -> int:
+def _cancelaciones(rfc: str, periodo: str, registros: list, avisar: bool = True) -> int:
     """Aplica las cancelaciones de la metadata; avisa las de meses anteriores al que
-    se cierra (ya cerrados: pueden mover una deducción ya declarada)."""
+    se cierra (ya cerrados: pueden mover una deducción ya declarada). El historial
+    las aplica sin avisar: es importar historia, no un mes que el usuario ya declaró
+    con la app."""
     canceladas = {r.uuid.upper(): (r.fecha_cancelacion or "")[:19] or None
                   for r in registros if str(r.estatus).strip() == "0" and r.uuid}
     nuevas = calendario.aplicar_cancelaciones(rfc, canceladas)
     previas = sorted((fecha[:7], uuid.upper()) for uuid, fecha in nuevas if fecha[:7] < periodo)
-    if previas:
+    if avisar and previas:
         _avisar_cancelaciones(rfc, previas)
     return len(nuevas)
 
@@ -915,8 +932,10 @@ def _comparar(rfc: str, periodo: str, registros: list) -> tuple[dict, dict, set]
     return sat, bd, todos
 
 
-# Lo que se conserva del detalle de un cierre al volver a pedir su metadata.
-_CONSERVAR_AL_REINICIAR = ("fallando_desde", "canceladas", "reintentos_metadata")
+# Lo que se conserva del detalle de un cierre al volver a pedir su metadata: de qué
+# cierre se trata (un mes del historial) y el plazo que lleva fallando.
+_CONSERVAR_AL_REINICIAR = ("origen", "iniciado", "fallando_desde", "canceladas",
+                           "reintentos_metadata")
 
 
 def _reinicio(detalle: dict, **extra) -> dict:
@@ -930,13 +949,15 @@ def _sin(detalle: dict, *llaves: str) -> dict:
     return {k: v for k, v in detalle.items() if k not in llaves}
 
 
-def _avanzar_cierre(rfc: str, sesion: _SesionSat, periodo: str) -> bool:
-    """Un paso del cierre de `periodo`. True si pidió algo al SAT."""
+def _avanzar_cierre(rfc: str, sesion: _SesionSat, periodo: str, historial: bool = False) -> bool:
+    """Un paso del cierre de `periodo`. True si pidió algo al SAT. `historial` solo
+    importa al reservar el mes; un mes que se retoma lee `origen` de su detalle."""
     ahora = _ahora()
     fila = _fila(rfc, "cierre", periodo)
     if not _toca(fila, ahora):
         return False
     detalle = (fila or {}).get("detalle") or {}
+    es_historial = detalle.get("origen") == "historial" or (fila is None and historial)
     paso = detalle.get("paso", "inicio")
     ini, fin = _limites_mes(periodo)
 
@@ -944,11 +965,26 @@ def _avanzar_cierre(rfc: str, sesion: _SesionSat, periodo: str) -> bool:
         if _hay_vivas_del_mes(rfc, ini, fin):
             return False  # las diarias que tocan el mes todavía no terminan
         if fila is None:
-            if not _reservar(rfc, "cierre", periodo):
+            reserva = {"paso": "inicio", "origen": "historial",
+                       "iniciado": ahora.date().isoformat()} if es_historial else None
+            if not _reservar(rfc, "cierre", periodo, reserva):
                 return False
             fila = _fila(rfc, "cierre", periodo)
             detalle = (fila or {}).get("detalle") or {}
-        ventana_ini = _limites_mes(_restar_meses(periodo, MESES_METADATA - 1))[0]
+        if es_historial and not detalle.get("metadata_parcial"):
+            previa = _metadata_reusable(rfc, periodo)
+            if previa is not None:
+                # La metadata de 12 meses de un cierre normal ya cubre este mes: no se
+                # pide otra vez al SAT.
+                ids, ventana = previa
+                _guardar(rfc, "cierre", periodo, estado="en_curso", proximo_intento=None,
+                         detalle={**_sin(detalle, "fallando_desde"), "paso": "metadata",
+                                  "metadata": ids, "ventana": ventana})
+                return False
+        # Un mes del historial pide solo su mes: las ventanas de los meses vecinos se
+        # encimarían MESES_METADATA veces.
+        ventana_ini = ini if es_historial else _limites_mes(
+            _restar_meses(periodo, MESES_METADATA - 1))[0]
         # Lo que ya se pidió en un intento anterior no se vuelve a pedir.
         ids, error = dict(detalle.get("metadata_parcial") or {}), None
         for direccion in _DIRECCIONES:
@@ -1005,7 +1041,8 @@ def _avanzar_cierre(rfc: str, sesion: _SesionSat, periodo: str) -> bool:
         logger.warning("[piloto] %s: la metadata de %s no se pudo leer completa", rfc, periodo)
         _metadata_ilegible(rfc, periodo, fila, detalle, ilegibles)
         return False
-    canceladas = int(detalle.get("canceladas") or 0) + _cancelaciones(rfc, periodo, registros)
+    canceladas = int(detalle.get("canceladas") or 0) + _cancelaciones(
+        rfc, periodo, registros, avisar=not es_historial)
     sat, bd, todos = _comparar(rfc, periodo, registros)
     faltantes = {k: sat[k] - bd.get(k, set()) for k in sat if sat[k] - bd.get(k, set())}
     if faltantes and not detalle.get("faltantes_pedidos"):
@@ -1027,8 +1064,44 @@ def _avanzar_cierre(rfc: str, sesion: _SesionSat, periodo: str) -> bool:
              detalle={**_sin(detalle, "reintentable", "fallando_desde", "metadata_parcial",
                              "reintentos_metadata"),
                       "paso": "hecho", "resumen": resumen, "canceladas": canceladas})
-    _resumen_si_toca(periodo)
+    if es_historial:
+        _resumen_historial()
+    else:
+        _resumen_si_toca(periodo)
     return False
+
+
+def _metadata_reusable(rfc: str, periodo: str) -> Optional[tuple[dict, list]]:
+    """Metadata de un cierre normal ya completo cuya ventana cubre `periodo`, si sus
+    solicitudes siguen descargadas y legibles: (ids por dirección, ventana)."""
+    ini, fin = _limites_mes(periodo)
+    for fila in sorted(_cierres(rfc).values(), key=lambda f: f["actualizado_en"] or "", reverse=True):
+        d = fila["detalle"]
+        ids, ventana = d.get("metadata"), d.get("ventana")
+        if (fila["estado"] != "completa" or d.get("origen") == "historial"
+                or not isinstance(ids, dict) or set(ids) != set(_DIRECCIONES)
+                or not isinstance(ventana, list) or len(ventana) != 2):
+            continue
+        if not (ventana[0] <= ini.isoformat() and fin.isoformat() <= ventana[1]):
+            continue
+        sols = [config_store.get_solicitud(rfc, i) or {} for i in ids.values()]
+        if all(_metadata_lista(s) for s in sols):
+            return dict(ids), list(ventana)
+    return None
+
+
+def _metadata_lista(sol: dict) -> bool:
+    """¿Esa solicitud de metadata sirve para comparar otro mes? Descargada y legible, o
+    rechazada con CodigoEstadoSolicitud 5004 (el SAT dijo que no hay datos). Más estricta
+    que `_estado_solicitud` y `calendario._candidato` a propósito: por compatibilidad, esas
+    aceptan solicitudes guardadas sin el código (de antes de que se guardara), y la metadata
+    del piloto lo trae (lo guarda la verificación del poller); reusarla para otro mes pide
+    la respuesta explícita del SAT."""
+    if sol.get("ilegible"):
+        return False
+    if sol.get("estado") == "descargada":
+        return True
+    return sol.get("estado") == "5" and str(sol.get("codigo_estado_solicitud") or "") == "5004"
 
 
 def _metadata_ilegible(rfc: str, periodo: str, fila: Optional[dict], detalle: dict,
@@ -1180,6 +1253,7 @@ def _falla_cierre(rfc: str, periodo: str, fila: Optional[dict], clase: str, codi
     if detalle is None:
         detalle = (fila or {}).get("detalle") or {"paso": "inicio"}
     detalle = _sin(detalle, "reintentable")
+    es_historial = detalle.get("origen") == "historial"
     if clase == "efirma":
         # Se reintenta cuando se corrija la e.firma (a lo más cada 6 h); no es un
         # cierre fallido para el resumen ni gasta el plazo de las fallas del SAT.
@@ -1198,6 +1272,10 @@ def _falla_cierre(rfc: str, periodo: str, fila: Optional[dict], clase: str, codi
             return
     _guardar(rfc, "cierre", periodo, estado="error", intentos=intentos, error_codigo=codigo or None,
              error_mensaje=mensaje, detalle=detalle)
+    if es_historial:
+        # Sin aviso por mes: el aviso final del historial ya cuenta los que no se pudieron cerrar.
+        _resumen_historial()
+        return
     _avisar("error", f"No se pudo cerrar {_nombre_mes(periodo)} de {rfc}: {mensaje}", rfc=rfc,
             periodo=periodo, clave=f"cierre-error:{rfc}:{periodo}")
     _resumen_si_toca(periodo)
@@ -1229,6 +1307,238 @@ def _resumen_si_toca(periodo: str) -> None:
             partes.append(f"no se pudo cerrar: {', '.join(fallidas)}")
         texto = "; ".join(partes) + "."
     _avisar("resumen", texto, periodo=periodo, clave=f"resumen:{periodo}")
+
+
+# ---------------------------------------------------------------------------
+# Historial (fase 5)
+# ---------------------------------------------------------------------------
+
+
+def historial_minimo(hoy: Optional[date] = None) -> date:
+    """Primer mes que el WS v1.5 todavía entrega: el siguiente al de hoy hace 5 años.
+    Se calcula con un margen (HISTORIAL_MARGEN_DIAS): un mes que se empieza puede seguir
+    pidiendo días al SAT un par de días después, y no se empieza uno que en esos días
+    quede fuera de los 5 años."""
+    hoy = (hoy or _ahora().date()) + timedelta(days=HISTORIAL_MARGEN_DIAS)
+    anio, mes = hoy.year - HISTORIAL_ANIOS, hoy.month + 1
+    return date(anio + 1, 1, 1) if mes == 13 else date(anio, mes, 1)
+
+
+def historial_maximo() -> date:
+    """Último mes que admite el historial: el anterior al primer cierre del piloto.
+    Con el piloto apagado se calcula como si se activara hoy (activar o reanudar mueve
+    `activado_en` a hoy, ver `configurar`)."""
+    hoy = _ahora().date()
+    activado = (_activado_en() or hoy) if config().get("activo") else hoy
+    primer_cierre = _mes_anterior(_mes_de(activado))
+    mes = _mes_anterior(primer_cierre)
+    return date(int(mes[:4]), int(mes[5:7]), 1)
+
+
+def _historial_desde() -> Optional[date]:
+    try:
+        valor = config().get("historial_desde")
+        return date.fromisoformat(str(valor)[:10]).replace(day=1) if valor else None
+    except ValueError:
+        return None
+
+
+def _meses_rango(hoy: date) -> list[str]:
+    """Meses del historial elegido, del más reciente al más antiguo (sin descontar
+    los completos). Vacío sin `historial_desde` ni piloto activado."""
+    desde = _historial_desde()
+    if desde is None or _activado_en() is None:
+        return []
+    desde = max(desde, historial_minimo(hoy))
+    mes, tope = _mes_de(historial_maximo()), _mes_de(desde)
+    out = []
+    while mes >= tope:
+        out.append(mes)
+        mes = _mes_anterior(mes)
+    return out
+
+
+def _cierres(rfc: Optional[str] = None, desde: Optional[str] = None,
+             hasta: Optional[str] = None) -> dict[tuple[str, str], dict]:
+    """Las filas de cierre, por (rfc, periodo): las de la empresa `rfc`, o todas;
+    `desde` y `hasta` (YYYY-MM) acotan el rango de periodos en la consulta."""
+    db = abrir_db()
+    sql = "SELECT mi_rfc, periodo, estado, detalle, actualizado_en FROM piloto_ejecuciones WHERE tipo = 'cierre'"
+    params: list = []
+    if rfc:
+        sql += " AND mi_rfc = ?"
+        params.append(rfc)
+    if desde:
+        sql += " AND periodo >= ?"
+        params.append(desde)
+    if hasta:
+        sql += " AND periodo <= ?"
+        params.append(hasta)
+    with db.cursor() as cur:
+        filas_ = cur.execute(sql, tuple(params)).fetchall()
+    out = {}
+    for r in filas_:
+        try:
+            detalle = json.loads(r["detalle"] or "{}")
+        except ValueError:
+            detalle = {}
+        out[(r["mi_rfc"], r["periodo"])] = {"estado": r["estado"], "detalle": detalle,
+                                            "actualizado_en": r["actualizado_en"]}
+    return out
+
+
+def _iniciados_hoy(hoy: date) -> list[str]:
+    """RFC de cada mes del historial que se empezó hoy (todas las empresas), sin leer
+    ni decodificar el resto de los cierres."""
+    db = abrir_db()
+    with db.cursor() as cur:
+        filas_ = cur.execute(
+            "SELECT mi_rfc FROM piloto_ejecuciones WHERE tipo = 'cierre' AND detalle LIKE ?"
+            " AND detalle LIKE ?",
+            ('%' + json.dumps({"origen": "historial"})[1:-1] + '%',
+             '%' + json.dumps({"iniciado": hoy.isoformat()})[1:-1] + '%'),
+        ).fetchall()
+    return [r["mi_rfc"] for r in filas_]
+
+
+def _rfc(emp: dict) -> str:
+    """RFC de una empresa del catálogo como lo guarda `piloto_ejecuciones` (sin
+    validar: un RFC raro no debe tumbar el estado ni el resumen)."""
+    return str(emp.get("rfc") or "").strip().upper()
+
+
+def meses_de_historial(rfc: str, hoy: Optional[date] = None,
+                       cierres: Optional[dict] = None) -> list[str]:
+    """Meses del historial que faltan (no completos), del más reciente al más antiguo:
+    desde el mes anterior al primer cierre hasta `historial_desde`. `cierres`: la
+    lectura de `_cierres()` si el llamador ya la tiene."""
+    hoy = hoy or _ahora().date()
+    if cierres is None:
+        cierres = _cierres(rfc)
+    return [m for m in _meses_rango(hoy) if (cierres.get((rfc, m)) or {}).get("estado") != "completa"]
+
+
+def _avanzar_historial(rfc: str, sesion: _SesionSat, hoy: date) -> bool:
+    """Un paso del historial de la empresa: primero los meses ya empezados (sin
+    límite), luego a lo más un mes nuevo por empresa y por día (y
+    HISTORIAL_MESES_POR_DIA_CUENTA por cuenta). True si pidió algo al SAT."""
+    if _ahora() < _hora_programada(hoy):
+        return False
+    cierres = _cierres(rfc)
+    empezados = sorted((p for (r, p), f in cierres.items()
+                        if f["estado"] != "completa"
+                        and f["detalle"].get("origen") == "historial"), reverse=True)
+    for mes in empezados:
+        if _avanzar_cierre(rfc, sesion, mes):
+            return True
+    de_hoy = _iniciados_hoy(hoy)
+    if de_hoy.count(rfc) >= HISTORIAL_MESES_POR_DIA or len(de_hoy) >= HISTORIAL_MESES_POR_DIA_CUENTA:
+        return False
+    for mes in meses_de_historial(rfc, hoy, cierres=cierres):
+        if (rfc, mes) in cierres:
+            continue
+        pidio = _avanzar_cierre(rfc, sesion, mes, historial=True)
+        if _fila(rfc, "cierre", mes) is not None:
+            return pidio  # se reservó: es el mes nuevo de hoy
+    return False
+
+
+def _resumen_historial() -> None:
+    """Avisa cuando todas las empresas incluidas terminaron todo el historial: una vez por
+    elección del usuario y otra, solo de lo nuevo, si después se suman meses (al reanudar)
+    o empresas que el historial llena. `historial_revisado` guarda hasta qué mes ya se
+    revisó completa cada empresa: eso no se vuelve a leer ni a anunciar."""
+    hoy = _ahora().date()
+    cfg = config()
+    desde = _historial_desde()
+    meses = _meses_rango(hoy)
+    nombres = {_rfc(e): e.get("nombre") or _rfc(e) for e in config_store.list_empresas()
+               if _motivo_no_elegible(e, hoy) is None}
+    rfcs = sorted(nombres)
+    if desde is None or not meses or not rfcs:
+        return
+    # La base sale de lo que eligió el usuario, no del rango: `historial_minimo` avanza
+    # cada mes y un historial terminado no debe volver a anunciarse.
+    fijado = cfg.get("historial_fijado_en")
+    base = f"historial:{desde.isoformat()}" + (f":{fijado}" if fijado else "")
+    revisado = cfg.get("historial_revisado")
+    if not isinstance(revisado, dict) or revisado.get("clave") != base:
+        revisado = {"clave": base, "hasta": {}, "avisos": 0}
+    hasta = dict(revisado.get("hasta") or {})
+    if all(hasta.get(r, "") >= meses[0] for r in rfcs):
+        return  # nada nuevo desde la última revisión
+    cierres = _cierres(desde=meses[-1], hasta=meses[0])  # solo los del rango
+    todas, nuevas = [], []
+    for r in rfcs:
+        for m in meses:
+            f = cierres.get((r, m))
+            if not _terminada(f):
+                return
+            todas.append((r, m, f))
+            if m > hasta.get(r, ""):
+                nuevas.append((r, m, f))
+    # Solo se avisa lo que llenó el historial después de fijarlo: un rango que ya estaba
+    # completo, o meses que al reanudar entran ya cerrados por el cierre normal, no.
+    llenas = [(r, m, f) for r, m, f in nuevas
+              if f["detalle"].get("origen") == "historial"
+              and (not fijado or (f.get("actualizado_en") or "") >= fijado)]
+    if llenas:
+        # La primera revisión de esta elección habla de todo el rango; las siguientes,
+        # solo de lo que el historial sumó.
+        primero = not hasta
+        filas_ = todas if primero else llenas
+        de = {r for r, _m, _f in filas_}
+        # Si lo sumado es de una sola de varias empresas, el aviso dice de cuál.
+        sola = next(iter(de)) if not primero and len(de) == 1 and len(rfcs) > 1 else None
+        avisos = int(revisado.get("avisos") or 0)
+        _avisar("resumen", _texto_historial(meses[-1], filas_, primero,
+                                            empresa=nombres[sola] if sola else None),
+                rfc=sola, periodo=min(m for _r, m, _f in filas_), clave=f"{base}:{avisos}")
+        revisado["avisos"] = avisos + 1
+    config_store.set_piloto_config({"historial_revisado": {
+        **revisado, "hasta": {**hasta, **{r: meses[0] for r in rfcs}}}})
+
+
+def _texto_historial(desde_mes: str, filas_: list[tuple[str, str, dict]], primero: bool,
+                     empresa: Optional[str] = None) -> str:
+    """El primer aviso habla de todo el rango; los siguientes, solo de lo que el historial
+    sumó (de `empresa`, si viene). Con varias empresas cuenta cierres (un mes por
+    empresa)."""
+    completas = [f for _r, _m, f in filas_ if f["estado"] == "completa"]
+    n = len(completas)
+    con_diferencias = sum(1 for f in completas if (f["detalle"].get("resumen") or {}).get("dias_con_diferencia"))
+    fallidos = len(filas_) - n
+    rfcs = sorted({r for r, _m, _f in filas_})
+    if len(rfcs) == 1:
+        cuenta = f"{n} {'mes' if n == 1 else 'meses'}, {con_diferencias} con diferencias."
+        para = ""
+    else:
+        cuenta = (f"{n} {'cierre' if n == 1 else 'cierres'} (un mes por empresa), "
+                  f"{con_diferencias} con diferencias.")
+        para = f" para {len(rfcs)} empresas"
+    if primero:
+        texto = f"El historial desde {_nombre_mes(desde_mes)} ya está en la base{para}: {cuenta}"
+    else:
+        de = f" de {empresa}" if empresa else ""
+        meses_ = _meses_en_palabras([m for _r, m, _f in filas_])
+        texto = f"Ya está en la base lo que se sumó al historial{de} ({meses_}){para}: {cuenta}"
+    if fallidos:
+        texto += f" {fallidos} no se {'pudo' if fallidos == 1 else 'pudieron'} cerrar."
+    return texto
+
+
+def _meses_en_palabras(periodos: list[str]) -> str:
+    """Los meses en palabras, los seguidos en tramos: "julio de 2026", "julio de 2026 a
+    octubre de 2026" o "enero de 2025 a mayo de 2025 y julio de 2025"."""
+    tramos: list[list[str]] = []
+    for p in sorted(set(periodos)):
+        if tramos and _mes_anterior(p) == tramos[-1][-1]:
+            tramos[-1].append(p)
+        else:
+            tramos.append([p])
+    textos = [_nombre_mes(t[0]) if len(t) == 1 else f"{_nombre_mes(t[0])} a {_nombre_mes(t[-1])}"
+              for t in tramos]
+    return textos[0] if len(textos) == 1 else ", ".join(textos[:-1]) + f" y {textos[-1]}"
 
 
 # ---------------------------------------------------------------------------
@@ -1276,12 +1586,21 @@ def evaluar() -> dict:
                         break
                     if not _terminada(_fila(rfc, "cierre", mes)):
                         break
+                # Sin cierre normal que toque al SAT, avanza el historial.
+                if not pidio:
+                    pidio = _avanzar_historial(rfc, sesion, hoy)
                 pidio = _pasada_diaria(rfc, sesion) or pidio
             except Exception:  # noqa: BLE001 — una empresa con problemas no frena a las demás
                 logger.exception("[piloto] %s: falló la evaluación", emp.get("rfc"))
             hechas += 1
             if pidio:
                 _escalonar()
+        # El aviso final no se pierde si la última empresa pendiente se archivó o dejó
+        # de ser elegible: se revisa una vez por vuelta.
+        try:
+            _resumen_historial()
+        except Exception:  # noqa: BLE001
+            logger.exception("[piloto] falló el aviso final del historial")
         return {"corrio": True, "empresas": hechas}
     finally:
         _evaluando.release()
@@ -1371,14 +1690,23 @@ def estado() -> dict:
     cfg = config()
     ahora = _ahora()
     hoy = ahora.date()
+    meses_rango = _meses_rango(hoy)
+    cierres = _cierres()
     empresas = []
     for e in config_store.list_empresas():
         if e.get("archived_at"):
             continue
         motivo = _motivo_no_elegible(e, hoy)
+        completos = total = 0
+        if motivo is None:
+            total = len(meses_rango)
+            completos = sum(1 for m in meses_rango
+                            if (cierres.get((_rfc(e), m)) or {}).get("estado")
+                            == "completa")
         empresas.append({"rfc": e["rfc"], "nombre": e.get("nombre") or e["rfc"],
                          "incluida": e.get("piloto_incluida") is not False,
-                         "elegible": motivo is None, "motivo": motivo})
+                         "elegible": motivo is None, "motivo": motivo,
+                         "historial_completos": completos, "historial_total": total})
     hora = _hora_programada(hoy)
     elegibles = [e for e in empresas if e["elegible"]]
     hecha_hoy = bool(elegibles) and all(
@@ -1400,6 +1728,33 @@ def estado() -> dict:
         ).fetchall()]
     for ej in ejecuciones:
         ej["rfc"] = ej.pop("mi_rfc")
+    desde = _historial_desde()
+    elegibles_rfc = [_rfc(e) for e in elegibles]
+    estados = {(r, m): cierres.get((r, m)) for r in elegibles_rfc for m in meses_rango}
+    # El mes más reciente que todavía tiene trabajo en alguna empresa (un mes que
+    # falló sin reintento ya no lo tiene).
+    siguiente = next((m for m in meses_rango
+                      if not all(_terminada(estados[(r, m)]) for r in elegibles_rfc)), None)
+    historial = {
+        "desde": desde.isoformat() if desde else None,
+        "minimo": historial_minimo(hoy).isoformat(),
+        "maximo": historial_maximo().isoformat(),
+        "meses": len(meses_rango),
+        "empresas": len(elegibles_rfc),
+        # Cierres del historial que siguen con trabajo (aunque `desde` sea null: tras
+        # Detener, los empezados terminan).
+        "empezados": sum(1 for (r, _p), f in cierres.items()
+                         if r in elegibles_rfc and f["detalle"].get("origen") == "historial"
+                         and not _terminada(f)),
+        "meses_total": len(estados),
+        "meses_completos": sum(1 for f in estados.values() if (f or {}).get("estado") == "completa"),
+        "meses_con_diferencia": sum(
+            1 for f in estados.values() if (f or {}).get("estado") == "completa"
+            and (f["detalle"].get("resumen") or {}).get("dias_con_diferencia")),
+        "meses_con_error": sum(1 for f in estados.values()
+                               if _terminada(f) and f["estado"] == "error"),
+        "siguiente": siguiente,
+    }
     return {
         "disponible": disponible(),
         "activo": bool(cfg.get("activo")),
@@ -1410,14 +1765,37 @@ def estado() -> dict:
         "cierre": {"periodo": cierre_periodo,
                    "fecha": _fecha_cierre(cierre_periodo, cfg.get("dia_cierre")).isoformat()},
         "empresas": empresas,
+        "historial": historial,
         "ejecuciones": ejecuciones,
         "avisos": avisos(),
     }
 
 
-def configurar(*, activo: Optional[bool] = None, dia_cierre: Optional[int] = None) -> dict:
-    """Cambia la configuración. Activar exige la capacidad (lo valida el router)."""
+_SIN_CAMBIO = object()
+
+
+def configurar(*, activo: Optional[bool] = None, dia_cierre: Optional[int] = None,
+               historial_desde=_SIN_CAMBIO) -> dict:
+    """Cambia la configuración. Activar o fijar el historial exige la capacidad (lo
+    valida el router). `historial_desde`: una fecha (se normaliza al día 1), None para
+    detener (los meses empezados terminan) o no pasarlo para dejarlo como está."""
     patch: dict = {}
+    if historial_desde is not _SIN_CAMBIO and historial_desde is not None:
+        if isinstance(historial_desde, str):
+            try:
+                historial_desde = date.fromisoformat(historial_desde[:10])
+            except ValueError:
+                raise ValueError("La fecha del historial no es válida.")
+        mes = historial_desde.replace(day=1)
+        minimo, maximo = historial_minimo(), historial_maximo()
+        if not minimo <= mes <= maximo:
+            raise ValueError(f"El historial se puede llenar desde {_nombre_mes(_mes_de(minimo))} "
+                             f"hasta {_nombre_mes(_mes_de(maximo))}.")
+        patch["historial_desde"] = mes.isoformat()
+        if config().get("historial_desde") != mes.isoformat():
+            patch["historial_fijado_en"] = _utc(_ahora())
+    elif historial_desde is None:
+        patch["historial_desde"] = None
     if dia_cierre is not None:
         if not 1 <= int(dia_cierre) <= 28:
             raise ValueError("El día de cierre va del 1 al 28.")

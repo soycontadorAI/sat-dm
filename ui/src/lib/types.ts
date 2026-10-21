@@ -2011,6 +2011,30 @@ export interface PilotoEmpresa {
   elegible: boolean;
   /** "Archivada" | "No incluida" | "Sin e.firma" | "e.firma vencida" */
   motivo: string | null;
+  /** Meses del historial ya en la base / meses que se pidieron para esta empresa. */
+  historial_completos?: number;
+  historial_total?: number;
+}
+
+export interface PilotoHistorial {
+  /** Primer día del mes más antiguo pedido; null si no está activo. */
+  desde: string | null;
+  /** Límite del SAT (5 años), primer día del mes. */
+  minimo: string;
+  /** Mes más reciente que se puede pedir, primer día del mes. */
+  maximo: string;
+  meses_total: number;
+  meses_completos: number;
+  meses_con_diferencia: number;
+  /** Meses que fallaron sin reintento (ya no se vuelven a pedir). */
+  meses_con_error?: number;
+  /** "YYYY-MM" del mes que sigue; null si ya no hay trabajo pendiente. */
+  siguiente: string | null;
+  /** Meses del rango y empresas elegibles (los totales cuentan empresa x mes). */
+  meses?: number;
+  empresas?: number;
+  /** Cierres del historial que siguen con trabajo, aunque `desde` sea null. */
+  empezados?: number;
 }
 
 export interface PilotoEjecucion {
@@ -2044,4 +2068,5 @@ export interface PilotoEstado {
   empresas: PilotoEmpresa[];
   ejecuciones: PilotoEjecucion[];
   avisos: PilotoAviso[];
+  historial?: PilotoHistorial;
 }

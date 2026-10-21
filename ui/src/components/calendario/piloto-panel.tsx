@@ -25,18 +25,26 @@ import { mensajeDeError } from '@/lib/errores';
 import { esWeb } from '@/lib/modo';
 import {
   avisosSinLeer,
+  desdeInicial,
   empresasVisibles,
   etiquetaEstado,
+  historialTerminado,
   infoAviso,
+  mesesDisponibles,
+  porcentajeHistorial,
   textoCierre,
+  textoEmpezados,
+  textoHistorial,
+  textoHistorialEmpresa,
   textoIncluidas,
   textoPausa,
   textoProximaPasada,
 } from '@/lib/piloto';
-import type { PilotoEmpresa, PilotoEstado } from '@/lib/types';
+import type { PilotoEmpresa, PilotoEstado, PilotoHistorial } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 const REFRESCO_MS = 60_000;
+const SIN_HISTORIAL = 'ninguno';
 const DIAS_CIERRE = Array.from({ length: 28 }, (_, i) => i + 1);
 
 function fechaRelativa(iso: string): string {
@@ -72,6 +80,43 @@ function SelectorDia({
   );
 }
 
+function SelectorMes({
+  historial,
+  value,
+  onChange,
+  disabled,
+  conVacio,
+}: {
+  historial: PilotoHistorial;
+  /** "YYYY-MM-01" o '' (sin elegir). */
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  /** Ofrece la opción de no llenar historial (diálogo de activación). */
+  conVacio?: boolean;
+}) {
+  const opciones = mesesDisponibles(historial.minimo, historial.maximo);
+  return (
+    <Select
+      value={value || (conVacio ? SIN_HISTORIAL : '')}
+      onValueChange={(v) => onChange(v === SIN_HISTORIAL ? '' : v)}
+      disabled={disabled}
+    >
+      <SelectTrigger size="sm" className="w-36" aria-label="Llenar historial desde">
+        <SelectValue placeholder="Elige un mes" />
+      </SelectTrigger>
+      <SelectContent className="max-h-64">
+        {conVacio && <SelectItem value={SIN_HISTORIAL}>No llenar</SelectItem>}
+        {opciones.map((o) => (
+          <SelectItem key={o.valor} value={o.valor}>
+            {o.etiqueta}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 function pastilla(etiqueta: string) {
   const clase =
     etiqueta === 'Activa'
@@ -93,6 +138,10 @@ export function PilotoPanel() {
   const [activarOpen, setActivarOpen] = useState(false);
   const [empresasOpen, setEmpresasOpen] = useState(false);
   const [diaNuevo, setDiaNuevo] = useState(5);
+  const [histNuevo, setHistNuevo] = useState('');
+  const [histElegido, setHistElegido] = useState('');
+  const [confirmarDetener, setConfirmarDetener] = useState(false);
+  const [cambiarHist, setCambiarHist] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [errorActivar, setErrorActivar] = useState<string | null>(null);
   const [ahora, setAhora] = useState(() => new Date());
@@ -149,11 +198,12 @@ export function PilotoPanel() {
 
   const abrirActivar = () => {
     setDiaNuevo(estado.dia_cierre || 5);
+    setHistNuevo(desdeInicial(estado.historial));
     setErrorActivar(null);
     setActivarOpen(true);
   };
 
-  const aplicar = async (cfg: { activo?: boolean; dia_cierre?: number }, okMsg?: string) => {
+  const aplicar = async (cfg: { activo?: boolean; dia_cierre?: number; historial_desde?: string | null }, okMsg?: string) => {
     setOcupado(true);
     try {
       setEstado(await apiClient.pilotoConfig(cfg));
@@ -171,7 +221,14 @@ export function PilotoPanel() {
     setOcupado(true);
     setErrorActivar(null);
     try {
-      setEstado(await apiClient.pilotoConfig({ activo: true, dia_cierre: diaNuevo }));
+      setEstado(
+        await apiClient.pilotoConfig({
+          activo: true,
+          dia_cierre: diaNuevo,
+          // "No llenar" detiene el historial de forma explícita.
+          historial_desde: histNuevo || null,
+        }),
+      );
       setActivarOpen(false);
       toast.success('Descarga automática activada');
     } catch (e) {
@@ -184,6 +241,19 @@ export function PilotoPanel() {
   const alternar = (v: boolean) => {
     if (v) abrirActivar();
     else void aplicar({ activo: false }, 'Descarga automática pausada');
+  };
+
+  const llenarHistorial = async () => {
+    if (!histElegido) return;
+    if (await aplicar({ historial_desde: histElegido }, 'Historial en marcha')) {
+      setHistElegido('');
+      setCambiarHist(false);
+    }
+  };
+
+  const detenerHistorial = async () => {
+    setConfirmarDetener(false);
+    await aplicar({ historial_desde: null }, 'Historial detenido');
   };
 
   const buscarAhora = async () => {
@@ -298,6 +368,87 @@ export function PilotoPanel() {
         </div>
       )}
 
+      {estado.activo && estado.historial && (
+        <div className="space-y-2 rounded-lg border px-3 py-2.5">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Historial</h3>
+          {estado.historial.desde && !cambiarHist ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm">
+                  {textoHistorial(estado.historial)}
+                </p>
+                {confirmarDetener ? (
+                  <span className="flex items-center gap-2 text-xs">
+                    No se piden meses nuevos.
+                    <Button size="xs" variant="outline" onClick={() => void detenerHistorial()} disabled={ocupado}>
+                      Detener
+                    </Button>
+                    <Button size="xs" variant="ghost" onClick={() => setConfirmarDetener(false)}>
+                      Cancelar
+                    </Button>
+                  </span>
+                ) : historialTerminado(estado.historial) ? (
+                  <Button size="xs" variant="outline" onClick={() => setCambiarHist(true)} disabled={ocupado}>
+                    Cambiar mes
+                  </Button>
+                ) : (
+                  <Button size="xs" variant="outline" onClick={() => setConfirmarDetener(true)} disabled={ocupado}>
+                    Detener
+                  </Button>
+                )}
+              </div>
+              <div
+                className="h-1 overflow-hidden rounded-full bg-secondary"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={porcentajeHistorial(estado.historial)}
+                aria-label="Avance del historial"
+              >
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${porcentajeHistorial(estado.historial)}%` }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Llenar historial desde</span>
+                <SelectorMes
+                  historial={estado.historial}
+                  value={histElegido}
+                  onChange={setHistElegido}
+                  disabled={ocupado}
+                />
+                <Button size="sm" onClick={() => void llenarHistorial()} disabled={ocupado || !histElegido}>
+                  Llenar historial
+                </Button>
+                {cambiarHist && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setCambiarHist(false);
+                      setHistElegido('');
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                )}
+              </div>
+              {textoEmpezados(estado.historial) && (
+                <p className="text-xs text-muted-foreground">{textoEmpezados(estado.historial)}</p>
+              )}
+            </>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Se pide mes por mes, del más reciente al más antiguo, a ritmo pausado para no saturar al SAT
+            (un mes por empresa por día).
+          </p>
+        </div>
+      )}
+
       {error && <p className="text-xs text-destructive">{error}</p>}
 
       {sinLeer.length > 0 && (
@@ -374,6 +525,24 @@ export function PilotoPanel() {
               después.
             </p>
           </div>
+          {estado.historial && (
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                Además, llenar el historial desde…
+                <SelectorMes
+                  historial={estado.historial}
+                  value={histNuevo}
+                  onChange={setHistNuevo}
+                  disabled={ocupado}
+                  conVacio
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Opcional. Se pide mes por mes, del más reciente al más antiguo, a ritmo pausado (un mes
+                por empresa por día).
+              </p>
+            </div>
+          )}
           {errorActivar && (
             <Alert variant="destructive">
               <Icon icon="ph:warning-circle-light" className="size-4" />
@@ -410,6 +579,9 @@ export function PilotoPanel() {
                   <span className="block min-w-0">
                     <span className="block truncate text-sm font-medium">{e.nombre}</span>
                     <span className="block font-mono text-xs text-muted-foreground">{e.rfc}</span>
+                    {textoHistorialEmpresa(e) && (
+                      <span className="block text-xs text-muted-foreground">{textoHistorialEmpresa(e)}</span>
+                    )}
                   </span>
                 ),
               },

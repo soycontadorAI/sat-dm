@@ -8,6 +8,16 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Feature
 
+- **Llenar el historial desde la descarga automática.** En el panel de la descarga automática (y
+  al activarla) se elige desde qué mes llenar la base, hasta 5 años atrás (el límite del Web
+  Service). El agente cierra esos meses hacia atrás, del más reciente al más antiguo, con la
+  misma verificación del cierre mensual (metadata del mes, lo que falte por folio o por días,
+  cada día consolidado o con diferencia), a ritmo pausado (un mes nuevo por empresa al día y a lo
+  más 8 por cuenta, siempre después de los cierres normales) y sin avisos de cancelación: es
+  historia, no un mes ya declarado con la app. Avance en el panel ("3 de 20 meses en la base, 1
+  con diferencia; va en julio de 2026") y en cada empresa, y un aviso al terminar (otro, solo de
+  lo nuevo, si al reanudar se suman meses que el historial llena). Se puede detener (los meses
+  empezados terminan). Fase 5 de `docs/producto/descarga-programada.md`.
 - **Descarga automática (piloto).** Con la capacidad `piloto` del plan (Pro, Completo y la
   prueba) y una vez que el usuario la activa en el cuadro de control, el agente pide solo al SAT
   los CFDI de cada empresa incluida: cada madrugada, emitidos y recibidos de los últimos 3 días
