@@ -9,6 +9,7 @@ extra `ciec`.
 """
 
 import logging
+import time
 
 from sat_descarga import demo
 from sat_descarga.core.errores import ErrorEsperado
@@ -19,6 +20,18 @@ LOGIN_TIMEOUT_MS = 180_000        # 3 min para el login FIEL (e.firma, sin captc
 MAX_INTENTOS_CAPTCHA = 3          # CIEC: 1 + 2 reintentos; tras agotarse → cancelar
 EXITO_TIMEOUT_MS = 25_000         # espera de aterrizaje tras enviar el captcha
 GRACIA_ATERRIZAJE_MS = 10_000     # 2ª oportunidad si la navegación sigue en vuelo
+
+# Errores de red de Chromium al abrir la entrada del portal: el SAT (o algo en medio)
+# cortó la conexión antes de responder. Suelen ser transitorios → se reintenta. El
+# timeout de `goto` (el SAT no contestó en 30 s, TODOCONTA-DESKTOP-29) también.
+_ERRORES_RED_TRANSITORIOS = (
+    "net::ERR_CONNECTION_RESET", "net::ERR_CONNECTION_CLOSED",
+    "net::ERR_CONNECTION_REFUSED", "net::ERR_CONNECTION_TIMED_OUT",
+    "net::ERR_TIMED_OUT", "net::ERR_EMPTY_RESPONSE", "net::ERR_NETWORK_CHANGED",
+    "net::ERR_SSL_PROTOCOL_ERROR", "net::ERR_NAME_NOT_RESOLVED",
+    "net::ERR_INTERNET_DISCONNECTED",
+)
+ESPERAS_REINTENTO_ENTRADA_S = (3, 8)  # 1 intento + 2 reintentos
 
 # Selectores donde el portal NIDP del SAT muestra el mensaje de error del login.
 _ERROR_SELECTORS = "#msgError, .msg-error, #errormsg"
@@ -63,6 +76,55 @@ class SesionPortalInvalida(RuntimeError):
     una corrida real no confirme el lanzador e.firma del portal CFDI, esto debe
     seguir llegando a Sentry como señal; los rebotes transitorios los absorbe el
     reintento único de login en `CIECClient.descargar` (esos no truenan)."""
+
+
+class PortalSATSinConexion(ErrorEsperado):
+    """No se pudo abrir la entrada del portal del SAT por un error de red (conexión
+    reiniciada/cerrada, timeout, sin internet, DNS) ni tras los reintentos. Es del
+    entorno (SAT saturado, red del usuario, antivirus/proxy), no un bug del agente."""
+
+
+def _codigo_error_red(msg: str) -> str:
+    """Código corto del error de red transitorio en `msg` ('' si no es uno)."""
+    for code in _ERRORES_RED_TRANSITORIOS:
+        if code in msg:
+            return code.removeprefix("net::")
+    if "Timeout" in msg and "exceeded" in msg:
+        return "TIMEOUT"
+    return ""
+
+
+def _abrir_entrada(page, url: str, esperas=ESPERAS_REINTENTO_ENTRADA_S) -> None:
+    """`page.goto(url)` con reintentos ante errores de red transitorios.
+
+    El SAT a ratos corta la conexión o no contesta en la primera navegación
+    (`net::ERR_CONNECTION_RESET` o timeout en el lanzador); antes eso tumbaba el
+    trámite con el error crudo de Playwright. Se reintenta con espera creciente; si
+    sigue fallando se lanza `PortalSATSinConexion` con copy claro (sin el call log de
+    Playwright). Cualquier otro error se propaga tal cual.
+    """
+    intentos = len(esperas) + 1
+    for intento in range(1, intentos + 1):
+        try:
+            page.goto(url, wait_until="domcontentloaded")
+            return
+        except Exception as e:  # noqa: BLE001 — playwright.Error; se filtra abajo
+            codigo = _codigo_error_red(str(e))
+            if not codigo:
+                raise
+            if intento == intentos:
+                causa = ("no respondió a tiempo" if codigo == "TIMEOUT"
+                         else f"la conexión se interrumpió: {codigo}")
+                raise PortalSATSinConexion(
+                    f"No se pudo conectar con el portal del SAT ({causa}). Suele ser "
+                    "momentáneo: espera unos minutos y vuelve a intentarlo. Si "
+                    "persiste, revisa tu conexión a internet o si un antivirus, VPN "
+                    "o proxy está bloqueando sat.gob.mx."
+                ) from e
+            espera = esperas[intento - 1]
+            logger.warning("[portal] %s al abrir la entrada (intento %d/%d); "
+                           "reintento en %d s.", codigo, intento, intentos, espera)
+            time.sleep(espera)
 
 
 def _es_error_credenciales(msg: str) -> bool:
@@ -168,7 +230,7 @@ def iniciar_sesion_ciec(page, rfc: str, ciec: str, url_entrada: str, exito,
         from .captcha import pedir_captcha as pedir_captcha
 
     rfc = rfc.strip().upper()
-    page.goto(url_entrada, wait_until="domcontentloaded")
+    _abrir_entrada(page, url_entrada)
 
     def rellenar_form():
         # Espera el form de login (cfdiau/loginda: #rfc, #userCaptcha, #submit). Tras
@@ -260,7 +322,7 @@ def iniciar_sesion_fiel(page, cer_path: str, key_path: str, password: str,
     cer_path = os.path.abspath(cer_path)
     key_path = os.path.abspath(key_path)
 
-    page.goto(url_entrada, wait_until="domcontentloaded")
+    _abrir_entrada(page, url_entrada)
     try:
         page.wait_for_load_state("networkidle", timeout=15_000)
     except PWTimeout:
