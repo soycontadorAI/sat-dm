@@ -13,7 +13,11 @@ Es un formulario JSF simple, así que va con requests (sin navegador):
   seguridad por default (`DH_KEY_TOO_SMALL`): contexto TLS con `@SECLEVEL=1`
   solo para esta consulta. (Chromium headless recibe un "Service unavailable"
   del gateway.)
-- El captcha distingue mayúsculas y minúsculas.
+- El captcha distingue mayúsculas y minúsculas. Uno mal tecleado regresa el
+  formulario con `consultaCertificados:mensajeerrorCaptcha` ("Código incorrecto").
+- La respuesta buena es una tabla, una fila por certificado: número de serie
+  (liga al `.cer`), estado (Activo/Revocado/Caduco), tipo (FIEL o SELLO) y
+  fechas. Validado contra el SAT real el 2026-10-21.
 """
 
 import html
@@ -42,6 +46,9 @@ _TIMEOUT = 30
 
 # Números de serie de certificados del SAT: 20 dígitos que empiezan con 0000.
 _RE_SERIE = re.compile(r"(?<!\d)(0000\d{16})(?!\d)")
+
+_RE_FILA = re.compile(r"<tr\b.*?</tr>", re.S)
+_RE_CELDA = re.compile(r"<td\b.*?</td>", re.S)
 
 # Pedir captcha: (imagen, intento, max) → texto, o None para cancelar.
 PedirCaptcha = Callable[[bytes, int, int], Optional[str]]
@@ -109,11 +116,33 @@ def series_en(texto: str) -> list[str]:
     return sorted(set(_RE_SERIE.findall(texto)), reverse=True)
 
 
-def buscar_series(rfc: str, pedir_captcha: PedirCaptcha, max_intentos: int = 3) -> list[str]:
+def tipos_en(texto: str) -> dict[str, str]:
+    """{número de serie: tipo} de las filas de resultados (FIEL o SELLO)."""
+    tipos = {}
+    for fila in _RE_FILA.findall(texto):
+        serie = _RE_SERIE.search(fila)
+        celdas = [
+            html.unescape(re.sub(r"<[^>]+>", "", c)).strip()
+            for c in _RE_CELDA.findall(fila)
+        ]
+        if serie and len(celdas) >= 3:
+            tipos[serie.group(1)] = celdas[2].upper()
+    return tipos
+
+
+def _captcha_rechazado(texto: str) -> bool:
+    return "mensajeerrorCaptcha" in texto or "digo incorrecto" in texto
+
+
+def buscar_series(
+    rfc: str, pedir_captcha: PedirCaptcha, max_intentos: int = 3,
+    tipo: Optional[str] = None,
+) -> list[str]:
     """
     Consulta «Todos los certificados expedidos» del RFC y devuelve sus números
-    de serie (más recientes primero). El captcha lo resuelve una persona vía
-    `pedir_captcha`; un captcha mal tecleado se reintenta con uno nuevo.
+    de serie (más recientes primero); con `tipo` ("FIEL" o "SELLO"), solo los
+    de ese tipo. El captcha lo resuelve una persona vía `pedir_captcha`; uno
+    mal tecleado se reintenta con uno nuevo. Sin certificados devuelve [].
 
     Lanza RuntimeError("Captcha cancelado…") si el usuario cancela (el job lo
     reporta como cancelado) y ErrorEsperado si el servicio no responde.
@@ -151,12 +180,17 @@ def buscar_series(rfc: str, pedir_captcha: PedirCaptcha, max_intentos: int = 3) 
                 "La Recuperación de certificados del SAT no respondió. "
                 "Intenta de nuevo en unos minutos."
             ) from e
+        if _captcha_rechazado(r.text):
+            logger.info("[recuperacion] captcha rechazado (intento %d/%d)", intento, max_intentos)
+            texto = r.text
+            continue
         series = series_en(r.text)
-        if series:
-            return series
-        # Sin resultados y con el formulario de vuelta: el captcha no pasó.
-        logger.info("[recuperacion] captcha rechazado (intento %d/%d)", intento, max_intentos)
-        texto = r.text
+        tipos = tipos_en(r.text)
+        # Si la tabla cambiara de forma y no se leyeran los tipos, van todos:
+        # el emparejamiento con la llave descarta los que no son.
+        if tipo and tipos:
+            series = [s for s in series if tipos.get(s) == tipo]
+        return series
     raise ErrorEsperado(
         "El captcha no coincidió. Vuelve a intentarlo: distingue mayúsculas y minúsculas."
     )
@@ -182,7 +216,7 @@ def recuperar_cert_emparejado(
 
     key_bytes = Path(key_nueva_path).read_bytes()
     emitir("consultando")
-    series = buscar_series(rfc, pedir_captcha)
+    series = buscar_series(rfc, pedir_captcha, tipo="FIEL")
     logger.info("[recuperacion] %s: %d certificados públicos", rfc, len(series))
 
     emitir("recuperando", candidatos=min(len(series), max_candidatos))

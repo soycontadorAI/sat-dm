@@ -174,6 +174,15 @@ con cuatro cambios sobre lo de julio:
      que **empareja con la `.key` nueva**. Por eso también sirve en la etapa
      `generada` (un envío que el SAT procesó sin que leyéramos el número): si no hay
      cert que empareje, la solicitud no llegó.
+   - **Validado contra el SAT real (2026-10-21)**: la respuesta es una tabla con una
+     fila por certificado (serie con liga al `.cer`, estado Activo/Revocado/Caduco,
+     tipo **FIEL o SELLO**, fechas UTC). Solo se prueban las filas FIEL (un RFC con
+     muchos CSD no desplaza a la e.firma de los candidatos); si la tabla cambiara y
+     no se leyeran los tipos, se prueban todas. Captcha mal tecleado: el formulario
+     regresa con `consultaCertificados:mensajeerrorCaptcha` ("Código incorrecto").
+     Sin ese aviso y sin series = el RFC no tiene certificados (no se gastan
+     captchas). Confirmado también: al emitir la renovada, la anterior queda
+     **Revocado** con fecha final = el segundo de la emisión de la nueva.
    - Gotcha TLS: el servidor negocia DH de 1024 bits; OpenSSL 3 lo rechaza
      (`DH_KEY_TOO_SMALL`) → contexto con `@SECLEVEL=1` solo para esa consulta.
      Chromium headless recibe "Service unavailable" del gateway: por eso va con
