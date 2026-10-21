@@ -131,3 +131,23 @@ export function notifyRenovacionPendiente(args: NotifyRenovacionPendienteArgs): 
     void dispatchNative({ title: NATIVE_TITLES.renovacion, body: mensaje });
   }
 }
+
+export interface NotifyPilotoAvisoArgs {
+  id: number;
+  tipo: 'resumen' | 'cancelacion' | 'efirma';
+  mensaje: string;
+}
+
+/** Aviso de la descarga automática: resumen del cierre, cancelaciones y e.firma. */
+export function notifyPilotoAviso(args: NotifyPilotoAvisoArgs): void {
+  const prefs = getNotifPrefs();
+  if (args.tipo === 'efirma' ? !prefs.efirma : !prefs.descargas) return;
+  const id = `piloto:${args.id}`;
+  if (tieneFoco()) {
+    const opciones = { id, duration: DURATION.info };
+    if (args.tipo === 'resumen') toast.success(args.mensaje, opciones);
+    else toast.warning(args.mensaje, opciones);
+  } else {
+    void dispatchNative({ title: 'Descarga automática', body: args.mensaje });
+  }
+}

@@ -15,13 +15,15 @@ para que el frontend reuse el shape sin transformaciones.
 
 from __future__ import annotations
 
+import contextvars
 import logging
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Optional, Union
 
 from lxml import etree
 
-from ..core.xml_seguro import fromstring_seguro
+from ..core.xml_seguro import LOCAL, leer_tolerante, nombre_local
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +193,10 @@ class CfdiData:
     # Validación (poblada por procesador.validaciones)
     warnings: list[str] = field(default_factory=list)
 
+    # Avisos de lectura: el XML venía mal formado y se leyó en modo tolerante.
+    # `validar` los pone primero en `warnings` para que no se pierdan.
+    avisos_lectura: list[str] = field(default_factory=list)
+
     # Estado SAT (poblada por procesador.validaciones / validar-sat)
     estado_sat: Optional[str] = None      # "Vigente" | "Cancelado" | "No encontrado" | None
     validado_en: Optional[str] = None     # ISO timestamp
@@ -207,15 +213,22 @@ class CfdiData:
 # ---------------------------------------------------------------------------
 
 
+# Predicado de las búsquedas por nombre local. Solo un XML leído en modo
+# tolerante puede traer nodos con prefijo sin declarar (`LOCAL` los encuentra);
+# para los válidos se queda el predicado simple, que cuesta la mitad.
+_PREDICADO_SIMPLE = "[local-name()=$n]"
+_predicado = contextvars.ContextVar("predicado_local", default=_PREDICADO_SIMPLE)
+
+
 def _local(elem) -> str:
-    return etree.QName(elem).localname if elem is not None else ""
+    return nombre_local(elem) if elem is not None else ""
 
 
 def _find_local(parent, local_name: str):
     """Primer descendiente (cualquier profundidad) con local-name = local_name."""
     if parent is None:
         return None
-    results = parent.xpath(f".//*[local-name()=$n]", n=local_name)
+    results = parent.xpath(f".//*{_predicado.get()}", n=local_name)
     return results[0] if results else None
 
 
@@ -223,7 +236,7 @@ def _findall_local(parent, local_name: str) -> list:
     """Todos los descendientes con local-name = local_name."""
     if parent is None:
         return []
-    return parent.xpath(f".//*[local-name()=$n]", n=local_name)
+    return parent.xpath(f".//*{_predicado.get()}", n=local_name)
 
 
 def _attr(elem, name: str, default: str = "") -> str:
@@ -400,7 +413,7 @@ def _find_child_local(parent, local_name: str):
     if parent is None:
         return None
     for child in parent:
-        if etree.QName(child).localname == local_name:
+        if nombre_local(child) == local_name:
             return child
     return None
 
@@ -409,7 +422,7 @@ def _findall_child_local(parent, local_name: str) -> list:
     """Hijos directos con local-name = local_name."""
     if parent is None:
         return []
-    return [c for c in parent if etree.QName(c).localname == local_name]
+    return [c for c in parent if nombre_local(c) == local_name]
 
 
 def _extraer_trabajador_nomina(nomina) -> dict:
@@ -573,6 +586,45 @@ class CfdiParseError(ValueError):
     """Indica que el XML no es un CFDI válido."""
 
 
+_DECLARACION_NS = re.compile(r"^(xmlns:[^:\s]+)")
+_PREFIJO_SIN_DECLARAR = re.compile(r"^Namespace prefix (\S+)")
+
+
+def _defecto_ns(mensaje: str) -> str:
+    """Mensaje de libxml2 → defecto legible (los dos que no pierden datos)."""
+    m = _DECLARACION_NS.match(mensaje)
+    if m:
+        return f"namespace inválido: {m.group(1)}"
+    m = _PREFIJO_SIN_DECLARAR.match(mensaje)
+    if m:
+        return f"prefijo sin declarar: {m.group(1)}"
+    return "declaración de namespace"
+
+
+def _del_parser(lectura) -> tuple:
+    """Avisos del parser, sin la nota de recodificación (que va primero)."""
+    return lectura.avisos[1:] if lectura.recodificado else lectura.avisos
+
+
+def _aviso_lectura(lectura) -> str:
+    """Aviso de validación de un CFDI leído en modo tolerante (`leer_tolerante`).
+    Solo dice "sin perder datos" cuando el defecto no toca el contenido."""
+    defectos = []
+    if lectura.recodificado:
+        defectos.append("caracteres fuera de UTF-8, leídos como Windows-1252")
+    del_parser = _del_parser(lectura)
+    if lectura.sin_perdida:
+        for mensaje in del_parser:
+            defecto = _defecto_ns(mensaje)
+            if defecto not in defectos:
+                defectos.append(defecto)
+        return (f"XML mal formado ({'; '.join(defectos)}); se leyó en modo tolerante "
+                "sin perder datos del comprobante.")
+    detalle = (del_parser or lectura.avisos)[0]
+    return ("XML mal formado; se leyó en modo tolerante y puede faltar información "
+            f"(revisa montos y complementos contra el XML original): {detalle}")
+
+
 def parse_cfdi(xml_content: Union[str, bytes], file_name: str = "") -> CfdiData:
     """
     Parsea un CFDI desde string o bytes y devuelve un `CfdiData` con todos los
@@ -582,9 +634,18 @@ def parse_cfdi(xml_content: Union[str, bytes], file_name: str = "") -> CfdiData:
         xml_content = xml_content.encode("utf-8")
 
     try:
-        root = fromstring_seguro(xml_content)
+        lectura = leer_tolerante(xml_content)
     except etree.XMLSyntaxError as e:
         raise CfdiParseError(f"XML inválido: {e}") from e
+    token = _predicado.set(LOCAL if lectura.avisos else _PREDICADO_SIMPLE)
+    try:
+        return _extraer(lectura, file_name)
+    finally:
+        _predicado.reset(token)
+
+
+def _extraer(lectura, file_name: str) -> CfdiData:
+    root = lectura.raiz
 
     if _local(root) != "Comprobante":
         raise CfdiParseError(
@@ -625,6 +686,20 @@ def parse_cfdi(xml_content: Union[str, bytes], file_name: str = "") -> CfdiData:
     uuid, fecha_timbrado = _extraer_timbre_fiscal(root)
     data.uuid = uuid
     data.fecha_timbrado = fecha_timbrado
+
+    # Un XML mal formado solo se indexa si conserva lo que lo identifica: sin
+    # UUID, RFC o fecha no se sabe de quién es ni de qué día (antes se rechazaba).
+    if lectura.avisos:
+        faltan = [nombre for nombre, valor in (
+            ("UUID", uuid), ("RFC del emisor", data.emisor_rfc),
+            ("RFC del receptor", data.receptor_rfc), ("fecha", data.fecha_emision),
+        ) if not valor]
+        if faltan:
+            detalle = (_del_parser(lectura) or lectura.avisos)[0]
+            raise CfdiParseError(
+                f"XML inválido: {detalle} (al recuperarlo se pierde: {', '.join(faltan)})"
+            )
+        data.avisos_lectura = [_aviso_lectura(lectura)]
 
     # Impuestos
     imp = _extraer_impuestos(root)

@@ -1141,16 +1141,20 @@ def xml(comp: Comprobante) -> bytes:
     return "".join(partes).encode("utf-8")
 
 
-def metadata_txt(comps: list) -> bytes:
-    """Archivo de metadata del SAT (separado por ~) para una lista de comprobantes."""
+def metadata_txt(comps: list, cancelados: frozenset = frozenset()) -> bytes:
+    """Archivo de metadata del SAT (separado por ~) para una lista de comprobantes.
+    Los UUID en `cancelados` salen con Estatus 0 y su fecha de cancelación (la
+    metadata, a diferencia de los XML, sí trae los cancelados)."""
     lineas = ["Uuid~RfcEmisor~NombreEmisor~RfcReceptor~NombreReceptor~RfcPac~FechaEmision"
               "~FechaCertificacionSat~Monto~EfectoComprobante~Estatus~FechaCancelacion"]
     for c in comps:
         timbrado = c.fecha + timedelta(seconds=7 + int(c.uuid[-2:], 16) % 80)
+        cancelado = c.uuid in cancelados
         lineas.append("~".join((
             c.uuid, c.emisor_rfc, c.emisor_nombre, c.receptor_rfc, c.receptor_nombre, c.pac,
             c.fecha.strftime("%Y-%m-%d %H:%M:%S"), timbrado.strftime("%Y-%m-%d %H:%M:%S"),
-            f"{c.monto_metadata:.2f}", c.tipo, "1", "",
+            f"{c.monto_metadata:.2f}", c.tipo, "0" if cancelado else "1",
+            (c.fecha + timedelta(days=12)).strftime("%Y-%m-%d %H:%M:%S") if cancelado else "",
         )))
     return ("\r\n".join(lineas) + "\r\n").encode("utf-8")
 

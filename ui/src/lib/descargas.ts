@@ -61,3 +61,15 @@ export function iconoAbrir(modo: ModoAbrir): string {
   if (esWeb() && modo === 'carpeta') return 'ph:download-simple-light';
   return modo === 'archivo' ? 'ph:file-pdf-light' : 'ph:folder-open-light';
 }
+
+/** Baja un Blob (export de Excel, ZIP) con el nombre dado. Igual en desktop y web. */
+export function descargarBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

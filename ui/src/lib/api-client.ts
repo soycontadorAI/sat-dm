@@ -1,11 +1,15 @@
 import { getAgentBaseUrl, getAgentToken } from './constants';
 import { agregarBreadcrumb, capturarExcepcion } from './telemetria';
 import type {
+  CalendarioAnio,
+  CalendarioDia,
+  PilotoEstado,
   HealthResponse,
   CargarFielResponse,
   DescargarFielResponse,
   SolicitudRequest,
   SolicitudResponse,
+  SolicitudDesdeBaseResponse,
   VerificarRequest,
   VerificarResponse,
   DescargarResponse,
@@ -384,6 +388,17 @@ export class SatApiClient {
   }
 
   /**
+   * Solicitud inteligente (solo CFDI): los días ya consolidados se sirven de la
+   * base sin ir al SAT y solo se piden los huecos, en rangos mínimos.
+   */
+  async solicitarDesdeBase(req: SolicitudRequest): Promise<SolicitudDesdeBaseResponse> {
+    return this.post<SolicitudDesdeBaseResponse>(
+      '/solicitar/desde-base',
+      req as unknown as Record<string, unknown>,
+    );
+  }
+
+  /**
    * Step 2: Check the status of a download request.
    * When `cod_estado === 3` the packages are ready.
    */
@@ -708,6 +723,78 @@ export class SatApiClient {
     );
   }
 
+  // -----------------------------------------------------------------------
+  // Cuadro de control (calendario de descargas por empresa)
+  // -----------------------------------------------------------------------
+
+  /** Estado de cada día del año por dirección (E/R). */
+  async calendarioAnio(rfc: string, anio: number): Promise<CalendarioAnio> {
+    return this.request<CalendarioAnio>(
+      `/calendario/${encodeURIComponent(rfc)}?anio=${encodeURIComponent(String(anio))}`,
+    );
+  }
+
+  /** Detalle de un día: estado, solicitudes que lo llenaron y los primeros CFDI. */
+  async calendarioDia(rfc: string, fecha: string): Promise<CalendarioDia> {
+    return this.request<CalendarioDia>(
+      `/calendario/${encodeURIComponent(rfc)}/dia?fecha=${encodeURIComponent(fecha)}`,
+    );
+  }
+
+  /**
+   * ZIP con los XML de un mes desde el índice. Va por `fetch` y no por
+   * navegación: un error (mes sin CFDI, agente caído) sale como excepción en
+   * vez de dejar la ventana en una página de error.
+   */
+  async calendarioZip(rfc: string, anio: number, mes: number, direccion?: 'E' | 'R'): Promise<Blob> {
+    const qs = new URLSearchParams({ anio: String(anio), mes: String(mes) });
+    if (direccion) qs.set('direccion', direccion);
+    return this.blob(`/calendario/${encodeURIComponent(rfc)}/zip?${qs.toString()}`);
+  }
+
+  /** Reintenta un día con error o diferencia (pide de nuevo al SAT). */
+  async calendarioReintentar(
+    rfc: string,
+    fecha: string,
+    direccion: 'E' | 'R',
+  ): Promise<{ ok: boolean; id_solicitud: string }> {
+    return this.post(`/calendario/${encodeURIComponent(rfc)}/reintentar`, { fecha, direccion });
+  }
+
+  // -----------------------------------------------------------------------
+  // Descarga automática (piloto)
+  // -----------------------------------------------------------------------
+
+  async pilotoEstado(): Promise<PilotoEstado> {
+    return this.request<PilotoEstado>('/piloto/estado');
+  }
+
+  /**
+   * Activa/pausa, cambia el día de cierre o el historial (`historial_desde`
+   * "YYYY-MM-DD"; `null` lo detiene). 402 si el plan no la incluye.
+   */
+  async pilotoConfig(cfg: {
+    activo?: boolean;
+    dia_cierre?: number;
+    historial_desde?: string | null;
+  }): Promise<PilotoEstado> {
+    return this.put<PilotoEstado>('/piloto/config', cfg);
+  }
+
+  async pilotoEmpresa(rfc: string, incluida: boolean): Promise<{ ok: boolean; rfc: string; incluida: boolean }> {
+    return this.put(`/empresas/${encodeURIComponent(rfc)}/piloto`, { incluida });
+  }
+
+  /** Adelanta la siguiente evaluación; no espera a que termine. */
+  async pilotoCorrer(): Promise<{ ok: boolean }> {
+    return this.post('/piloto/correr');
+  }
+
+  /** Sin `ids` marca todos como leídos. */
+  async pilotoAvisosLeidos(ids?: number[]): Promise<{ ok: boolean; marcados: number }> {
+    return this.post('/piloto/avisos/leidos', ids ? { ids } : {});
+  }
+
   /** Borra una solicitud del catálogo local (no afecta al SAT). */
   async deleteSolicitud(rfc: string, idSolicitud: string): Promise<{ ok: boolean }> {
     return this.del<{ ok: boolean }>(
@@ -928,7 +1015,15 @@ export class SatApiClient {
       por_concepto: opciones?.porConcepto,
       convertir_mxn: opciones?.convertirMxn,
     });
-    const r = await fetch(this.url(`/procesador/cfdi/exportar?${qs}`), { headers: this.tokenHeaders() });
+    return this.blob(`/procesador/cfdi/exportar?${qs}`);
+  }
+
+  /**
+   * Archivo del agente como Blob (exports, ZIP). Los rechazos con mensaje para
+   * el usuario (400, 404) salen tal cual; lo demás, con el código de estado.
+   */
+  private async blob(path: string): Promise<Blob> {
+    const r = await fetch(this.url(path), { headers: this.tokenHeaders() });
     if (!r.ok) {
       const text = await r.text();
       let detalle = text;
@@ -937,7 +1032,7 @@ export class SatApiClient {
       } catch {
         // texto plano
       }
-      throw new Error(r.status === 400 ? detalle : `Error al exportar: ${r.status} ${detalle}`);
+      throw new Error(r.status === 400 || r.status === 404 ? detalle : `Error al exportar: ${r.status} ${detalle}`);
     }
     return await r.blob();
   }

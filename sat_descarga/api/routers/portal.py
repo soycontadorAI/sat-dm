@@ -18,7 +18,9 @@ from ... import demo
 from .. import cupo_descargas, jobs
 from ..uso import rango, tipo_cfdi, track
 from ...core.config import TIPO_RECIBIDO
-from ..state import _session, _get_fiel, _descargas_base, _registrar_descarga
+from ..state import (
+    _session, _get_fiel, _descargas_base, _registrar_descarga, direcciones_de,
+)
 
 logger = logging.getLogger("sat_descarga.api")
 
@@ -334,15 +336,21 @@ def ciec_cfdi(req: CIECDescargaRequest):
                 pedir_captcha=pedir_captcha,
             )
             return {"metodo": "ciec", "total": len(archivos),
-                    "archivos": [str(a) for a in archivos]}
+                    "archivos": [str(a) for a in archivos],
+                    "completa": getattr(archivos, "completa", False)}
         return run
 
     cuales = {"E": "emitidos", "R": "recibidos"}.get(req.tipo_comprobante, "")
     desc = f"CFDIs {cuales} · {req.fecha_inicio} a {req.fecha_fin}".replace("  ", " ")
 
     def al_completar(resultado):
+        total = (resultado or {}).get("total")
+        # Solo una descarga completa da por descargado el rango (portal/cfdi.py::DescargaPortal).
+        completo = (resultado or {}).get("completa") is True
         _registrar_descarga(req.rfc, "ciec", "cfdi", descripcion=desc,
-                            ruta=salida, total=(resultado or {}).get("total"))
+                            ruta=salida, total=total,
+                            rango=(req.fecha_inicio, req.fecha_fin) if completo else None,
+                            direcciones=direcciones_de(req.tipo_comprobante))
         track("descarga_completada", canal="rapida", credencial="contrasena",
               tipo=tipo_cfdi(req.tipo_comprobante), tamano=rango((resultado or {}).get("total")))
 
@@ -545,15 +553,21 @@ def cfdi_fiel(req: FIELCfdiRequest):
                 directorio_salida=salida, max_registros=req.max_registros,
             )
             return {"metodo": "fiel", "total": len(archivos),
-                    "archivos": [str(a) for a in archivos]}
+                    "archivos": [str(a) for a in archivos],
+                    "completa": getattr(archivos, "completa", False)}
         return run
 
     cuales = {"E": "emitidos", "R": "recibidos"}.get(req.tipo_comprobante, "")
     desc = f"CFDIs {cuales} · {req.fecha_inicio} a {req.fecha_fin}".replace("  ", " ")
 
     def al_completar(resultado):
+        total = (resultado or {}).get("total")
+        # Solo una descarga completa da por descargado el rango (portal/cfdi.py::DescargaPortal).
+        completo = (resultado or {}).get("completa") is True
         _registrar_descarga(rfc, "fiel", "cfdi", descripcion=desc,
-                            ruta=salida, total=(resultado or {}).get("total"))
+                            ruta=salida, total=total,
+                            rango=(req.fecha_inicio, req.fecha_fin) if completo else None,
+                            direcciones=direcciones_de(req.tipo_comprobante))
         track("descarga_completada", canal="rapida", credencial="efirma",
               tipo=tipo_cfdi(req.tipo_comprobante), tamano=rango((resultado or {}).get("total")))
 
