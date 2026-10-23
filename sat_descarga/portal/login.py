@@ -8,6 +8,7 @@ de forma lazy (dentro de las funciones), así que importar este módulo NO requi
 extra `ciec`.
 """
 
+import contextlib
 import logging
 import time
 
@@ -20,6 +21,11 @@ LOGIN_TIMEOUT_MS = 180_000        # 3 min para el login FIEL (e.firma, sin captc
 MAX_INTENTOS_CAPTCHA = 3          # CIEC: 1 + 2 reintentos; tras agotarse → cancelar
 EXITO_TIMEOUT_MS = 25_000         # espera de aterrizaje tras enviar el captcha
 GRACIA_ATERRIZAJE_MS = 10_000     # 2ª oportunidad si la navegación sigue en vuelo
+ESPERA_ERROR_FIEL_MS = 3_000      # cada cuánto se revisa el error del form e.firma
+
+# OID des-ede3-cbc (1.2.840.113549.3.7) en DER: el único cifrado de .key que sabe
+# descifrar el JS de login del portal (jsrsasign/CryptoJS de 2016).
+_OID_3DES_DER = bytes.fromhex("06082a864886f70d0307")
 
 # Errores de red de Chromium al abrir la entrada del portal: el SAT (o algo en medio)
 # cortó la conexión antes de responder. Suelen ser transitorios → se reintenta. El
@@ -51,6 +57,11 @@ class CredencialCIECInvalida(ErrorEsperado):
     Se lanza para abortar de inmediato (sin gastar reintentos de captcha) cuando el
     portal muestra un error de credenciales. Es `ErrorEsperado`: el usuario
     capturó mal su clave — se le avisa, no se reporta a telemetría."""
+
+
+class CredencialFIELInvalida(ErrorEsperado):
+    """El login del portal rechazó la e.firma (.cer/.key/contraseña) y lo mostró en
+    el form. Se lanza en cuanto aparece el mensaje, sin agotar el timeout del login."""
 
 
 class OperacionNoSimulada(ErrorEsperado):
@@ -328,20 +339,39 @@ def iniciar_sesion_fiel(page, cer_path: str, key_path: str, password: str,
     except PWTimeout:
         pass
 
-    try:
-        _login_efirma(page, cer_path, key_path, password)
-    except Exception as e:
-        logger.warning("[FIEL] Autollenado e.firma falló (%s). "
-                       "Complétalo a mano en el browser.", e)
+    autollenado = False
+    with _llave_para_portal(key_path, password) as key_portal:
+        try:
+            _login_efirma(page, cer_path, key_portal, password)
+            autollenado = True
+        except Exception as e:
+            logger.warning("[FIEL] Autollenado e.firma falló (%s). "
+                           "Complétalo a mano en el browser.", e)
 
     logger.info("[FIEL] Si hace falta, selecciona .cer/.key + contraseña y «Enviar» "
                 "en el browser. Esperando login (hasta %d s)...", timeout_ms // 1000)
-    try:
-        page.wait_for_url(exito, timeout=timeout_ms)
-    except PWTimeout:
-        raise RuntimeError(
-            f"Login e.firma no completado. URL actual: {page.url}."
-        )
+    limite = time.monotonic() + timeout_ms / 1000
+    while True:
+        try:
+            page.wait_for_url(exito, timeout=ESPERA_ERROR_FIEL_MS)
+            break
+        except PWTimeout:
+            pass
+        # El form e.firma firma en el navegador: si rechaza la llave, se queda en
+        # la misma página con el mensaje en #divError y nunca navega. Con el
+        # autollenado hecho no hay nada que esperar → avisar ya, no a los 3 min.
+        # (Llenado a mano: el usuario puede corregir, se respeta el timeout.)
+        err = _texto_error_efirma(page) if autollenado else ""
+        if err:
+            raise CredencialFIELInvalida(
+                f'El SAT rechazó la e.firma: "{err}" Revisa que el .cer y el .key '
+                "sean de la misma e.firma, que la contraseña de la clave privada sea "
+                "la correcta y que la e.firma esté vigente."
+            )
+        if time.monotonic() >= limite:
+            raise RuntimeError(
+                f"Login e.firma no completado. URL actual: {page.url}."
+            )
     try:
         page.wait_for_load_state("networkidle", timeout=15_000)
     except PWTimeout:
@@ -390,3 +420,74 @@ def _login_efirma(page, cer_path: str, key_path: str, password: str):
     except PWTimeout:
         page.click("#submit", no_wait_after=True)  # fallback: id sin filtrar
     logger.info("[FIEL] e.firma enviada.")
+
+
+def _texto_error_efirma(page) -> str:
+    """Mensaje visible en #divError del form e.firma ("" si no hay o si la página
+    está navegando: leer el DOM en pleno submit puede tronar)."""
+    try:
+        el = page.query_selector("#divError")
+        if el is None or not el.is_visible():
+            return ""
+        return " ".join((el.inner_text() or "").split())
+    except Exception:
+        return ""
+
+
+@contextlib.contextmanager
+def _llave_para_portal(key_path: str, password: str):
+    """Ruta de un `.key` que el login del portal SÍ pueda leer.
+
+    El form e.firma descifra la `.key` en el navegador con un JS que solo soporta
+    PKCS#8 DER con 3DES (el formato del SAT). Una `.key` re-cifrada con AES-256
+    (openssl, satcfdi, la primera versión de nuestro Certifica) es válida para
+    todo lo demás, pero ahí truena con "Certificado, clave privada o contraseña
+    de clave privada inválidos". En ese caso se entrega una copia TEMPORAL en
+    3DES (misma llave, misma contraseña) que se borra al salir; el archivo del
+    usuario no se toca. Si no se puede abrir (p. ej. contraseña errónea), se usa
+    la original y el SAT dará su propio error.
+    """
+    import os
+    import shutil
+    import tempfile
+
+    try:
+        with open(key_path, "rb") as f:
+            raw = f.read()
+    except OSError:
+        yield key_path
+        return
+    if raw[:1] == b"\x30" and _OID_3DES_DER in raw[:128]:
+        yield key_path  # ya es DER/3DES: el caso normal
+        return
+
+    try:
+        from cryptography.hazmat.primitives import serialization
+        from sat_descarga.certifica.generador import cifrar_pkcs8_3des
+
+        llave = None
+        for cargar in (serialization.load_der_private_key,
+                       serialization.load_pem_private_key):
+            try:
+                llave = cargar(raw, password.encode())
+                break
+            except Exception:
+                continue
+        if llave is None:
+            raise ValueError("no se pudo abrir la .key con la contraseña")
+        convertida = cifrar_pkcs8_3des(llave, password)
+    except Exception as e:
+        logger.info("[FIEL] .key sin 3DES y sin convertir (%s); se usa tal cual.", e)
+        yield key_path
+        return
+
+    tmpdir = tempfile.mkdtemp(prefix="sat-dm-fiel-")
+    try:
+        ruta = os.path.join(tmpdir, os.path.basename(key_path) or "fiel.key")
+        with open(ruta, "wb") as f:
+            f.write(convertida)
+        logger.info("[FIEL] .key no es 3DES: se usa una copia temporal en 3DES "
+                    "para el login del portal.")
+        yield ruta
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
