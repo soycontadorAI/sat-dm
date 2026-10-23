@@ -104,6 +104,14 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Bug fix
 
+- **La constancia, la 32-D y los demás trámites por e.firma ya entran con una `.key` cifrada con
+  AES.** El login del portal del SAT descifra la `.key` en el navegador y solo sabe leer 3DES (el
+  formato que entrega el SAT); con una `.key` re-cifrada en AES-256 (openssl, satcfdi o la primera
+  versión de la renovación de e.firma de la app) rechazaba la e.firma aunque fuera correcta, y la
+  app esperaba 3 minutos para decir "Login e.firma no completado". Ahora, si la `.key` no es 3DES,
+  se entra con una copia temporal en 3DES (misma llave, misma contraseña) que se borra al terminar;
+  el archivo del usuario no se toca. Y si el SAT rechaza la e.firma, la app lo dice en segundos con
+  el mensaje del SAT. Probado contra el SAT real (constancia y 32-D).
 - **La sincronización de credenciales con el espacio en línea viene apagada.** Desde la 2.0.0
   venía activada: la desktop copiaba la e.firma, su contraseña y la Contraseña del SAT al espacio
   privado de la versión web, mientras la app decía que la e.firma nunca salía del equipo. Ahora
