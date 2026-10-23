@@ -146,6 +146,7 @@ class _PageLogin(_PageError):
 
 @pytest.fixture
 def sin_portal(monkeypatch):
+    pytest.importorskip("playwright.sync_api")  # extra `ciec`; el CI no lo instala
     monkeypatch.setattr(login.demo, "aplica_archivos_fiel", lambda *a: None)
     monkeypatch.setattr(login, "_abrir_entrada", lambda page, url: None)
     monkeypatch.setattr(login, "_login_efirma", lambda page, cer, key, pwd: None)
