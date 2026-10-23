@@ -11,18 +11,22 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import type { CaptchaState } from '@/hooks/use-ciec-job';
 
 interface CaptchaModalProps {
   captcha: CaptchaState | null;
   onResolver: (texto: string | null) => void;
+  /** Captchas que distinguen mayúsculas y minúsculas (la recuperación pública
+   * de certificados del SAT): se mandan tal cual, sin pasar a mayúsculas. */
+  respetarMayusculas?: boolean;
 }
 
 /**
  * Modal del captcha del SAT: muestra la imagen que el agente capturó (headless) y
  * captura el texto. Enviar reanuda el scraping; cerrar/Cancelar lo aborta (null).
  */
-export function CaptchaModal({ captcha, onResolver }: CaptchaModalProps) {
+export function CaptchaModal({ captcha, onResolver, respetarMayusculas = false }: CaptchaModalProps) {
   const [texto, setTexto] = useState('');
 
   // Limpiar el input cuando llega un captcha nuevo (p. ej. reintento).
@@ -36,7 +40,8 @@ export function CaptchaModal({ captcha, onResolver }: CaptchaModalProps) {
         <DialogHeader>
           <DialogTitle>Captcha del SAT</DialogTitle>
           <DialogDescription>
-            Intento {captcha?.intento} de {captcha?.max}. Teclea las letras de la imagen.
+            Intento {captcha?.intento} de {captcha?.max}. Teclea las letras de la imagen
+            {respetarMayusculas ? ' tal como aparecen (distingue mayúsculas y minúsculas).' : '.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -45,7 +50,7 @@ export function CaptchaModal({ captcha, onResolver }: CaptchaModalProps) {
             className="space-y-3"
             onSubmit={(e) => {
               e.preventDefault();
-              const v = texto.trim().toUpperCase();
+              const v = respetarMayusculas ? texto.trim() : texto.trim().toUpperCase();
               if (v) onResolver(v);
             }}
           >
@@ -59,8 +64,14 @@ export function CaptchaModal({ captcha, onResolver }: CaptchaModalProps) {
               autoFocus
               value={texto}
               onChange={(e) => setTexto(e.target.value)}
-              placeholder="CAPTCHA"
-              className="text-center font-mono text-lg uppercase tracking-widest"
+              placeholder={respetarMayusculas ? 'Captcha' : 'CAPTCHA'}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              className={cn(
+                'text-center font-mono text-lg tracking-widest',
+                !respetarMayusculas && 'uppercase',
+              )}
             />
             <div className="flex gap-2">
               <Button

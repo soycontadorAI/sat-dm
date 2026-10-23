@@ -149,3 +149,62 @@ del detalle) y `GenerarCsdWizard` (sin trigger visible: se conectará desde el
 Expediente fiscal; QA con `/empresas/detalle?rfc=…&labs=csd`). Ambos sobre el
 hook genérico `useJob` (`use-job.ts`). La vía manual de actualizar `.cer`/`.key`
 se conserva en el detalle (vencida → trámite presencial).
+
+## Lanzamiento (2026-10): respaldo antes de enviar y recuperación pública
+
+La renovación se encendió (`RENOVACION_EFIRMA_HABILITADA = true`) en desktop y web
+con cuatro cambios sobre lo de julio:
+
+1. **Respaldo de la llave nueva ANTES de enviar.** `POST /renovar/generar`
+   (síncrono, idempotente) genera el `.ren` y la `.key` nueva y deja la etapa
+   `generada` sin tocar el portal. El asistente pasa por un paso "Respaldo"
+   (`GET /renovar/respaldo`, ZIP con `.key`/`.ren` + LÉEME) y solo habilita
+   "Renovar en línea" cuando el usuario lo descargó y aceptó que es irreversible.
+   `POST /renovar` reutiliza esa misma `.key` (la del respaldo). Esto reabre la
+   decisión de julio de fusionar endpoints: el estado "generado sin enviar" ya no es
+   huérfano, es un paso del flujo y se retoma desde Empresas ("Reanudar renovación").
+2. **"Descargar certificado" ya no entra a CertiSAT con la e.firma vieja.** Al
+   emitir la nueva, el SAT revoca la anterior, así que un login posterior rebota.
+   - El envío espera el cert hasta ~10 min **dentro de la misma sesión**
+     (`_INTENTOS_CERT_EN_SESION`).
+   - Si no alcanza, `POST /renovar/recuperar` va por la **Recuperación pública de
+     certificados** (`portal/recuperacion_publica.py`): formulario JSF con captcha
+     (por SSE, igual que CIEC; **distingue mayúsculas**), lista los números de serie
+     del RFC, baja cada `.cer` de `rdc.sat.gob.mx/rccf/…/{serie}.cer` y solo acepta el
+     que **empareja con la `.key` nueva**. Por eso también sirve en la etapa
+     `generada` (un envío que el SAT procesó sin que leyéramos el número): si no hay
+     cert que empareje, la solicitud no llegó.
+   - **Validado contra el SAT real (2026-10-21)**: la respuesta es una tabla con una
+     fila por certificado (serie con liga al `.cer`, estado Activo/Revocado/Caduco,
+     tipo **FIEL o SELLO**, fechas UTC). Solo se prueban las filas FIEL (un RFC con
+     muchos CSD no desplaza a la e.firma de los candidatos); si la tabla cambiara y
+     no se leyeran los tipos, se prueban todas. Captcha mal tecleado: el formulario
+     regresa con `consultaCertificados:mensajeerrorCaptcha` ("Código incorrecto").
+     Sin ese aviso y sin series = el RFC no tiene certificados (no se gastan
+     captchas). Confirmado también: al emitir la renovada, la anterior queda
+     **Revocado** con fecha final = el segundo de la emisión de la nueva.
+   - Gotcha TLS: el servidor negocia DH de 1024 bits; OpenSSL 3 lo rechaza
+     (`DH_KEY_TOO_SMALL`) → contexto con `@SECLEVEL=1` solo para esa consulta.
+     Chromium headless recibe "Service unavailable" del gateway: por eso va con
+     requests.
+   - CLI: `sat-dm recuperar ren --publica --key-nueva …`.
+3. **La e.firma renovada viaja entre escritorio y web.** El sync de credenciales
+   (`api/espacio_online.py`) ya no solo sube/baja lo que "falta": si los dos lados
+   tienen e.firma y una vence después, esa reemplaza a la otra (la otra quedó
+   revocada), con respaldo `anterior_*` antes. La renovación dispara el sync.
+   - **Con la sincronización apagada** (el default desde la PR de "sincronización
+     apagada") el sync no se conecta, salvo para esto: si la e.firma se renovó en
+     este equipo (`marcar_renovada`) o el catálogo trae de la otra instalación un
+     vencimiento más lejano (`vencimiento_sync`), hace una pasada que solo
+     reemplaza la e.firma donde los dos lados ya tenían una. No sube ni baja
+     empresas, CIEC ni e.firmas que el otro lado no tuviera. Un vencimiento de la
+     web ya revisado no se vuelve a revisar en la sesión (el poller no se conecta
+     cada 30 min por lo mismo).
+4. **Web**: el copy del asistente distingue "este equipo" de "tu espacio en línea"
+   (en la web la `.key` nueva nace en el contenedor, y el respaldo es la copia del
+   usuario).
+
+Entradas: botón en la fila de Empresas y en el detalle; acceso directo "Renovar
+e.firma" en la navegación por espacios (`/empresas?abrir=1&renovar=1`, abre el
+asistente de la empresa activa); `/empresas/detalle?rfc=…&renovar=1`; aviso diario
+si quedó una renovación a medias (`useEfirmaReminder`).

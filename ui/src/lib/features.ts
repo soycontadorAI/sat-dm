@@ -4,22 +4,22 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Renovación de e.firma en línea (generar/enviar el .ren, reanudar un envío
- * fallido y descargar el certificado pendiente).
+ * Renovación de e.firma en línea (generar el .ren, bajar el respaldo de la
+ * llave nueva, enviar, reanudar un envío fallido y descargar el certificado
+ * pendiente). Con `false` la UI muestra el botón como «Disponible próximamente».
  *
- * DESHABILITADA temporalmente (2026-07-09): el trámite corre el portal del SAT
- * con Playwright desde el agente EMPACADO, y en Windows hay intermitencia de
- * ejecución (además de antivirus que interrumpe sat-agent.exe / TodoConta.exe
- * y entorpece el flujo). La lógica está completa y probada; se reactiva —con
- * cambiar esto a `true`— cuando la ejecución empacada sea estable. Mientras,
- * la UI muestra el botón como «Disponible próximamente».
+ * Encendida en octubre de 2026. Estuvo apagada desde julio por miedo a que la
+ * ejecución empacada en Windows (antivirus) cortara el trámite; el envío corre
+ * dentro del agente con el mismo Chromium que la Constancia y la 32-D, y lo
+ * que no se puede perder (la .key nueva) se persiste y se respalda antes de
+ * enviar.
  *
  * Anotado `: boolean` a propósito: sin la anotación TS lo estrecharía al tipo
  * literal `false` y trataría las ramas habilitadas como código muerto — con
  * `boolean` sigue siendo un flag real que se puede cambiar a `true` sin tocar
  * nada más.
  */
-export const RENOVACION_EFIRMA_HABILITADA: boolean = false;
+export const RENOVACION_EFIRMA_HABILITADA: boolean = true;
 
 /**
  * Planes v3 (F1 de docs/operacion/plan-app-v3.md en todoconta-apps): los tres

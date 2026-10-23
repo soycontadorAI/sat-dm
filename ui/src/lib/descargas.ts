@@ -33,6 +33,21 @@ export async function abrirODescargar(
   a.remove();
 }
 
+/**
+ * Guarda un Blob como archivo, en desktop y en web: es el mismo mecanismo de
+ * los exports del procesador y las calculadoras.
+ */
+export function guardarBlob(blob: Blob, nombre: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombre;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** Tooltip del botón según el modo de ejecución. */
 export function tituloAbrir(modo: ModoAbrir): string {
   if (esWeb()) {

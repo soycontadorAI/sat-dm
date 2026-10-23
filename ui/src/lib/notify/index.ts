@@ -20,6 +20,7 @@ import {
   mensajeDescargaError,
   mensajeDescargaSuccess,
   mensajeEfirmaAviso,
+  mensajeRenovacionPendiente,
 } from './messages';
 import { dispatchNative } from './native';
 import { getNotifPrefs } from './prefs';
@@ -34,6 +35,7 @@ const NATIVE_TITLES = {
   descargaOk: 'Descarga lista 🎉',
   descargaErr: 'Descarga con error 😨',
   efirma: 'e.firma por vencer ⌛️',
+  renovacion: 'Renovación de e.firma pendiente',
 } as const;
 
 function tieneFoco(): boolean {
@@ -105,6 +107,30 @@ export function notifyEfirmaVencimiento(args: NotifyEfirmaArgs): void {
   }
 }
 
+export interface NotifyRenovacionPendienteArgs {
+  rfc: string;
+  /** true = el SAT ya tiene el trámite (falta el cert); false = falta enviarlo. */
+  enviada: boolean;
+  /** Abre la empresa para terminar el trámite. */
+  onVer?: () => void;
+}
+
+/** Aviso de una renovación de e.firma a medias (la app se cerró a mitad del trámite). */
+export function notifyRenovacionPendiente(args: NotifyRenovacionPendienteArgs): void {
+  if (!getNotifPrefs().efirma) return;
+  const id = `renovacion:${args.rfc}:${new Date().toISOString().slice(0, 10)}`;
+  const mensaje = mensajeRenovacionPendiente(args.enviada, args.rfc);
+
+  if (tieneFoco()) {
+    toast.warning(mensaje, {
+      id,
+      duration: 10_000,
+      action: args.onVer ? { label: 'Terminar', onClick: args.onVer } : undefined,
+    });
+  } else {
+    void dispatchNative({ title: NATIVE_TITLES.renovacion, body: mensaje });
+  }
+}
 
 export interface NotifyPilotoAvisoArgs {
   id: number;

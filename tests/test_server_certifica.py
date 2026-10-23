@@ -66,6 +66,17 @@ def _esperar_job(client, job_id, timeout_s=8.0):
     pytest.fail(f"El job {job_id} no terminó en {timeout_s}s: {data}")
 
 
+def _resolver_captcha(client, job_id, texto, timeout_s=5.0):
+    """Espera a que el job pida captcha y entrega la solución."""
+    limite = time.monotonic() + timeout_s
+    while time.monotonic() < limite:
+        if client.get(f"/jobs/{job_id}").json()["estado"] == "captcha":
+            client.post(f"/jobs/{job_id}/captcha", json={"solution": texto})
+            return
+        time.sleep(0.03)
+    pytest.fail(f"El job {job_id} nunca pidió captcha")
+
+
 def _fases_del_stream(client, job_id):
     """Drena el SSE del job (ya terminado) y devuelve la lista de eventos."""
     eventos = []
@@ -223,19 +234,24 @@ class TestRenovarFlujo:
         _esperar_job(client, r.json()["job_id"])
         pendiente = config_store.get_renovacion_pendiente(rfc)
 
-        def fake_recuperar(cer, key, password, directorio_salida=None,
-                           key_nueva_path=None, intentos=10, espera_s=30,
-                           on_progreso=None, **kw):
+        def fake_recuperar(rfc_, key_nueva_path, password, pedir_captcha,
+                           directorio_salida, on_progreso=None, **kw):
+            # La e.firma anterior ya quedó revocada: se busca en la recuperación
+            # pública (captcha), nunca entrando a CertiSAT con ella.
             assert key_nueva_path == pendiente["key_path"]
-            on_progreso("recuperando", {"intento": 1, "max": intentos})
-            return {"cer": Path(test_cer)}
+            assert pedir_captcha(b"img", 1, 3) == "aBc12"   # respeta mayúsculas
+            on_progreso("consultando", {})
+            return Path(test_cer)
 
         monkeypatch.setattr(
-            "sat_descarga.portal.renovacion.recuperar_renovacion_fiel", fake_recuperar,
+            "sat_descarga.portal.recuperacion_publica.recuperar_cert_emparejado",
+            fake_recuperar,
         )
         r2 = client.post("/renovar/recuperar", json={"rfc": rfc})
         assert r2.status_code == 200
-        data = _esperar_job(client, r2.json()["job_id"])
+        job_id = r2.json()["job_id"]
+        _resolver_captcha(client, job_id, "aBc12")
+        data = _esperar_job(client, job_id)
         assert data["resultado"]["renovada"] is True
         assert config_store.get_renovacion_pendiente(rfc) is None
 
@@ -385,16 +401,91 @@ class TestRenovarFlujo:
         assert "no respondió" in data["error"]  # el error original, no el del chequeo
         assert config_store.get_renovacion_pendiente(rfc)["etapa"] == "generada"
 
-    def test_recuperar_con_pendiente_generada_409(self, client, test_cer, test_key, test_password):
-        """Sin número de operación no hay nada que descargar: el reintento
-        correcto es POST /renovar (reenvía el mismo .ren)."""
+    def test_recuperar_en_generada_sin_cert_dice_que_no_llego(
+        self, client, monkeypatch, tmp_path, test_cer, test_key, test_password,
+    ):
+        """En la etapa 'generada' buscar es inofensivo (solo se acepta el cert que
+        empareje con la .key nueva): si no hay, la solicitud no llegó al SAT."""
         rfc = _alta_fiel(client, test_cer, test_key, test_password)
+        key = tmp_path / "nueva.key"
+        shutil.copy2(test_key, key)
         config_store.set_renovacion_pendiente(rfc, {
             "etapa": "generada", "numero_operacion": None, "acuse_pdf": None,
-            "ren_path": "/tmp/r.ren", "key_path": "/tmp/k.key",
+            "ren_path": str(tmp_path / "r.ren"), "key_path": str(key),
+        })
+        monkeypatch.setattr(
+            "sat_descarga.portal.recuperacion_publica.recuperar_cert_emparejado",
+            lambda *a, **k: None,
+        )
+        r = client.post("/renovar/recuperar", json={"rfc": rfc})
+        data = _esperar_job(client, r.json()["job_id"])
+        res = data["resultado"]
+        assert res["renovada"] is False and "no llegó" in res["mensaje"]
+        assert config_store.get_renovacion_pendiente(rfc)["etapa"] == "generada"
+
+    def test_recuperar_sin_llave_nueva_409(self, client, test_cer, test_key, test_password):
+        rfc = _alta_fiel(client, test_cer, test_key, test_password)
+        config_store.set_renovacion_pendiente(rfc, {
+            "etapa": "enviada", "numero_operacion": "1", "acuse_pdf": None,
+            "ren_path": "/no/existe.ren", "key_path": "/no/existe.key",
         })
         r = client.post("/renovar/recuperar", json={"rfc": rfc})
-        assert r.status_code == 409 and "no se envía" in r.json()["detail"]
+        assert r.status_code == 409 and "llave nueva" in r.json()["detail"]
+
+    def test_generar_no_envia_y_el_envio_reusa_lo_generado(
+        self, client, monkeypatch, tmp_path, test_cer, test_key, test_password, vigente,
+    ):
+        """POST /renovar/generar deja la etapa 'generada' y el respaldo listo SIN
+        tocar el portal; repetirlo no regenera, y POST /renovar envía ESA .key."""
+        rfc = _alta_fiel(client, test_cer, test_key, test_password)
+        self._fakes(monkeypatch, tmp_path, test_cer, test_key, con_cer=True)
+        generaciones = []
+        import sat_descarga.certifica as certifica_mod
+        original = certifica_mod.generar_renovacion_fiel
+
+        def contar(*a, **k):
+            generaciones.append(1)
+            return original(*a, **k)
+
+        monkeypatch.setattr("sat_descarga.certifica.generar_renovacion_fiel", contar)
+        enviados = []
+        fake_enviar = __import__(
+            "sat_descarga.portal.renovacion", fromlist=["x"]
+        ).enviar_renovacion_fiel
+
+        def espiar(*a, **k):
+            enviados.append(k["key_nueva_path"])
+            return fake_enviar(*a, **k)
+
+        monkeypatch.setattr("sat_descarga.portal.renovacion.enviar_renovacion_fiel", espiar)
+
+        r = client.post("/renovar/generar", json={"rfc": rfc, "password": test_password})
+        assert r.status_code == 200, r.text
+        assert r.json()["reutilizada"] is False
+        assert any(a.endswith(".key") for a in r.json()["archivos"])
+        pendiente = config_store.get_renovacion_pendiente(rfc)
+        assert pendiente["etapa"] == "generada" and not enviados
+
+        estado = client.get(f"/renovar/estado?rfc={rfc}").json()
+        assert estado["respaldo_disponible"] and estado["reintento_seguro"]
+        zip_resp = client.get(f"/renovar/respaldo?rfc={rfc}")
+        assert zip_resp.status_code == 200
+
+        r2 = client.post("/renovar/generar", json={"rfc": rfc, "password": test_password})
+        assert r2.json()["reutilizada"] is True and len(generaciones) == 1
+
+        r3 = client.post("/renovar", json={
+            "rfc": rfc, "password": test_password, "confirmar": True,
+        })
+        data = _esperar_job(client, r3.json()["job_id"])
+        assert data["resultado"]["renovada"] is True
+        assert len(generaciones) == 1 and enviados == [pendiente["key_path"]]
+
+    def test_generar_valida_password(self, client, test_cer, test_key, test_password, vigente):
+        rfc = _alta_fiel(client, test_cer, test_key, test_password)
+        r = client.post("/renovar/generar", json={"rfc": rfc, "password": "otra"})
+        assert r.status_code == 400
+        assert config_store.get_renovacion_pendiente(rfc) is None
 
     def test_pendiente_generada_sin_archivos_regenera(
         self, client, monkeypatch, test_cer, test_key, test_password, vigente,

@@ -8,6 +8,18 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Feature
 
+- **Renovación de e.firma en línea, encendida en escritorio y web.** Desde Empresas
+  ("Renovar e.firma", también en la navegación por espacios) TodoConta genera la solicitud
+  de renovación, entrega el **respaldo de la llave nueva antes de enviar nada al SAT**, la
+  firma con la e.firma vigente, la envía a CertiSAT y guarda el certificado nuevo. Si el SAT
+  tarda en emitirlo, "Descargar certificado" lo busca en la Recuperación pública de
+  certificados (con captcha) y solo acepta el que empareja con la llave nueva: la e.firma
+  anterior ya quedó revocada y no sirve para entrar a CertiSAT. La e.firma renovada
+  reemplaza a la vieja en el otro lado (escritorio ⇄ web) con el sync de credenciales,
+  incluso con la sincronización apagada (solo donde ya estaba la vieja: nada nuevo sube ni
+  baja), y un aviso diario recuerda una renovación a medias. Endpoint nuevo `POST /renovar/generar`;
+  CLI `sat-dm recuperar ren --publica`. Detalle:
+  `docs/producto/renovacion-csd-ui-integracion.md`.
 - **Medición de anuncios en Meta: el agente reenvía el contexto de la persona.** Para que
   api.todoconta.com avise a Meta (API de conversiones) cuando alguien se registra, empieza la
   prueba o paga, el agente manda en sus llamadas al servicio el user agent del navegador o de
