@@ -6,6 +6,8 @@
 
 _Cambios mergeados a `main` aún no etiquetados; el release de la semana los promueve._
 
+## [2.5.0] - 2026-10-23
+
 ### Feature
 
 - **Renovación de e.firma en línea, encendida en escritorio y web.** Desde Empresas
@@ -112,6 +114,11 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   se entra con una copia temporal en 3DES (misma llave, misma contraseña) que se borra al terminar;
   el archivo del usuario no se toca. Y si el SAT rechaza la e.firma, la app lo dice en segundos con
   el mensaje del SAT. Probado contra el SAT real (constancia y 32-D).
+- **Los trámites del portal reintentan cuando el SAT corta la conexión.** La entrada al portal
+  (constancia, 32-D y el resto de trámites con CIEC o e.firma) no tenía reintento: un
+  `ERR_CONNECTION_RESET` o un timeout del SAT tumbaba la descarga con el error crudo del
+  navegador. Ahora reintenta dos veces (a los 3 y 8 s) y, si el SAT sigue sin responder, avisa
+  que el portal no está disponible en vez de mostrar el error técnico.
 - **La sincronización de credenciales con el espacio en línea viene apagada.** Desde la 2.0.0
   venía activada: la desktop copiaba la e.firma, su contraseña y la Contraseña del SAT al espacio
   privado de la versión web, mientras la app decía que la e.firma nunca salía del equipo. Ahora
@@ -159,6 +166,17 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 - **La web ya muestra el ícono de TodoConta en la pestaña del navegador.** app.todoconta.com
   no declaraba favicon y `/favicon.ico` daba 404. Ahora usa el mismo ícono de la app de
   escritorio (`favicon.ico` y `icon.png`, también como ícono de iOS).
+
+### Tooling
+
+- **Sentry también en la versión web.** El agente de cada usuario web (y el piloto) reporta con
+  `environment=hosted` (DSN incluido en la imagen, `docker/agente/Dockerfile`) y el renderer usa
+  `@sentry/browser` cuando corre en la web (`hosted`, o `hosted-preview` en los previews de
+  Vercel), con los tokens de las URLs redactados. Mismo proyecto que la desktop: un fallo del SAT
+  queda en un solo issue con los dos entornos. Hay que desplegar el agente para que aplique.
+- **`AGENTS.md` con las reglas de commits y PRs** para cualquier agente de código (Claude Code,
+  Codex): sin firma de IA y mensajes en español con prefijo convencional.
+- Bump 2.4.0 → 2.5.0 (3 archivos).
 
 ## [2.4.0] - 2026-10-07
 
