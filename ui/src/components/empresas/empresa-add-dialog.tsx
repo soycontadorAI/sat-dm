@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
+import { esWeb } from '@/lib/modo';
 import { Icon } from '@/components/ui/icon';
 import {
   Dialog,
@@ -102,8 +103,9 @@ export function EmpresaAddDialog({
         <DialogHeader>
           <DialogTitle>Agregar empresa</DialogTitle>
           <DialogDescription>
-            Tus accesos se guardan protegidos y solo en este equipo. Tu e.firma
-            nunca sale de tu computadora.
+            {esWeb()
+              ? 'Tus accesos se guardan cifrados en tu espacio privado, separado del de cualquier otra cuenta. Solo se usan para descargar del SAT.'
+              : 'Tus accesos se guardan protegidos en este equipo. Tu e.firma no sale de tu computadora, salvo que actives la sincronización con tu espacio en línea en Ajustes.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -223,7 +225,9 @@ function RespaldoFielTooltip() {
         </button>
       </TooltipTrigger>
       <TooltipContent side="top" align="start" className="w-72 rounded-xl p-3.5 text-left leading-relaxed">
-        Tu e.firma se queda en tu equipo; nunca la subimos a ningún servidor.
+        {esWeb()
+          ? 'Tu e.firma se guarda en tu espacio privado, separado del de cualquier otra cuenta. '
+          : 'Tu e.firma se queda en tu equipo, salvo que actives la sincronización con tu espacio en línea en Ajustes. '}
         Guardamos una copia de respaldo de tu .cer/.key en tu carpeta de descargas.{' '}
         <strong className="font-semibold">Tu contraseña no se guarda en texto plano</strong>{' '}
         Resguárdala: no podemos recuperarla.

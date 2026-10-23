@@ -20,6 +20,14 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   baja), y un aviso diario recuerda una renovación a medias. Endpoint nuevo `POST /renovar/generar`;
   CLI `sat-dm recuperar ren --publica`. Detalle:
   `docs/producto/renovacion-csd-ui-integracion.md`.
+- **Medición de anuncios en Meta: el agente reenvía el contexto de la persona.** Para que
+  api.todoconta.com avise a Meta (API de conversiones) cuando alguien se registra, empieza la
+  prueba o paga, el agente manda en sus llamadas al servicio el user agent del navegador o de
+  Electron, el modo (`desktop` | `web`) y, solo en web, la IP del navegador (primer salto de
+  `X-Forwarded-For` detrás de Traefik). Todo en memoria: la IP nunca se escribe a disco, y las
+  llamadas del gateway (MCP, REST, Abacus) no cuentan (`sat_descarga/api/contexto_cliente.py`).
+  Ajustes trae una tarjeta **Privacidad** con el interruptor "Medición de anuncios" para no
+  participar (`/cuenta/medicion`, proxy a `/api/desktop/medicion`).
 - **Descargar CFDIs ya no vuelve a pedir al SAT lo que la base tiene consolidado.** En la
   descarga por Web Service, los días que el cuadro de control ya tiene consolidados (verificados
   contra el SAT por el cierre mensual) se sirven de la base: sus XML se guardan en la carpeta de
@@ -96,6 +104,13 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
 
 ### Bug fix
 
+- **La sincronización de credenciales con el espacio en línea viene apagada.** Desde la 2.0.0
+  venía activada: la desktop copiaba la e.firma, su contraseña y la Contraseña del SAT al espacio
+  privado de la versión web, mientras la app decía que la e.firma nunca salía del equipo. Ahora
+  solo salen si se activa en Ajustes, Almacenamiento, o con "Usar en la web" en una empresa. Quien
+  la activó a mano la conserva; lo que ya se había copiado sigue en su espacio. Los textos del
+  alta de empresa, Empresas, la ayuda y el LÉEME del respaldo dicen dónde vive cada cosa, con su
+  versión para la web.
 - **El agente de soporte ya lee la Constancia de Situación Fiscal que el cliente adjunta.** Antes ignoraba todos los adjuntos y el borrador pedía RFC, razón social y domicilio que ya venían en el PDF. Ahora lee los PDF en local (pdfplumber, sin LLM ni costo por correo): detecta la constancia y saca RFC, nombre, régimen y CP fiscal. Al modelo solo le llega qué se leyó, no los datos fiscales; el aviso a Israel trae esos datos listos para facturar. La imagen de ops suma `pdfplumber==0.11.10` (hay que reconstruirla al desplegar).
 - **Una solicitud del Web Service lista pero sin bajar ya no se reintenta para siempre.** Si sus
   paquetes no se pudieron descargar en 72 h (lo que el SAT los guarda), queda vencida con el
@@ -133,6 +148,9 @@ _Cambios mergeados a `main` aún no etiquetados; el release de la semana los pro
   haber borrado datos, el aviso lo dice; si al recuperarlo se pierde el UUID, un RFC o la
   fecha, se sigue rechazando. Al actualizar, el agente recorre otra vez, una sola vez, la
   carpeta de descargas de cada empresa para recuperar los que se habían quedado fuera.
+- **La web ya muestra el ícono de TodoConta en la pestaña del navegador.** app.todoconta.com
+  no declaraba favicon y `/favicon.ico` daba 404. Ahora usa el mismo ícono de la app de
+  escritorio (`favicon.ico` y `icon.png`, también como ícono de iOS).
 
 ## [2.4.0] - 2026-10-07
 

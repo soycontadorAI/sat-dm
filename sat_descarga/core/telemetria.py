@@ -1,9 +1,14 @@
 """
 Telemetría de errores del agente (Sentry) — opcional y apagada por defecto.
 
-Solo se enciende si hay `SENTRY_DSN` en el entorno (el cascarón Electron lo inyecta
-al spawnear el agente en builds empaquetados). Sin DSN —o sin `sentry-sdk`
+Solo se enciende si hay `SENTRY_DSN` en el entorno: el cascarón Electron lo inyecta
+al spawnear el agente en builds empaquetados, y la imagen Docker del agente web
+(docker/agente/Dockerfile) lo trae horneado. Sin DSN —o sin `sentry-sdk`
 instalado— TODO es no-op: ni en dev ni en CLI se envía nada.
+
+Desktop y web reportan al MISMO proyecto; se distinguen por `environment`
+(`production` = desktop, `hosted` = versión web), así un mismo fallo del SAT queda
+en un solo issue con ambos entornos.
 
 Privacidad (esta app maneja datos fiscales: RFC, e.firma, CFDIs):
   - `send_default_pii=False`.
@@ -37,6 +42,29 @@ _CLAVE_SENSIBLE_RE = re.compile(
 )
 
 _inicializado = False
+
+
+def _environment() -> str:
+    """`SENTRY_ENVIRONMENT` si viene; si no, `hosted` en la versión web y
+    `production` en la desktop (Electron siempre lo manda explícito)."""
+    from .config import es_modo_hosted
+
+    return os.getenv("SENTRY_ENVIRONMENT") or ("hosted" if es_modo_hosted() else "production")
+
+
+def _release():
+    """`SENTRY_RELEASE` si viene (Electron manda la versión de la app); si no, la
+    versión del paquete instalado (la imagen del agente web se construye con
+    `pip install .`, así que coincide con la versión del release)."""
+    rel = os.getenv("SENTRY_RELEASE")
+    if rel:
+        return rel
+    try:
+        from importlib.metadata import version
+
+        return version("sat-descarga-masiva")
+    except Exception:  # noqa: BLE001 — sin metadata (p. ej. código suelto) → sin release
+        return None
 
 
 def init_sentry() -> bool:
@@ -80,20 +108,18 @@ def init_sentry() -> bool:
     except Exception:  # noqa: BLE001 — sin starlette (CLI pura) usa los defaults
         pass
 
+    environment = _environment()
     sentry_sdk.init(
         dsn=dsn,
-        release=os.getenv("SENTRY_RELEASE") or None,
-        environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+        release=_release(),
+        environment=environment,
         send_default_pii=False,
         max_request_body_size="never",
         before_send=_before_send,
         integrations=integrations,
     )
     _inicializado = True
-    logger.info(
-        "Telemetría Sentry activada (environment=%s).",
-        os.getenv("SENTRY_ENVIRONMENT", "production"),
-    )
+    logger.info("Telemetría Sentry activada (environment=%s).", environment)
     return True
 
 

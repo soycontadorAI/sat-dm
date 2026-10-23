@@ -41,6 +41,13 @@ RUN useradd --uid 1000 --create-home --home-dir /data agente \
 ENV HOME=/data \
     SAT_DM_MODO=hosted \
     SAT_DM_DESCARGAS_DIR=/data/descargas
+
+# Telemetría de errores (Sentry): el mismo DSN que hornea la desktop
+# (desktop/main.js; no es secreto). Va en la imagen y no en el provisioner para
+# que TODO contenedor lo tenga sin tocar envs: los que crea el provisioner, los
+# que recrea deploy/vps/actualizar-agentes.sh y el piloto. Reporta con
+# environment=hosted (core/telemetria.py). Para apagarlo: `-e SENTRY_DSN=`.
+ENV SENTRY_DSN=https://577a136e71f0ab4f39f71123b8a4d3d6@o4511587133947904.ingest.us.sentry.io/4511587138863104
 VOLUME /data
 USER agente
 

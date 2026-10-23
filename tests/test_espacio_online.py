@@ -50,6 +50,17 @@ class TestExportCredenciales:
 
 
 class TestSincronizarCredenciales:
+    def test_sin_ajuste_guardado_viene_apagado(self, monkeypatch):
+        """Default apagado: sin `sync_credenciales` en settings no sale nada del equipo."""
+        monkeypatch.setattr(config_store, "_load_settings", lambda: {})
+        assert config_store.get_sync_credenciales() is False
+        llamado = []
+        monkeypatch.setattr(
+            espacio_online, "_conectar_espacio", lambda: llamado.append(1)
+        )
+        assert espacio_online.sincronizar_credenciales() is None
+        assert not llamado
+
     def test_apagado_no_hace_nada(self, monkeypatch):
         config_store.set_sync_credenciales(False)
         llamado = []

@@ -1,18 +1,34 @@
-// Telemetría de errores del renderer (Sentry), vía @sentry/electron/renderer.
+// Telemetría de errores del renderer (Sentry).
 //
-// El SDK del renderer reenvía los eventos al proceso main por IPC; el DSN y el
-// envío real viven en main (ver desktop/main.js). Aquí solo inicializamos (solo
-// dentro de Electron) y exponemos helpers para capturar excepciones, dejar
-// breadcrumbs y mandar el feedback del usuario.
+// - Desktop: vía @sentry/electron/renderer. El SDK reenvía los eventos al proceso
+//   main por IPC; el DSN y el envío real viven en main (ver desktop/main.js).
+// - Versión web (esWeb()): vía @sentry/browser, directo al mismo proyecto que la
+//   desktop con environment `hosted` (el agente web reporta igual, ver
+//   sat_descarga/core/telemetria.py), así un fallo cae en un solo issue.
 //
-// Sin Electron (navegador/dev) todo es no-op. Privacidad: un beforeSend redacta
-// RFCs y rutas con nombre de usuario antes de enviar (main hace lo mismo + adjunta
-// el log); nunca se envían e.firma, contraseñas ni datos fiscales.
+// Fuera de esos dos casos (dev en navegador) todo es no-op. Privacidad: un
+// beforeSend redacta RFCs, rutas con nombre de usuario y tokens en URLs antes de
+// enviar; nunca se envían e.firma, contraseñas ni datos fiscales.
 
-type SentryRenderer = typeof import('@sentry/electron/renderer');
+import { esWeb } from '@/lib/modo';
+
+// La API que usan los helpers de abajo; ambos SDK la exportan igual (@sentry/core).
+type SentryRenderer = Pick<
+  typeof import('@sentry/browser'),
+  'captureException' | 'setUser' | 'addBreadcrumb' | 'captureMessage' | 'captureFeedback'
+>;
 
 let sentry: SentryRenderer | null = null;
 let activo = false;
+// identificarUsuario() puede llegar antes de que termine el import dinámico del
+// SDK; se guarda y se aplica al inicializar.
+let usuarioPendiente: { id?: string; email?: string } | null = null;
+
+// DSN de la versión web: el mismo que hornea la desktop (no es secreto, va en el
+// cliente). NEXT_PUBLIC_SENTRY_DSN lo sobreescribe por si algún día se separa.
+const SENTRY_DSN_WEB =
+  process.env.NEXT_PUBLIC_SENTRY_DSN ||
+  'https://577a136e71f0ab4f39f71123b8a4d3d6@o4511587133947904.ingest.us.sentry.io/4511587138863104';
 
 // Solo inicializamos si el proceso main de Electron habilitó Sentry (window.satAgent
 // .sentry === true). En el navegador/dev sin DSN es false → no se inicializa el SDK
@@ -34,10 +50,15 @@ const HOME_RES: Array<[RegExp, string]> = [
 // issue NUEVO por puerto y el mismo fallo queda regado en decenas de issues.
 // Normalizarlo hace que agrupen en uno solo.
 const PUERTO_LOCAL_RE = /(127\.0\.0\.1|localhost):\d+/g;
+// El SSE del agente lleva el token en la URL (`/events/{id}?token=…`) y el
+// regreso de OAuth trae `access_token=…`; las migas de fetch/navegación copian
+// esas URLs tal cual.
+const TOKEN_URL_RE = /([?&#](?:token|access_token|refresh_token|code)=)[^&#\s]+/gi;
 
 function redactarTexto(s: string): string {
   let out = s.replace(RFC_RE, '<RFC>');
   for (const [re, rep] of HOME_RES) out = out.replace(re, rep);
+  out = out.replace(TOKEN_URL_RE, '$1<redactado>');
   return out.replace(PUERTO_LOCAL_RE, '$1:<puerto>');
 }
 
@@ -57,17 +78,36 @@ function scrub(value: unknown): unknown {
   return value;
 }
 
-/** Inicializa Sentry en el renderer (solo dentro de Electron; idempotente). */
+/** Inicializa Sentry en el renderer (Electron o versión web; idempotente). */
 export async function initTelemetria(): Promise<void> {
-  if (activo || !sentryHabilitado()) return;
+  if (activo) return;
   try {
-    const mod = await import('@sentry/electron/renderer');
-    mod.init({
-      // El DSN/transport los pone el proceso main; aquí solo el scrub local.
-      beforeSend: (event) => scrub(event) as typeof event,
-    });
-    sentry = mod;
+    if (sentryHabilitado()) {
+      const mod = await import('@sentry/electron/renderer');
+      mod.init({
+        // El DSN/transport los pone el proceso main; aquí solo el scrub local.
+        beforeSend: (event) => scrub(event) as typeof event,
+      });
+      sentry = mod;
+    } else if (esWeb() && SENTRY_DSN_WEB) {
+      const mod = await import('@sentry/browser');
+      mod.init({
+        dsn: SENTRY_DSN_WEB,
+        release: process.env.NEXT_PUBLIC_APP_VERSION,
+        // Previews de Vercel aparte, para no mezclarlas con producción.
+        environment: process.env.NEXT_PUBLIC_VERCEL_ENV === 'preview' ? 'hosted-preview' : 'hosted',
+        sendDefaultPii: false,
+        // Solo errores de nuestros scripts (no de extensiones del navegador).
+        allowUrls: [window.location.origin],
+        beforeSend: (event) => scrub(event) as typeof event,
+        beforeBreadcrumb: (crumb) => scrub(crumb) as typeof crumb,
+      });
+      sentry = mod;
+    } else {
+      return;
+    }
     activo = true;
+    if (usuarioPendiente) sentry.setUser(usuarioPendiente);
   } catch {
     // best-effort: la telemetría nunca debe romper el arranque del renderer.
   }
@@ -93,15 +133,12 @@ export function capturarExcepcion(error: unknown, contexto?: Record<string, unkn
 export function identificarUsuario(
   user: { id?: string | null; email?: string | null } | null,
 ): void {
+  usuarioPendiente =
+    user && (user.id || user.email)
+      ? { id: user.id ?? undefined, email: user.email ?? undefined }
+      : null;
   if (!activo || !sentry) return;
-  if (!user || (!user.id && !user.email)) {
-    sentry.setUser(null);
-    return;
-  }
-  sentry.setUser({
-    id: user.id ?? undefined,
-    email: user.email ?? undefined,
-  });
+  sentry.setUser(usuarioPendiente);
 }
 
 /** Deja una miga (breadcrumb) si la telemetría está activa; no-op si no. */

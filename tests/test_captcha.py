@@ -156,3 +156,59 @@ def test_fail_fast_aborta_sin_reintentar_captcha():
         )
     assert len(e.enviados) == 1  # un solo intento; no se pidió captcha de nuevo
     assert e.intentos_pedidos == [(1, 3)]
+
+
+# --- Entrada del portal: reintentos ante errores de red (ERR_CONNECTION_RESET) ----
+
+class _PageGoto:
+    """Falla `goto` con los mensajes dados (en orden) y luego responde bien."""
+
+    def __init__(self, fallos):
+        self.fallos = list(fallos)
+        self.llamadas = 0
+
+    def goto(self, url, wait_until=None):
+        self.llamadas += 1
+        if self.fallos:
+            raise RuntimeError(self.fallos.pop(0))
+
+
+_RESET = ("Page.goto: net::ERR_CONNECTION_RESET at https://wwwmat.sat.gob.mx/app/seg/"
+          "faces/pages/lanzador.jsf\nCall log:\n  - navigating to ...")
+
+
+def test_abrir_entrada_reintenta_reset_y_sigue():
+    from sat_descarga.portal.login import _abrir_entrada
+    page = _PageGoto([_RESET, _RESET])
+    _abrir_entrada(page, "https://sat", esperas=(0, 0))
+    assert page.llamadas == 3
+
+
+def test_abrir_entrada_agota_reintentos_error_esperado():
+    from sat_descarga.core.errores import ErrorEsperado
+    from sat_descarga.portal.login import PortalSATSinConexion, _abrir_entrada
+    page = _PageGoto([_RESET] * 3)
+    with pytest.raises(PortalSATSinConexion) as exc:
+        _abrir_entrada(page, "https://sat", esperas=(0, 0))
+    assert isinstance(exc.value, ErrorEsperado)
+    assert "ERR_CONNECTION_RESET" in str(exc.value)
+    assert "Call log" not in str(exc.value)
+    assert page.llamadas == 3
+
+
+def test_abrir_entrada_reintenta_timeout():
+    # TODOCONTA-DESKTOP-29: el lanzador no contestó en 30 s.
+    from sat_descarga.portal.login import PortalSATSinConexion, _abrir_entrada
+    timeout = "Page.goto: Timeout 30000ms exceeded.\nCall log:\n  - navigating to ..."
+    page = _PageGoto([timeout] * 3)
+    with pytest.raises(PortalSATSinConexion, match="no respondió a tiempo"):
+        _abrir_entrada(page, "https://sat", esperas=(0, 0))
+    assert page.llamadas == 3
+
+
+def test_abrir_entrada_no_reintenta_otros_errores():
+    from sat_descarga.portal.login import _abrir_entrada
+    page = _PageGoto(["Page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://sat"])
+    with pytest.raises(RuntimeError, match="CERT_AUTHORITY"):
+        _abrir_entrada(page, "https://sat", esperas=(0, 0))
+    assert page.llamadas == 1
