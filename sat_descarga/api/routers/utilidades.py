@@ -5,11 +5,13 @@ Endpoints: /metadata (Web Service, requiere FIEL), /validar (servicio público),
 /organizar, /renombrar, /deduplicar (operan sobre archivos locales).
 """
 
-from typing import List, Optional
+import os
+from typing import Callable, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from ...core.config import es_modo_hosted
 from ...utils.validacion import validar_masivo, EstadoCFDI  # noqa: F401
 from ..state import _session, _get_fiel, SolicitudRequest
 from ..uso import rango, track
@@ -153,25 +155,87 @@ class DeduplicarRequest(BaseModel):
     dry_run: bool = False
 
 
+
+def _carpeta_local(ruta: str, etiqueta: str, debe_existir: bool = True) -> str:
+    """Valida una carpeta del organizador antes de tocar el disco.
+
+    Exige ruta absoluta: en un agente Linux/macOS, "C:/Users/..." es RELATIVA
+    (la primera carpeta se llama "C:") y el mkdir revienta con
+    "[Errno 13] Permission denied: 'C:'" contra el cwd de solo lectura.
+    """
+    ruta = (ruta or "").strip()
+    if not ruta or not os.path.isabs(ruta):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La {etiqueta} no es una ruta válida en este equipo. "
+                "Elígela con \"Examinar\" o escribe la ruta completa."
+            ),
+        )
+    if debe_existir and not os.path.isdir(ruta):
+        raise HTTPException(
+            status_code=400, detail=f"No se encontró la {etiqueta}: {ruta}"
+        )
+    return ruta
+
+
+def _exigir_desktop() -> None:
+    """El organizador opera sobre carpetas de la computadora del usuario; el
+    agente hosted no las alcanza (la UI web ya lo explica en vez del form)."""
+    if es_modo_hosted():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "El organizador trabaja sobre carpetas de tu computadora: "
+                "úsalo desde la app de escritorio."
+            ),
+        )
+
+
+def _correr_organizador(accion: str, fn: Callable):
+    """Corre una operación del organizador con errores legibles.
+
+    ValueError = dato del usuario (400, sin Sentry). OSError = permisos/disco
+    del equipo (400 legible, pero SÍ a Sentry: antes se tragaba como 400 crudo
+    y nunca llegaba). Cualquier otra cosa es un bug → Sentry + 500.
+    """
+    from ...core.telemetria import capturar_excepcion
+
+    try:
+        return fn()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        capturar_excepcion(e)
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se pudo {accion}: revisa que la carpeta exista y tengas permiso ({e}).",
+        )
+    except Exception as e:  # noqa: BLE001
+        capturar_excepcion(e)
+        raise HTTPException(status_code=500, detail=f"No se pudo {accion}: {e}")
+
+
 @router.post("/organizar")
 def organizar_endpoint(req: OrganizarRequest):
     """Organiza archivos XML en carpetas basándose en su contenido."""
     from ...utils.organizador import organizar
 
-    try:
-        result = organizar(
-            req.origen, req.destino, req.estructura, req.copiar, rfc=req.rfc
-        )
-        track("organizador_usado", accion="organizar")
-        return {
-            "archivos_procesados": result.archivos_procesados,
-            "archivos_movidos": result.archivos_movidos,
-            "archivos_omitidos": result.archivos_omitidos,
-            "errores": result.errores,
-            "de_otro_rfc": result.de_otro_rfc,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    _exigir_desktop()
+    origen = _carpeta_local(req.origen, "carpeta de origen")
+    destino = _carpeta_local(req.destino, "carpeta de destino", debe_existir=False)
+    result = _correr_organizador(
+        "organizar los archivos",
+        lambda: organizar(origen, destino, req.estructura, req.copiar, rfc=req.rfc),
+    )
+    track("organizador_usado", accion="organizar")
+    return {
+        "archivos_procesados": result.archivos_procesados,
+        "archivos_movidos": result.archivos_movidos,
+        "archivos_omitidos": result.archivos_omitidos,
+        "errores": result.errores,
+        "de_otro_rfc": result.de_otro_rfc,
+    }
 
 
 @router.post("/renombrar")
@@ -179,19 +243,21 @@ def renombrar_endpoint(req: RenombrarRequest):
     """Renombra masivamente archivos XML basándose en su contenido."""
     from ...utils.organizador import renombrar
 
-    try:
-        result = renombrar(
-            req.directorio, req.patron, partes=req.partes, separador=req.separador
-        )
-        track("organizador_usado", accion="renombrar")
-        return {
-            "archivos_procesados": result.archivos_procesados,
-            "archivos_movidos": result.archivos_movidos,
-            "archivos_omitidos": result.archivos_omitidos,
-            "errores": result.errores,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    _exigir_desktop()
+    directorio = _carpeta_local(req.directorio, "carpeta")
+    result = _correr_organizador(
+        "renombrar los archivos",
+        lambda: renombrar(
+            directorio, req.patron, partes=req.partes, separador=req.separador
+        ),
+    )
+    track("organizador_usado", accion="renombrar")
+    return {
+        "archivos_procesados": result.archivos_procesados,
+        "archivos_movidos": result.archivos_movidos,
+        "archivos_omitidos": result.archivos_omitidos,
+        "errores": result.errores,
+    }
 
 
 @router.post("/deduplicar")
@@ -199,14 +265,16 @@ def deduplicar_endpoint(req: DeduplicarRequest):
     """Elimina archivos XML duplicados basándose en el UUID."""
     from ...utils.organizador import eliminar_duplicados
 
-    try:
-        result = eliminar_duplicados(req.directorio, dry_run=req.dry_run)
-        track("organizador_usado", accion="deduplicar")
-        return {
-            "archivos_analizados": result.archivos_analizados,
-            "duplicados_encontrados": result.duplicados_encontrados,
-            "duplicados_eliminados": result.duplicados_eliminados,
-            "errores": result.errores,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    _exigir_desktop()
+    directorio = _carpeta_local(req.directorio, "carpeta")
+    result = _correr_organizador(
+        "quitar los duplicados",
+        lambda: eliminar_duplicados(directorio, dry_run=req.dry_run),
+    )
+    track("organizador_usado", accion="deduplicar")
+    return {
+        "archivos_analizados": result.archivos_analizados,
+        "duplicados_encontrados": result.duplicados_encontrados,
+        "duplicados_eliminados": result.duplicados_eliminados,
+        "errores": result.errores,
+    }
