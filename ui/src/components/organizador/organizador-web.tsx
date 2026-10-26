@@ -21,7 +21,7 @@ function sistemaDelNavegador(): Sistema {
 }
 
 /**
- * El Organizador en la versión web (navegación por espacios): trabaja sobre
+ * El Organizador en la versión web: trabaja sobre
  * las carpetas de tu computadora, así que en la web se explica y se ofrece la
  * app de escritorio o la descarga en ZIP desde el Historial (principio
  * desktop-first: lo que no funciona igual en la web se explica). Nunca dice

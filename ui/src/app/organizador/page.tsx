@@ -8,21 +8,19 @@ import { OrganizadorResults } from '@/components/organizador/organizador-results
 import { OrganizadorWeb } from '@/components/organizador/organizador-web';
 import { useOrganizador } from '@/hooks/use-organizador';
 import { esWeb } from '@/lib/modo';
-import { useEspacios } from '@/providers/navegacion-provider';
 
 export default function OrganizadorPage() {
   const { organizar, renombrar, deduplicar, result, isLoading, error, reset } =
     useOrganizador();
-  // Con la navegación por espacios, en la web el Organizador se explica en vez
-  // de mostrar el formulario (trabaja sobre carpetas de la computadora). La
-  // clásica se queda como estaba.
-  const espacios = useEspacios();
+  // En la web el Organizador se explica en vez de mostrar el formulario
+  // (trabaja sobre carpetas de la computadora), con cualquier navegación: con
+  // la clásica el form aparecía y una ruta "C:/..." tronaba en el agente Linux.
   const [web, setWeb] = useState(false);
   useEffect(() => {
     setWeb(esWeb());
   }, []);
 
-  if (espacios && web) {
+  if (web) {
     return (
       <div className="space-y-6">
         <PageHeading
