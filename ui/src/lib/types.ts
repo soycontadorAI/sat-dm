@@ -1623,7 +1623,9 @@ export interface LiquidacionResultado {
 
 export interface CuotasImss {
   enfermedad_maternidad: number;
+  gastos_medicos_pensionados: number;
   invalidez_vida: number;
+  retiro: number;
   cesantia_vejez: number;
   guarderias: number;
   riesgos_trabajo: number;

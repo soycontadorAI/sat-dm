@@ -88,9 +88,11 @@ class CuotasIMSSPatronales:
     enfermedad_maternidad_fija: float      # 20.40% (cuota fija, Art. 106 fr. I LSS)
     enfermedad_maternidad_excedente: float  # 1.10% sobre excedente de 3 UMA
     prestaciones_en_dinero: float          # 0.70%
+    gastos_medicos_pensionados: float      # 1.05% (Art. 25 LSS)
     invalidez_vida: float                  # 1.75%
     guarderias: float                      # 1.00%
-    infonavit: float                       # 5.00% (base bimestral)
+    retiro: float                          # 2.00% (Art. 168 fr. I LSS)
+    infonavit: float                       # 5.00%
     cesantia_vejez: tuple[RangoCyV, ...]
 
 
@@ -200,23 +202,27 @@ _SPE_2026 = ConfigSPE(
 # ── IMSS 2026 ─────────────────────────────────────────────────────────────────
 
 # Tabla patronal de Cesantía y Vejez 2026 (reforma LSS 2020, sube hasta 2030).
+# Tasas exactas de la tabla del Art. Cuarto Transitorio (verificadas el
+# 2026-10-27 contra IDC, "Factores de las cuotas y aportaciones 2026").
 _CYV_2026: tuple[RangoCyV, ...] = (
-    RangoCyV(0.00, 1.00, 0.0315),
-    RangoCyV(1.01, 1.50, 0.0368),
-    RangoCyV(1.51, 2.00, 0.0485),
-    RangoCyV(2.01, 2.50, 0.0556),
-    RangoCyV(2.51, 3.00, 0.0603),
-    RangoCyV(3.01, 3.50, 0.0636),
-    RangoCyV(3.51, 4.00, 0.0661),
-    RangoCyV(4.01, None, 0.0751),
+    RangoCyV(0.00, 1.00, 0.03150),
+    RangoCyV(1.01, 1.50, 0.03676),
+    RangoCyV(1.51, 2.00, 0.04851),
+    RangoCyV(2.01, 2.50, 0.05556),
+    RangoCyV(2.51, 3.00, 0.06026),
+    RangoCyV(3.01, 3.50, 0.06361),
+    RangoCyV(3.51, 4.00, 0.06613),
+    RangoCyV(4.01, None, 0.07513),
 )
 
 _IMSS_2026 = CuotasIMSSPatronales(
     enfermedad_maternidad_fija=0.204,
     enfermedad_maternidad_excedente=0.011,
     prestaciones_en_dinero=0.007,
+    gastos_medicos_pensionados=0.0105,
     invalidez_vida=0.0175,
     guarderias=0.01,
+    retiro=0.02,
     infonavit=0.05,
     cesantia_vejez=_CYV_2026,
 )

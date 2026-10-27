@@ -100,7 +100,9 @@ def test_imss_2026():
     rangos = imss.cesantia_vejez
     assert len(rangos) == 8
     assert rangos[0].tasa == 0.0315
-    assert rangos[-1].tasa == 0.0751
+    assert rangos[-1].tasa == 0.07513
+    assert imss.retiro == 0.02
+    assert imss.gastos_medicos_pensionados == 0.0105
     assert rangos[-1].max_umas is None
 
 
