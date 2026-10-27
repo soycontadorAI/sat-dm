@@ -19,10 +19,10 @@ def test_caso_base_cdmx():
     )
     assert res["salario_diario"] == 400
     assert res["sbc"] == pytest.approx(419.73, abs=0.01)  # 400 × 1.0493
-    assert res["impuesto_estatal"] == pytest.approx(480.0)  # 4% CDMX
+    assert res["impuesto_estatal"] == pytest.approx(504.0)  # 4% × (12,000 + 500 + 100)
     assert res["aguinaldo_prorrateo"] == pytest.approx(500.0)  # 15×400/12
     assert res["vacaciones_prorrateo"] == pytest.approx(100.0)  # 12×0.25×400/12
-    assert res["infonavit"] == pytest.approx(10.49, abs=0.01)  # sbc×5%×0.5
+    assert res["infonavit"] == pytest.approx(638.0, abs=0.05)  # sbc × 5% × 30.4
     assert res["isr_empleado"] == pytest.approx(946.62, abs=0.01)  # sin SPE (>11,492.66)
     assert res["salario_neto"] == pytest.approx(12000 - 946.62, abs=0.01)
     assert res["costo_total_mensual"] == pytest.approx(
@@ -31,31 +31,83 @@ def test_caso_base_cdmx():
     assert res["costo_total_anual"] == pytest.approx(res["costo_total_mensual"] * 12, abs=0.05)
 
 
-def test_cuotas_imss_con_tope_3_uma():
-    """SBC arriba de 3 UMA: la parte fija aplica solo hasta 3 UMA + 1.10% del excedente."""
+UMA = 117.31
+DIAS = 30.4
+
+
+def test_cuotas_imss_con_excedente_3_uma():
+    """SBC arriba de 3 UMA: cuota fija sobre la UMA + 1.10% del excedente + 0.70% del SBC."""
     sbc = 419.726  # > 3 UMA (351.93)
     cuotas = calcular_cuotas_imss(sbc, prima_riesgo_trabajo=0.54355)
-    base = 117.31 * 3
-    esperado = base * (0.204 + 0.007) + (sbc - base) * 0.011
+    esperado = (UMA * 0.204 + (sbc - 3 * UMA) * 0.011 + sbc * 0.007) * DIAS
     assert cuotas["enfermedad_maternidad"] == pytest.approx(esperado, abs=0.01)
 
 
 def test_cuotas_imss_sbc_bajo_3_uma():
-    sbc = 300.0  # < 3 UMA
+    """Bajo 3 UMA no hay excedente; la cuota fija sigue siendo sobre la UMA."""
+    sbc = 300.0
     cuotas = calcular_cuotas_imss(sbc, prima_riesgo_trabajo=0.54355)
-    assert cuotas["enfermedad_maternidad"] == pytest.approx(300 * 0.211, abs=0.01)
+    assert cuotas["enfermedad_maternidad"] == pytest.approx(
+        (UMA * 0.204 + 300 * 0.007) * DIAS, abs=0.01
+    )
+
+
+def test_cuotas_imss_son_del_mes_no_del_dia():
+    """Regresión 2026-10-27: las cuotas salían por un día y se mostraban como mensuales."""
+    sbc = 500.0
+    mes = calcular_cuotas_imss(sbc, prima_riesgo_trabajo=0.54355)
+    dia = calcular_cuotas_imss(sbc, prima_riesgo_trabajo=0.54355, dias=1)
+    assert mes["invalidez_vida"] == pytest.approx(500 * 0.0175 * DIAS, abs=0.01)
+    assert mes["retiro"] == pytest.approx(500 * 0.02 * DIAS, abs=0.01)
+    assert mes["gastos_medicos_pensionados"] == pytest.approx(500 * 0.0105 * DIAS, abs=0.01)
+    assert mes["total"] == pytest.approx(dia["total"] * DIAS, abs=0.5)
+
+
+def test_caso_reportado_22000_mensual_nuevo_leon():
+    """El caso del reporte: $22,000 mensuales, 1 año, clase I, Nuevo León al 3%.
+
+    Calculado a mano con las tasas 2026. SBC = 22,000/30 × 1.0493 = 769.50
+    (6.56 UMA, tramo de CyV 7.513%).
+    """
+    res = calcular_carga_patronal(
+        CargaPatronalInput(
+            salario=22000,
+            tipo_salario="mensual",
+            antiguedad_anios=1,
+            clase_riesgo="I",
+            codigo_estado="NL",
+            tasa_impuesto_estatal=0.03,
+        )
+    )
+    sbc = res["sbc"]
+    assert sbc == pytest.approx(769.50, abs=0.01)
+    c = res["cuotas_imss"]
+    assert c["enfermedad_maternidad"] == pytest.approx(
+        (UMA * 0.204 + (sbc - 3 * UMA) * 0.011 + sbc * 0.007) * DIAS, abs=0.05
+    )  # ≈ 1,031
+    assert c["gastos_medicos_pensionados"] == pytest.approx(sbc * 0.0105 * DIAS, abs=0.05)
+    assert c["invalidez_vida"] == pytest.approx(sbc * 0.0175 * DIAS, abs=0.05)
+    assert c["retiro"] == pytest.approx(sbc * 0.02 * DIAS, abs=0.05)  # ≈ 467.86
+    assert c["cesantia_vejez"] == pytest.approx(sbc * 0.07513 * DIAS, abs=0.05)
+    assert c["guarderias"] == pytest.approx(sbc * 0.01 * DIAS, abs=0.05)
+    assert c["riesgos_trabajo"] == pytest.approx(sbc * 0.0054355 * DIAS, abs=0.05)
+    assert res["infonavit"] == pytest.approx(sbc * 0.05 * DIAS, abs=0.05)  # ≈ 1,169.64
+    # ISN 3% sobre salario + aguinaldo (916.67) + prima vacacional (183.33)
+    assert res["impuesto_estatal"] == pytest.approx(0.03 * (22000 + 916.67 + 183.33), abs=0.01)
+    # Carga patronal: entre 25% y 35% del sueldo, no ~9% como antes del arreglo
+    assert 0.25 < res["carga_patronal_mensual"] / 22000 < 0.35
 
 
 @pytest.mark.parametrize(
     "umas,tasa",
     [
-        (1.0, 0.0315),
-        (1.01, 0.0368),
-        (2.0, 0.0485),
-        (3.0, 0.0603),
-        (4.0, 0.0661),
-        (4.01, 0.0751),
-        (10.0, 0.0751),
+        (1.0, 0.03150),
+        (1.01, 0.03676),
+        (2.0, 0.04851),
+        (3.0, 0.06026),
+        (4.0, 0.06613),
+        (4.01, 0.07513),
+        (10.0, 0.07513),
     ],
 )
 def test_rangos_cyv(umas, tasa):
@@ -79,7 +131,7 @@ def test_isn_por_estado_y_manual():
         )
     )
     assert manual["tasa_estatal_aplicada"] == 0.025
-    assert manual["impuesto_estatal"] == pytest.approx(250.0)
+    assert manual["impuesto_estatal"] == pytest.approx(262.5)  # 2.5% × (10,000 + 416.67 + 83.33)
 
 
 def test_prima_riesgo_por_clase():

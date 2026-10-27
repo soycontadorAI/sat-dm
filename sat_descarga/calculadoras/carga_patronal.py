@@ -1,14 +1,22 @@
 """Calculadora de carga patronal (costo real de un empleado).
 
-Port de ``calculadora-carga-patronal/calculations.ts`` (paridad centavo a
-centavo). Reutiliza ``sbc.calcular_sbc`` e ``isr.calcular_isr_periodo``.
+Reutiliza ``sbc.calcular_sbc`` e ``isr.calcular_isr_periodo``. La web es espejo
+de esta misma API, así que no hay otro cálculo que mantener en paridad.
 
-NOTA (TO-DO documentado): la web simplifica dos fórmulas IMSS y aquí se portan
-tal cual para validar el port contra la web:
-- La cuota fija de Enfermedad y Maternidad se calcula como 20.40% sobre
-  min(SBC, 3 UMA); la LSS (Art. 106 fr. I) la define como 20.40% de la UMA.
-- Infonavit se promedia como SBC × 5% × 0.5; el real es 5% sobre base bimestral.
-Corregir en AMBOS lados (web + desktop) en el mismo ciclo.
+Cuotas patronales mensuales = cuota diaria × 30.4 días (el SUA multiplica por
+los días del periodo). Ramos (LSS y Ley del Infonavit, tasas 2026):
+- Enfermedad y Maternidad: 20.40% de la UMA (cuota fija, Art. 106 fr. I),
+  1.10% del excedente del SBC sobre 3 UMA (fr. II) y 0.70% del SBC en dinero.
+- Gastos médicos de pensionados: 1.05% del SBC (Art. 25).
+- Invalidez y Vida 1.75%, Guarderías 1.00%, Riesgos de Trabajo según prima.
+- Retiro 2.00% y Cesantía y Vejez según la tabla progresiva (Art. 168).
+- Infonavit 5.00% del SBC.
+
+Corrección del 2026-10-27: antes las cuotas se calculaban por UN día y se
+mostraban como mensuales (salían ~30 veces más bajas), faltaban Retiro y
+Gastos médicos de pensionados, Infonavit se dividía entre dos y la cuota fija
+se tomaba sobre min(SBC, 3 UMA) en vez de la UMA. El ISN tampoco gravaba el
+aguinaldo ni la prima vacacional, que sí son remuneraciones.
 """
 
 from __future__ import annotations
@@ -59,38 +67,48 @@ def determinar_tasa_cyv(sbc: float, anio: int = 2026) -> float:
 
 
 def calcular_cuotas_imss(
-    sbc: float, prima_riesgo_trabajo: float, anio: int = 2026
+    sbc: float,
+    prima_riesgo_trabajo: float,
+    anio: int = 2026,
+    dias: float = DIAS_MES_PROMEDIO,
 ) -> dict:
-    """Cuotas patronales IMSS diarias sobre el SBC (redondeadas por concepto)."""
+    """Cuotas patronales IMSS del periodo (``dias``; por omisión, un mes de 30.4).
+
+    ``sbc`` es el salario base de cotización DIARIO. Incluye Retiro (2%), que se
+    entera junto con las cuotas IMSS en el SUA. Redondeadas por concepto.
+    """
     ind = get_indicadores(anio)
     if ind.imss is None:
         raise ValueError(f"Cuotas IMSS {anio} no disponibles en indicadores.")
     imss = ind.imss
 
-    # Enfermedad y Maternidad: 20.40% + 0.70% hasta 3 UMA, 1.10% sobre el excedente
-    tope_3_umas = ind.uma_diaria * 3
-    sbc_base = min(sbc, tope_3_umas)
-    sbc_excedente = max(0.0, sbc - tope_3_umas)
+    # Enfermedad y Maternidad: cuota fija sobre la UMA, 1.10% del excedente
+    # de 3 UMA y 0.70% del SBC en dinero.
+    sbc_excedente = max(0.0, sbc - ind.uma_diaria * 3)
     enfermedad_maternidad = (
-        sbc_base * (imss.enfermedad_maternidad_fija + imss.prestaciones_en_dinero)
+        ind.uma_diaria * imss.enfermedad_maternidad_fija
         + sbc_excedente * imss.enfermedad_maternidad_excedente
-    )
+        + sbc * imss.prestaciones_en_dinero
+    ) * dias
 
-    invalidez_vida = sbc * imss.invalidez_vida
-    cesantia_vejez = sbc * determinar_tasa_cyv(sbc, anio)
-    guarderias = sbc * imss.guarderias
-    riesgos_trabajo = sbc * (prima_riesgo_trabajo / 100)
+    gastos_medicos_pensionados = sbc * imss.gastos_medicos_pensionados * dias
+    invalidez_vida = sbc * imss.invalidez_vida * dias
+    retiro = sbc * imss.retiro * dias
+    cesantia_vejez = sbc * determinar_tasa_cyv(sbc, anio) * dias
+    guarderias = sbc * imss.guarderias * dias
+    riesgos_trabajo = sbc * (prima_riesgo_trabajo / 100) * dias
 
-    total = enfermedad_maternidad + invalidez_vida + cesantia_vejez + guarderias + riesgos_trabajo
-
-    return {
+    cuotas = {
         "enfermedad_maternidad": redondear(enfermedad_maternidad),
+        "gastos_medicos_pensionados": redondear(gastos_medicos_pensionados),
         "invalidez_vida": redondear(invalidez_vida),
+        "retiro": redondear(retiro),
         "cesantia_vejez": redondear(cesantia_vejez),
         "guarderias": redondear(guarderias),
         "riesgos_trabajo": redondear(riesgos_trabajo),
-        "total": redondear(total),
     }
+    cuotas["total"] = redondear(sum(cuotas.values()))
+    return cuotas
 
 
 def calcular_carga_patronal(inp: CargaPatronalInput) -> dict:
@@ -130,16 +148,13 @@ def calcular_carga_patronal(inp: CargaPatronalInput) -> dict:
     sbc = sbc_res["sbc_diario"]
     sbc_mensual = sbc * DIAS_MES_PROMEDIO
 
-    # 3. Cuotas IMSS patronales
+    # 3. Cuotas IMSS patronales del mes (incluye Retiro)
     cuotas_imss = calcular_cuotas_imss(sbc, prima_riesgo, inp.anio)
 
-    # 4. Infonavit (5% bimestral promediado mensual — ver nota del módulo)
-    infonavit_mensual = redondear(sbc * ind.imss.infonavit * 0.5)
+    # 4. Infonavit: 5% del SBC del mes
+    infonavit_mensual = redondear(sbc * ind.imss.infonavit * DIAS_MES_PROMEDIO)
 
-    # 5. Impuesto estatal sobre nómina
-    impuesto_estatal = redondear(salario_mensual * tasa_estatal)
-
-    # 6-7. Prorrateos de aguinaldo y prima vacacional
+    # 5-6. Prorrateos de aguinaldo y prima vacacional
     aguinaldo_prorrateo = (
         redondear((15 * salario_diario) / 12) if inp.incluir_aguinaldo_mensual else 0.0
     )
@@ -147,6 +162,12 @@ def calcular_carga_patronal(inp: CargaPatronalInput) -> dict:
         redondear((dias_vacaciones(inp.antiguedad_anios) * 0.25 * salario_diario) / 12)
         if inp.incluir_vacaciones_mensual
         else 0.0
+    )
+
+    # 7. Impuesto estatal sobre nómina: grava el salario y también el aguinaldo
+    #    y la prima vacacional (cuando se prorratean en el mes).
+    impuesto_estatal = redondear(
+        (salario_mensual + aguinaldo_prorrateo + vacaciones_prorrateo) * tasa_estatal
     )
 
     # 8. Prestaciones adicionales
@@ -210,10 +231,24 @@ def calcular_carga_patronal(inp: CargaPatronalInput) -> dict:
             "categoria": "imss",
         },
         {
+            "nombre": "Gastos Médicos de Pensionados",
+            "descripcion": "Cuota patronal IMSS gastos médicos de pensionados (1.05%)",
+            "monto_mensual": cuotas_imss["gastos_medicos_pensionados"],
+            "monto_anual": cuotas_imss["gastos_medicos_pensionados"] * 12,
+            "categoria": "imss",
+        },
+        {
             "nombre": "Invalidez y Vida",
             "descripcion": "Cuota patronal IMSS invalidez y vida",
             "monto_mensual": cuotas_imss["invalidez_vida"],
             "monto_anual": cuotas_imss["invalidez_vida"] * 12,
+            "categoria": "imss",
+        },
+        {
+            "nombre": "Retiro (SAR)",
+            "descripcion": "Aportación patronal de retiro (2%)",
+            "monto_mensual": cuotas_imss["retiro"],
+            "monto_anual": cuotas_imss["retiro"] * 12,
             "categoria": "imss",
         },
         {
@@ -239,7 +274,7 @@ def calcular_carga_patronal(inp: CargaPatronalInput) -> dict:
         },
         {
             "nombre": "Infonavit",
-            "descripcion": "Aportación Infonavit (5% bimestral, promediado mensual)",
+            "descripcion": "Aportación patronal Infonavit (5%)",
             "monto_mensual": infonavit_mensual,
             "monto_anual": infonavit_mensual * 12,
             "categoria": "infonavit",

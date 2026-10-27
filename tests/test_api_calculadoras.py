@@ -221,7 +221,7 @@ def test_carga_patronal_endpoint(client):
         },
     )
     assert r.status_code == 200
-    assert r.json()["resultado"]["impuesto_estatal"] == pytest.approx(480.0)
+    assert r.json()["resultado"]["impuesto_estatal"] == pytest.approx(504.0)
 
 
 def test_carga_patronal_debajo_del_salario_minimo_400(client):
