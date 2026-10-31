@@ -194,7 +194,18 @@ export const ESPACIOS: readonly Espacio[] = [
           { id: 'diot-presentadas', href: '/diot/presentadas', label: 'DIOT presentadas', corto: 'Presentadas', icon: 'ph:stamp-light', descripcion: 'Las que ya presentaste, con su acuse', detalle: 'Las DIOT que ya presentaste, con su acuse.', sinonimos: ['diot presentadas', 'acuse de diot'] },
         ],
       },
-      { id: 'contabilidad', href: '/contabilidad', label: 'Contabilidad electrónica', icon: 'ph:books-light', descripcion: 'Catálogo, balanzas y acuses', detalle: 'Envío del catálogo de cuentas y las balanzas, y los acuses de Recibido, Aceptado o Rechazado.', sinonimos: ['contabilidad', 'contabilidad electronica', 'balanza', 'catalogo de cuentas', 'anexo 24'] },
+      {
+        id: 'contabilidad',
+        href: '/contabilidad',
+        label: 'Contabilidad electrónica',
+        icon: 'ph:books-light',
+        descripcion: 'Catálogo, balanzas y acuses',
+        sinonimos: ['contabilidad', 'contabilidad electronica', 'balanza', 'catalogo de cuentas', 'anexo 24'],
+        hijos: [
+          { id: 'contabilidad-enviar', href: '/contabilidad', label: 'Enviar contabilidad', corto: 'Enviar', icon: 'ph:paper-plane-tilt-light', descripcion: 'Catálogo y balanzas al SAT', sinonimos: ['enviar contabilidad', 'enviar balanza', 'enviar catalogo'] },
+          { id: 'contabilidad-presentadas', href: '/contabilidad/presentadas', label: 'Contabilidad presentada', corto: 'Presentadas', icon: 'ph:stamp-light', descripcion: 'Estatus y acuses de lo que enviaste', sinonimos: ['acuses', 'acuse', 'presentadas', 'aceptado', 'rechazado', 'estatus'] },
+        ],
+      },
       {
         id: 'renovar-efirma',
         // Acceso directo: abre Despacho > Empresas con la fila de la empresa

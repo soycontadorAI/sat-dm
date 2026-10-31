@@ -148,19 +148,20 @@ solo admite dígitos — no usa la lista blanca del historial).
 
 ## UI (`/contabilidad`)
 
-Una pantalla con dos pestañas sobre la empresa activa (requiere e.firma):
+Dos pantallas sobre la empresa activa (requiere e.firma), cada una con su entrada en el menú
+bajo Contabilidad electrónica, como en la DIOT:
 
-- **Enviar**: wizard Archivos → Opciones → Validar → Enviar. Desktop elige los ZIP
-  con el diálogo nativo (`satDesktop.elegirZips`); la web y arrastrar-y-soltar
-  usan `/ce/subir`. El sellado es una decisión explícita (sin valor por default),
-  se valida primero sin enviar (`solo_validar`) y el envío real exige confirmar que
-  es irreversible. Un ZIP con problemas, de varios RFC o de un RFC distinto al de
-  la empresa activa bloquea el avance (`lib/contabilidad-electronica.ts`).
-- **Acuses**: ejercicio + "Actualizar desde el SAT" (job), tabla con estatus y los
-  PDF de recepción y de aceptación/rechazo. Rechazado ofrece "Corregir y reenviar".
-- Banner de la cola de pendientes con "Reintentar ahora".
+- **Enviar** (`/contabilidad`): wizard Archivos → Opciones → Validar → Enviar. Desktop elige los
+  ZIP con el diálogo nativo (`satDesktop.elegirZips`); la web y arrastrar-y-soltar usan
+  `/ce/subir`. El sellado es una decisión explícita (sin valor por default), se valida primero
+  sin enviar (`solo_validar`) y el envío real exige confirmar que es irreversible. Un ZIP con
+  problemas, de varios RFC o de un RFC distinto al de la empresa activa bloquea el avance
+  (`lib/contabilidad-electronica.ts`). Al terminar, "Ver acuses" lleva a Presentadas en ese
+  ejercicio.
+- **Presentadas** (`/contabilidad/presentadas?anio=`): ejercicio + "Actualizar desde el SAT"
+  (job), tabla con estatus y los PDF de recepción y de aceptación/rechazo. Rechazado ofrece
+  "Corregir y reenviar" (lleva a Enviar).
+- El banner de la cola de pendientes, con "Reintentar ahora", aparece en las dos.
 
-Ambos paneles viven con `forceMount` (Radix desmonta el panel inactivo, y con él el
-job en curso).
-
-Pendientes y roadmap: `docs/producto/pendientes-envios-sat.md`.
+Hasta el 2026-10-31, Enviar y Acuses eran pestañas de una sola página (con `forceMount` para no
+perder el wizard al cambiar); se separaron en rutas para que el menú pueda marcar cada una.
