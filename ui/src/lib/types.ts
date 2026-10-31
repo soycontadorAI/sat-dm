@@ -2224,3 +2224,75 @@ export interface CePendiente {
   ultimo_intento?: string | null;
   ultimo_error?: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// DIOT: presentar en el portal del SAT y consultar lo presentado — /diot/*
+// ---------------------------------------------------------------------------
+
+/** Totales de la DIOT (del TXT o de la sección Totales del portal), en pesos enteros. */
+export interface DiotTotales {
+  operaciones: number;
+  iva_acreditable: number;
+  iva_retenido: number;
+  /** 2025 = 54 campos (ejercicios 2025+); v24 = 23 campos (2024 y anteriores). */
+  layout?: '2025' | 'v24' | string;
+}
+
+/** POST /diot/subir: el TXT propio del usuario, ya revisado por el agente. */
+export interface DiotSubirResultado {
+  /** Ruta DEL AGENTE (carpeta de paso); se manda tal cual a /diot/presentar. */
+  txt_path: string;
+  nombre: string;
+  totales: DiotTotales;
+}
+
+export interface DiotPresentarRequest {
+  rfc: string;
+  ejercicio: number;
+  /** 1-12 */
+  periodo: number;
+  /** TXT subido con /diot/subir… */
+  txt_path?: string;
+  /** …o el que genera TodoConta para el periodo. */
+  usar_generado?: boolean;
+  /** Presentar es irreversible: sin esto el agente responde 400. */
+  confirmar: boolean;
+  /** Sube y coteja totales, sin enviar. */
+  solo_validar: boolean;
+  /** El flujo con estímulos fiscales NO está soportado: debe ir true. */
+  sin_estimulos: boolean;
+  /** 001 Normal · 003 Complementaria por modificación. */
+  tipo_declaracion: '001' | '003';
+}
+
+/**
+ * Resultado del job /diot/presentar. `validado` también llega cuando los totales
+ * NO cuadran: en ese caso `discrepancias` trae el detalle y nada se envió.
+ */
+export interface DiotPresentacionResultado {
+  estado: 'validado' | 'presentado' | 'no_presentada' | 'desconocido' | string;
+  totales_txt: DiotTotales | null;
+  totales_portal: DiotTotales | null;
+  discrepancias: string[] | null;
+  acuse: string | null;
+}
+
+/** Una DIOT presentada (normal o complementaria) con sus archivos ya fundidos. */
+export interface DiotPresentadaFila {
+  /** YYYY-MM */
+  periodo: string;
+  mes: number;
+  numero_operacion: string;
+  estado: string;
+  tipo_declaracion: string;
+  tipo_complementaria: string;
+  fecha_presentacion: string;
+  tiene_declaracion: boolean;
+  tiene_excel: boolean;
+  tiene_acuse: boolean;
+}
+
+export interface DiotPresentadasGuardadas {
+  consultado_en: string | null;
+  filas: DiotPresentadaFila[];
+}

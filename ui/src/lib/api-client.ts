@@ -25,6 +25,9 @@ import type {
   CiecDocRequest,
   CfdiFielRequest,
   RenovarRequest,
+  DiotSubirResultado,
+  DiotPresentarRequest,
+  DiotPresentadasGuardadas,
   CeFicha,
   CeEnviarRequest,
   CeAcusesGuardados,
@@ -546,6 +549,62 @@ export class SatApiClient {
 
   async opinionFiel(): Promise<DocumentoResponse> {
     return this.post<DocumentoResponse>('/opinion/fiel');
+  }
+
+  // -----------------------------------------------------------------------
+  // DIOT: presentar en el portal y consultar lo presentado
+  // -----------------------------------------------------------------------
+
+  /** Sube el TXT propio (software contable, plantilla…) y lo revisa. */
+  async diotSubir(archivo: File): Promise<DiotSubirResultado> {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+    return this.request<DiotSubirResultado>('/diot/subir', { method: 'POST', body: formData });
+  }
+
+  /** Valida (`solo_validar`) o presenta (`confirmar`) la DIOT. Irreversible. → {job_id} */
+  async diotPresentar(req: DiotPresentarRequest): Promise<JobIniciado> {
+    return this.post<JobIniciado>('/diot/presentar', req as unknown as Record<string, unknown>);
+  }
+
+  /** Consulta en el portal las DIOT presentadas del rango y baja sus archivos. → {job_id} */
+  async diotPresentadas(rfc: string, ejercicio: number, mesIni: number, mesFin: number): Promise<JobIniciado> {
+    return this.post<JobIniciado>('/diot/presentadas', {
+      rfc, ejercicio, mes_ini: mesIni, mes_fin: mesFin,
+    });
+  }
+
+  /** Última consulta guardada de DIOT presentadas (sin tocar el SAT). */
+  async diotPresentadasGuardadas(rfc: string, ejercicio: number): Promise<DiotPresentadasGuardadas> {
+    const qs = new URLSearchParams({ rfc, ejercicio: String(ejercicio) });
+    return this.request<DiotPresentadasGuardadas>(`/diot/presentadas?${qs}`);
+  }
+
+  /** PDF de la declaración, su Excel o su acuse, por número de operación. */
+  async diotArchivo(rfc: string, numeroOperacion: string, tipo: 'declaracion' | 'excel' | 'acuse'): Promise<Blob> {
+    const qs = new URLSearchParams({ rfc, numero_operacion: numeroOperacion, tipo });
+    return this.blobODetalle(`/diot/archivo?${qs}`);
+  }
+
+  /** Acuse que dejó la presentación hecha desde la app. */
+  async diotAcusePresentacion(rfc: string, ejercicio: number, periodo: number): Promise<Blob> {
+    const qs = new URLSearchParams({ rfc, ejercicio: String(ejercicio), periodo: String(periodo) });
+    return this.blobODetalle(`/diot/acuse-presentacion?${qs}`);
+  }
+
+  /** GET de un archivo; si falla, lanza con el `detail` del agente. */
+  private async blobODetalle(path: string): Promise<Blob> {
+    const r = await fetch(this.url(path), { headers: this.tokenHeaders() });
+    if (!r.ok) {
+      let detail = '';
+      try {
+        detail = ((await r.json()) as { detail?: string }).detail ?? '';
+      } catch {
+        /* cuerpo no JSON */
+      }
+      throw new Error(detail || `No se pudo obtener el archivo (${r.status}).`);
+    }
+    return await r.blob();
   }
 
   // -----------------------------------------------------------------------

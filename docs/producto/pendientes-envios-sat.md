@@ -4,6 +4,12 @@ Roadmap con TODO el contexto necesario para retomar cada punto sin re-descubrir
 nada. Origen: sesión de integración 2026-08-29 (42 envíos CE reales, los
 hallazgos en `docs/producto/contabilidad-electronica.md`).
 
+> **2026-10-31:** la UI de envío de la DIOT ya existe (`/diot/enviar`, `/diot/presentadas`; ver
+> `docs/producto/diot-2025.md`, sección UI) y resuelve el estado `desconocido` con DIOT
+> presentadas (grid de `diot_consulta.py` con estatus). Sigue abierto: confirmar con una corrida
+> real qué valores de estatus reporta el grid (la UI los muestra tal cual y solo los colorea
+> por palabra clave) y (b) estímulos.
+
 ## (a) Acuse de aceptación de la DIOT — el pendiente grande
 
 **Problema.** `PresentadorDiot` maneja UN artefacto: el PDF que emite
@@ -62,9 +68,9 @@ los totales del portal ya se leyeron y preguntar al usuario en vivo —
   selector de ZIPs, resumen del inventario, decisión de sellado explícita,
   progreso por fases, tabla de estatus (Recibido/Aceptado/Rechazado) y cola de
   pendientes visible. Falta QA con una corrida real contra el SAT desde la UI.
-- Botón «Presentar en el SAT» en `/diot` junto a `ExportTxtButton`, con el
-  two-step (validar → mostrar totales del portal → confirmar) y la pregunta
-  de estímulos SIEMPRE visible.
+- ✅ **DIOT hecha** (`/diot/enviar`): validar → totales del portal → confirmar, con la
+  confirmación de estímulos SIEMPRE visible (en rojo). Botón "Enviar DIOT" junto a
+  "Generar TXT". Falta QA con una corrida real contra el SAT desde la UI.
 - Los nombres de fase ya están definidos y estables en
   `portal/contabilidad_electronica.py` y `portal/diot_presentacion.py`;
   mapearlos a `FasesProgreso` como en `renovar-efirma-wizard.tsx`.

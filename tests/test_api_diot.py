@@ -302,3 +302,141 @@ def test_acuse_con_el_portal_falso(client, portal, tmp_path):
     assert estado["resultado"] == {"acuse": str(carpeta / "acuse_diot.pdf")}
     (llamada,) = portal["acuse"]
     assert (llamada["ejercicio"], llamada["periodo"], llamada["rfc"]) == (2026, 7, RFC_FIEL)
+
+
+# --- UI de envío: TXT propio, presentadas y archivos -------------------------
+
+TXT_VALIDO = "|".join(["0"] * 54) + "\n"
+
+
+@pytest.fixture
+def descargas(tmp_path, monkeypatch):
+    base = tmp_path / "descargas"
+    monkeypatch.setattr(config_store, "get_descargas_dir", lambda: base)
+    return base
+
+
+def _subir(client, nombre, contenido):
+    return client.post("/diot/subir", files={"archivo": (nombre, contenido, "text/plain")})
+
+
+def test_subir_txt_valido_devuelve_totales(client):
+    r = _subir(client, "mi_diot.txt", TXT_VALIDO)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["nombre"] == "mi_diot.txt"
+    assert body["totales"]["operaciones"] == 1 and body["totales"]["layout"] == "2025"
+    assert "diot_subidos" in body["txt_path"] and Path(body["txt_path"]).is_file()
+
+
+def test_subir_rechaza_lo_que_no_es_txt(client):
+    assert _subir(client, "diot.zip", b"x").status_code == 400
+
+
+def test_subir_txt_invalido_es_400_y_no_deja_basura(client):
+    r = _subir(client, "roto.txt", "a|b|c\n")
+    assert r.status_code == 400 and "no es válido" in r.json()["detail"]
+    carpeta = config_store.get_config_dir() / "diot_subidos"
+    assert not any(carpeta.rglob("roto.txt"))
+
+
+def test_subir_no_escapa_de_la_carpeta(client):
+    r = _subir(client, "../../fuera.txt", TXT_VALIDO)
+    assert r.status_code == 200 and ".." not in r.json()["txt_path"]
+
+
+def test_presentadas_valida_rango_y_ejercicio(client):
+    body = {"rfc": MI_RFC, "ejercicio": 2026}
+    assert client.post("/diot/presentadas", json={**body, "mes_ini": 5, "mes_fin": 2}).status_code == 400
+    assert client.post("/diot/presentadas", json={**body, "mes_fin": 13}).status_code == 400
+    assert client.post("/diot/presentadas", json={**body, "ejercicio": 99}).status_code == 400
+
+
+def test_presentadas_empresa_sin_registrar_es_404(client):
+    r = client.post("/diot/presentadas", json={"rfc": MI_RFC, "ejercicio": 2026})
+    assert r.status_code == 404
+
+
+def test_presentadas_con_job_activo_es_409(client, monkeypatch):
+    monkeypatch.setattr(jobs.registry, "hay_activo", lambda: True)
+    monkeypatch.setattr(
+        "sat_descarga.api.routers.certifica._credenciales_keychain",
+        lambda rfc: {"cer_path": "x", "key_path": "y", "password": "z"})
+    r = client.post("/diot/presentadas", json={"rfc": MI_RFC, "ejercicio": 2026})
+    assert r.status_code == 409
+
+
+def _sembrar_consulta(descargas, fuera):
+    base = descargas / "diot" / "consultas" / MI_RFC
+    (base / "2026-05").mkdir(parents=True)
+    decl = base / "2026-05" / "decl.pdf"
+    xls = base / "2026-05" / "detalle.xlsx"
+    acuse = base / "2026-05" / "acuse.pdf"
+    decl.write_bytes(b"%PDF-decl")
+    xls.write_bytes(b"xlsx")
+    acuse.write_bytes(b"%PDF-acuse")
+    comun = {"rfc": MI_RFC, "periodo": "2026-05", "ejercicio": 2026, "mes": 5,
+             "numero_operacion": "123456", "estado": "Presentada",
+             "tipo_declaracion": "Normal", "tipo_complementaria": "",
+             "fecha_presentacion": "2026-06-10", "descargado_en": "2026-06-11T10:00:00"}
+    indice = [
+        {**comun, "tipo": "declaracion", "archivo": str(decl), "archivo_excel": str(xls)},
+        {**comun, "tipo": "acuse", "archivo": str(acuse)},
+        # apunta fuera de su carpeta: jamás debe servirse ni contarse
+        {**comun, "periodo": "2026-06", "mes": 6, "numero_operacion": "999",
+         "tipo": "declaracion", "archivo": str(fuera)},
+        {**comun, "ejercicio": 2025, "periodo": "2025-12", "numero_operacion": "777",
+         "tipo": "declaracion", "archivo": str(decl)},
+    ]
+    (base / "diot.json").write_text(json.dumps(indice), encoding="utf-8")
+
+
+def test_presentadas_guardadas_funde_declaracion_excel_y_acuse(client, descargas, tmp_path):
+    fuera = tmp_path / "secreto.pdf"
+    fuera.write_bytes(b"%PDF-secreto")
+    _sembrar_consulta(descargas, fuera)
+    body = client.get("/diot/presentadas", params={"rfc": MI_RFC, "ejercicio": 2026}).json()
+    assert body["consultado_en"] == "2026-06-11T10:00:00"
+    por_op = {f["numero_operacion"]: f for f in body["filas"]}
+    assert set(por_op) == {"123456", "999"}          # el 2025 no entra
+    f = por_op["123456"]
+    assert f["tiene_declaracion"] and f["tiene_excel"] and f["tiene_acuse"]
+    assert f["estado"] == "Presentada" and f["fecha_presentacion"] == "2026-06-10"
+    assert por_op["999"]["tiene_declaracion"] is False   # fuera de la carpeta
+    assert "archivo" not in f                            # sin rutas del agente
+
+
+def test_presentadas_guardadas_sin_consulta_previa(client, descargas):
+    body = client.get("/diot/presentadas", params={"rfc": MI_RFC, "ejercicio": 2026}).json()
+    assert body == {"consultado_en": None, "filas": []}
+
+
+def test_archivo_sirve_por_numero_de_operacion(client, descargas, tmp_path):
+    fuera = tmp_path / "secreto.pdf"
+    fuera.write_bytes(b"%PDF-secreto")
+    _sembrar_consulta(descargas, fuera)
+    q = {"rfc": MI_RFC, "numero_operacion": "123456"}
+    assert client.get("/diot/archivo", params={**q, "tipo": "declaracion"}).content == b"%PDF-decl"
+    assert client.get("/diot/archivo", params={**q, "tipo": "acuse"}).content == b"%PDF-acuse"
+    assert client.get("/diot/archivo", params={**q, "tipo": "excel"}).content == b"xlsx"
+
+
+def test_archivo_no_sirve_lo_que_apunta_fuera_ni_lo_inexistente(client, descargas, tmp_path):
+    fuera = tmp_path / "secreto.pdf"
+    fuera.write_bytes(b"%PDF-secreto")
+    _sembrar_consulta(descargas, fuera)
+    q = {"rfc": MI_RFC, "tipo": "declaracion"}
+    assert client.get("/diot/archivo", params={**q, "numero_operacion": "999"}).status_code == 404
+    assert client.get("/diot/archivo", params={**q, "numero_operacion": "000"}).status_code == 404
+    assert client.get("/diot/archivo", params={**q, "numero_operacion": "123456", "tipo": "otro"}).status_code == 400
+
+
+def test_acuse_de_la_presentacion_hecha_desde_la_app(client, descargas):
+    q = {"rfc": MI_RFC, "ejercicio": 2026, "periodo": 5}
+    assert client.get("/diot/acuse-presentacion", params=q).status_code == 404
+    carpeta = descargas / "diot" / "presentaciones" / MI_RFC / "2026" / "05-2026"
+    carpeta.mkdir(parents=True)
+    (carpeta / "acuse_diot_X_20260610.pdf").write_bytes(b"%PDF-1")
+    r = client.get("/diot/acuse-presentacion", params=q)
+    assert r.status_code == 200 and r.content == b"%PDF-1"
+    assert client.get("/diot/acuse-presentacion", params={**q, "periodo": 13}).status_code == 400

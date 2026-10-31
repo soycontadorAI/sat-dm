@@ -466,8 +466,8 @@ class PresentadorDiot:
                 )
             return resultado
         resultado["estado"] = "presentado"
-        self._emitir("acuse", path=str(resultado.get("acuse") or ""))
         resultado["acuse"] = str(acuse)
+        self._emitir("acuse", path=resultado["acuse"])
         self._paso(f"Acuse guardado: {acuse}")
         return resultado
 
