@@ -18,6 +18,7 @@ import { CargarXmlDialog } from '@/components/diot/cargar-xml-dialog';
 import { DetalleDrawer } from '@/components/diot/detalle-drawer';
 import { DiotEmpty } from '@/components/diot/diot-empty';
 import { DiotStats } from '@/components/diot/diot-stats';
+import { EnviarDiotButton } from '@/components/diot/enviar-diot-button';
 import { ExportTxtButton } from '@/components/diot/export-txt-button';
 import { SelectorPeriodo } from '@/components/diot/selector-periodo';
 import { TablaDiot } from '@/components/diot/tabla-diot';
@@ -73,8 +74,8 @@ export default function DiotPage() {
   return (
     <div className="space-y-6">
       <PageHeading
-        title="DIOT"
-        description="Declaración Informativa de Operaciones con Terceros: prellena desde tus CFDIs, ajusta y genera el TXT de carga masiva."
+        title="Generar TXT de la DIOT"
+        description="Prellena desde tus CFDIs, ajusta lo que haga falta y genera el TXT de carga masiva. Al terminar puedes descargarlo para presentarlo tú, o enviarla desde aquí."
       />
 
       {!rfcActivo ? (
@@ -107,6 +108,11 @@ export default function DiotPage() {
               </Button>
               <ExportTxtButton
                 rfc={rfcActivo}
+                periodo={periodo}
+                habilitado={filas.length > 0 && errores.length === 0}
+                numErrores={errores.length}
+              />
+              <EnviarDiotButton
                 periodo={periodo}
                 habilitado={filas.length > 0 && errores.length === 0}
                 numErrores={errores.length}

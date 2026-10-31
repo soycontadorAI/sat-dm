@@ -418,7 +418,7 @@ export function CommandPaletteEspacios({ open, vista, onOpenChange, onVistaChang
             periodo: `${o.periodo.anio}-${String(o.periodo.mes).padStart(2, '0')}`,
           });
         }
-        shell.navegar('/diot', 'buscador');
+        shell.navegar('/diot/generar', 'buscador');
         return;
       }
       case 'calculadora': {
