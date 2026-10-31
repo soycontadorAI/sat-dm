@@ -2138,3 +2138,89 @@ export interface PilotoEstado {
   avisos: PilotoAviso[];
   historial?: PilotoHistorial;
 }
+
+// ---------------------------------------------------------------------------
+// Contabilidad electrónica (Anexo 24): envío de ZIPs y acuses — /ce/*
+// ---------------------------------------------------------------------------
+
+/** Ficha de un ZIP tras la revisión previa (`inventario()` del agente). */
+export interface CeFicha {
+  /** Ruta DEL AGENTE (en la web, la carpeta de paso donde quedó el ZIP subido). */
+  path: string;
+  archivo: string;
+  rfc?: string;
+  /** CT catálogo · BN/BC balanza · PL pólizas · XF/XC auxiliares. */
+  tipo?: string;
+  tipo_desc?: string;
+  anio?: string;
+  mes?: string;
+  version?: string;
+  /** No vacío = el ZIP no se puede enviar (el SAT lo rechazaría después). */
+  problemas: string[];
+}
+
+export interface CeEnviarRequest {
+  rfc: string;
+  /** Rutas del agente (de `/ce/inventario` o `/ce/subir`). */
+  archivos: string[];
+  /** El envío real es irreversible: sin esto el agente responde 400. */
+  confirmar: boolean;
+  /** Llega al resumen del portal y cancela, sin enviar. */
+  solo_validar: boolean;
+  /** Decisión visible del usuario: sellar los XML con la e.firma. */
+  sellar: boolean;
+  reenviar: boolean;
+}
+
+export interface CeEnvioItem {
+  archivo: string;
+  path?: string;
+  folio?: string | null;
+  fecha?: string | null;
+  acuse?: string | null;
+  intentos?: number;
+  estado?: string;
+  mensaje?: string;
+}
+
+/** Resultado del job `/ce/enviar` (evento `done`). */
+export interface CeEnvioResultado {
+  rfc: string;
+  enviados: CeEnvioItem[];
+  fallidos: CeEnvioItem[];
+  /** Ya estaban presentados en el portal; no se volvieron a subir. */
+  omitidos: Array<CeEnvioItem & { estatus?: string }>;
+  sellar: boolean;
+  /** `validado` = solo se validó (nada salió al SAT). */
+  estado: 'enviado' | 'validado';
+}
+
+export type CeEstatus = 'Recibido' | 'Aceptado' | 'Rechazado' | string;
+
+export interface CeAcuseFila {
+  periodo?: string;
+  motivo?: string;
+  tipo_archivo?: string;
+  tipo_envio?: string;
+  archivo?: string;
+  folio: string;
+  fecha?: string;
+  estatus?: CeEstatus;
+  /** Ya hay PDF en disco (recepción / aceptación o rechazo). */
+  tiene_ar?: boolean;
+  tiene_ap?: boolean;
+}
+
+export interface CeAcusesGuardados {
+  consultado_en: string | null;
+  filas: CeAcuseFila[];
+}
+
+export interface CePendiente {
+  id: string;
+  rfc: string;
+  archivos: string[];
+  intentos: number;
+  ultimo_intento?: string | null;
+  ultimo_error?: string | null;
+}

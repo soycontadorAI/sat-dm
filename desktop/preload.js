@@ -77,6 +77,8 @@ contextBridge.exposeInMainWorld('satDesktop', {
   },
   /** Abre el selector de carpeta nativo del SO; devuelve la ruta o null. */
   elegirCarpeta: () => ipcRenderer.invoke('elegir-carpeta'),
+  /** Selector nativo de archivos .zip (multi-selección); devuelve rutas o []. */
+  elegirZips: () => ipcRenderer.invoke('elegir-zips'),
   /**
    * Dispara una notificación nativa del SO (Windows Action Center / macOS
    * Notification Center). Click en la toast → enfoca la ventana de la app.
