@@ -955,6 +955,16 @@ ipcMain.handle('elegir-carpeta', async () => {
   return r.canceled || r.filePaths.length === 0 ? null : r.filePaths[0];
 });
 
+// Selector de archivos .zip (contabilidad electrónica: los ZIP que genera el
+// software contable del usuario). Multi-selección; devuelve rutas o [].
+ipcMain.handle('elegir-zips', async () => {
+  const r = await dialog.showOpenDialog({
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'ZIP de contabilidad electrónica', extensions: ['zip'] }],
+  });
+  return r.canceled ? [] : r.filePaths;
+});
+
 // Notificaciones nativas del SO.
 //   title: string (corto, ≤40 chars idealmente)
 //   body: string (mensaje del pool de lib/notify/messages.ts)

@@ -36,6 +36,7 @@ export const NAV_ITEMS: readonly PaginaNav[] = [
   { href: '/calculadoras', label: 'Calculadoras', icon: 'ph:calculator-light' },
   // Al FINAL a propósito: agregarla en medio movería los atajos ⌘N existentes.
   { href: '/diot', label: 'DIOT', icon: 'ph:file-text-light' },
+  { href: '/contabilidad', label: 'Contabilidad electrónica', icon: 'ph:books-light' },
 ] as const;
 
 // Páginas fuera del nav plano (footer del sidebar / menú de cuenta).
@@ -193,7 +194,7 @@ export const ESPACIOS: readonly Espacio[] = [
           { id: 'diot-presentadas', label: 'DIOT presentadas', corto: 'Presentadas', icon: 'ph:stamp-light', descripcion: 'Las que ya presentaste, con su acuse', detalle: 'Las DIOT que ya presentaste, con su acuse.', estado: 'pronto', sinonimos: ['diot presentadas', 'acuse de diot'] },
         ],
       },
-      { id: 'contabilidad', label: 'Contabilidad electrónica', icon: 'ph:books-light', descripcion: 'Catálogo, balanzas y acuses', detalle: 'Envío del catálogo de cuentas y las balanzas, y los acuses de Recibido, Aceptado o Rechazado.', estado: 'pronto', sinonimos: ['contabilidad', 'contabilidad electronica', 'balanza', 'catalogo de cuentas', 'anexo 24'] },
+      { id: 'contabilidad', href: '/contabilidad', label: 'Contabilidad electrónica', icon: 'ph:books-light', descripcion: 'Catálogo, balanzas y acuses', detalle: 'Envío del catálogo de cuentas y las balanzas, y los acuses de Recibido, Aceptado o Rechazado.', sinonimos: ['contabilidad', 'contabilidad electronica', 'balanza', 'catalogo de cuentas', 'anexo 24'] },
       {
         id: 'renovar-efirma',
         // Acceso directo: abre Despacho > Empresas con la fila de la empresa

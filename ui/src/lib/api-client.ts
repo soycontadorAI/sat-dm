@@ -25,6 +25,10 @@ import type {
   CiecDocRequest,
   CfdiFielRequest,
   RenovarRequest,
+  CeFicha,
+  CeEnviarRequest,
+  CeAcusesGuardados,
+  CePendiente,
   RenovarGenerarRequest,
   RenovarGenerarResultado,
   RenovarRecuperarRequest,
@@ -542,6 +546,65 @@ export class SatApiClient {
 
   async opinionFiel(): Promise<DocumentoResponse> {
     return this.post<DocumentoResponse>('/opinion/fiel');
+  }
+
+  // -----------------------------------------------------------------------
+  // Contabilidad electrónica (Anexo 24): ZIPs del software contable → SAT
+  // -----------------------------------------------------------------------
+
+  /** Revisión previa de ZIPs que ya están en el equipo del agente (desktop). */
+  async ceInventario(archivos: string[]): Promise<{ archivos: CeFicha[] }> {
+    return this.post<{ archivos: CeFicha[] }>('/ce/inventario', { archivos });
+  }
+
+  /** Sube ZIPs (web / arrastrar y soltar) y devuelve su revisión previa. */
+  async ceSubir(files: File[]): Promise<{ archivos: CeFicha[] }> {
+    const formData = new FormData();
+    for (const f of files) formData.append('archivos', f);
+    return this.request<{ archivos: CeFicha[] }>('/ce/subir', { method: 'POST', body: formData });
+  }
+
+  /** Valida (`solo_validar`) o envía (`confirmar`) los ZIP al SAT. Irreversible. → {job_id} */
+  async ceEnviar(req: CeEnviarRequest): Promise<JobIniciado> {
+    return this.post<JobIniciado>('/ce/enviar', req as unknown as Record<string, unknown>);
+  }
+
+  /** Consulta el estatus en el portal y baja los acuses. → {job_id} */
+  async ceAcuses(rfc: string, anio: number): Promise<JobIniciado> {
+    return this.post<JobIniciado>('/ce/acuses', { rfc, anio, mes_ini: 1, mes_fin: 13, bajar: true });
+  }
+
+  /** Última consulta guardada (sin tocar el SAT). */
+  async ceAcusesGuardados(rfc: string, anio: number): Promise<CeAcusesGuardados> {
+    const qs = new URLSearchParams({ rfc, anio: String(anio) });
+    return this.request<CeAcusesGuardados>(`/ce/acuses?${qs}`);
+  }
+
+  /** PDF de un acuse ya descargado: AR = recepción, AP = aceptación o rechazo. */
+  async ceAcusePdf(rfc: string, anio: number, folio: string, tipo: 'AR' | 'AP'): Promise<Blob> {
+    const qs = new URLSearchParams({ rfc, anio: String(anio), folio, tipo });
+    const r = await fetch(this.url(`/ce/acuse?${qs}`), { headers: this.tokenHeaders() });
+    if (!r.ok) {
+      let detail = '';
+      try {
+        detail = ((await r.json()) as { detail?: string }).detail ?? '';
+      } catch {
+        /* cuerpo no JSON */
+      }
+      throw new Error(detail || `No se pudo obtener el acuse (${r.status}).`);
+    }
+    return await r.blob();
+  }
+
+  /** Cola de envíos que el SAT dejó a medias (lento / mantenimiento). */
+  async cePendientes(rfc?: string): Promise<{ pendientes: CePendiente[] }> {
+    const qs = rfc ? `?${new URLSearchParams({ rfc })}` : '';
+    return this.request<{ pendientes: CePendiente[] }>(`/ce/pendientes${qs}`);
+  }
+
+  /** Reintenta la cola de la empresa (idempotente: consulta antes de subir). → {job_id} */
+  async ceReanudar(rfc: string): Promise<JobIniciado> {
+    return this.post<JobIniciado>('/ce/reanudar', { rfc });
   }
 
   // -----------------------------------------------------------------------

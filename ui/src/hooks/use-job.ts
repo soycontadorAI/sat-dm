@@ -50,6 +50,8 @@ interface UseJob {
   /** Última fase emitida por los trámites de Certifica (renovación/CSD):
    * generando | firmando | enviando | numero_operacion | acuse | recuperando | guardando. */
   fase: string | null;
+  /** Datos extra de la última fase (p. ej. contabilidad: archivo, n, total, folio). */
+  faseDatos: Record<string, unknown> | null;
   /** Avance "N de M XML" si el job lo reporta (evento opcional `progreso`). */
   progreso: { actual: number; total: number } | null;
   resultado: unknown;
@@ -77,6 +79,7 @@ export function useJob(): UseJob {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [captcha, setCaptcha] = useState<CaptchaState | null>(null);
   const [fase, setFase] = useState<string | null>(null);
+  const [faseDatos, setFaseDatos] = useState<Record<string, unknown> | null>(null);
   const [progreso, setProgreso] = useState<{ actual: number; total: number } | null>(null);
   const [resultado, setResultado] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +109,7 @@ export function useJob(): UseJob {
     setLog([]);
     setCaptcha(null);
     setFase(null);
+    setFaseDatos(null);
     setProgreso(null);
     setResultado(null);
     setError(null);
@@ -138,6 +142,8 @@ export function useJob(): UseJob {
         case 'fase':
           if (ev.fase) {
             setFase(ev.fase);
+            const { event: _e, fase: _f, ...resto } = ev;
+            setFaseDatos(resto);
             addLog(`fase: ${ev.fase}`);
           }
           break;
@@ -239,5 +245,5 @@ export function useJob(): UseJob {
     [apiClient],
   );
 
-  return { estado, log, captcha, fase, progreso, resultado, error, iniciar, responderCaptcha, reset };
+  return { estado, log, captcha, fase, faseDatos, progreso, resultado, error, iniciar, responderCaptcha, reset };
 }

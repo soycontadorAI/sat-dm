@@ -19,11 +19,16 @@ sí — por eso `/ce/acuses` existe y la UI debe mostrar el estatus.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ...core import paths
@@ -64,6 +69,14 @@ class CeReanudarRequest(BaseModel):
     rfc: str
 
 
+class CeInventarioRequest(BaseModel):
+    archivos: list[str]           # rutas a .zip, o carpetas con .zip
+
+
+RE_FOLIO_ACUSE = re.compile(r"^\d{6,30}$")
+_MAX_ZIP_BYTES = 50 * 1024 * 1024   # un ZIP de CE pesa KB; esto es solo una valla
+
+
 def _expandir_zips(rutas: list[str]) -> list[Path]:
     zips: list[Path] = []
     for r in rutas:
@@ -81,6 +94,126 @@ def _expandir_zips(rutas: list[str]) -> list[Path]:
         raise HTTPException(status_code=400,
                             detail="No hay archivos .zip en esas rutas.")
     return zips
+
+
+def _dir_acuses(rfc: str, anio: int) -> Path:
+    return paths.dir_ce(rfc.strip().upper(), anio, salida_base=_descargas_base())
+
+
+def _empresa_existente(rfc: str) -> str:
+    from ...cli import config_store
+
+    rfc = rfc.strip().upper()
+    try:
+        config_store.get_empresa(rfc)
+    except KeyError:
+        raise HTTPException(status_code=404,
+                            detail=f"No se encontró empresa con RFC {rfc}")
+    return rfc
+
+
+@router.post("/ce/inventario")
+def ce_inventario(req: CeInventarioRequest):
+    """Revisión previa de los ZIP (nomenclatura vs XML) SIN tocar el portal.
+
+    Es la misma `inventario()` del CLI. Los ZIP con `problemas` no se pueden
+    enviar; `/ce/enviar` repite esta revisión por su cuenta.
+    """
+    from ...portal.contabilidad_electronica import inventario
+
+    return {"archivos": inventario(_expandir_zips(req.archivos))}
+
+
+@router.post("/ce/subir")
+async def ce_subir(archivos: list[UploadFile] = File(...)):
+    """Recibe ZIPs desde el navegador (versión web: no hay rutas locales que
+    pasar) y los deja en una carpeta de paso del agente. Devuelve el inventario
+    con las rutas del agente, que luego se mandan a `/ce/enviar`.
+
+    El nombre del archivo es parte del contrato (Anexo 24), así que se conserva;
+    solo se toma el basename para que un nombre con `..` no escape de la carpeta.
+    """
+    from ...cli import config_store
+    from ...portal.contabilidad_electronica import inventario
+
+    if not archivos:
+        raise HTTPException(status_code=400, detail="No se recibió ningún archivo.")
+    destino = config_store.get_config_dir() / "ce_subidos" / uuid.uuid4().hex
+    destino.mkdir(parents=True, exist_ok=True)
+    guardados: list[Path] = []
+    for up in archivos:
+        nombre = Path(up.filename or "").name
+        if not nombre.lower().endswith(".zip"):
+            raise HTTPException(status_code=400,
+                                detail=f"«{nombre or 'sin nombre'}» no es un .zip.")
+        datos = await up.read(_MAX_ZIP_BYTES + 1)
+        if len(datos) > _MAX_ZIP_BYTES:
+            raise HTTPException(status_code=413,
+                                detail=f"«{nombre}» es demasiado grande para ser un envío de contabilidad.")
+        dest = destino / nombre
+        dest.write_bytes(datos)
+        guardados.append(dest)
+    return {"archivos": inventario(guardados)}
+
+
+@router.get("/ce/acuse")
+def ce_acuse(rfc: str, anio: int, folio: str, tipo: str = "AR"):
+    """Sirve un acuse ya descargado: `AR` (recepción) o `AP` (aceptación/rechazo).
+
+    La ruta se DERIVA de rfc+año+folio (no se acepta una ruta del cliente) y el
+    folio solo admite dígitos, así que no hay forma de salir de la carpeta de
+    acuses de la empresa. No usa la lista blanca del historial.
+    """
+    tipo = tipo.upper()
+    if tipo not in ("AR", "AP"):
+        raise HTTPException(status_code=400, detail="tipo debe ser AR o AP.")
+    if not RE_FOLIO_ACUSE.match(folio):
+        raise HTTPException(status_code=400, detail="Folio inválido.")
+    rfc = _empresa_existente(rfc)
+    pdf = _dir_acuses(rfc, anio) / f"{tipo}_{folio}.pdf"
+    if not pdf.is_file():
+        raise HTTPException(status_code=404,
+                            detail="Ese acuse no está descargado. Actualiza desde el SAT.")
+    return FileResponse(pdf, filename=pdf.name, media_type="application/pdf")
+
+
+def _guardar_consulta(rfc: str, anio: int, filas: list[dict]) -> None:
+    """Última consulta al SAT, para mostrarla sin volver a entrar al portal."""
+    d = _dir_acuses(rfc, anio)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "consulta.json").write_text(
+        json.dumps({"consultado_en": datetime.now(timezone.utc).isoformat(),
+                    "filas": filas}, ensure_ascii=False, indent=2),
+        encoding="utf-8")
+
+
+@router.get("/ce/acuses")
+def ce_acuses_guardados(rfc: str, anio: int):
+    """Última consulta de acuses guardada (sin tocar el SAT).
+
+    Cada fila trae `tiene_ar` / `tiene_ap`: si el PDF está en disco, calculado
+    en el momento (el usuario puede haber movido o borrado archivos).
+    """
+    rfc = _empresa_existente(rfc)
+    d = _dir_acuses(rfc, anio)
+    archivo = d / "consulta.json"
+    if not archivo.is_file():
+        return {"consultado_en": None, "filas": []}
+    try:
+        data = json.loads(archivo.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"consultado_en": None, "filas": []}
+    filas = []
+    for f in data.get("filas", []):
+        folio = str(f.get("folio") or "")
+        ok = bool(RE_FOLIO_ACUSE.match(folio))
+        filas.append({
+            **{k: v for k, v in f.items()
+               if k not in ("acuse_recepcion", "acuse_resultado")},
+            "tiene_ar": ok and (d / f"AR_{folio}.pdf").is_file(),
+            "tiene_ap": ok and (d / f"AP_{folio}.pdf").is_file(),
+        })
+    return {"consultado_en": data.get("consultado_en"), "filas": filas}
 
 
 @router.post("/ce/enviar")
@@ -173,7 +306,15 @@ def ce_acuses(req: CeAcusesRequest):
             )
         return fn
 
-    return _lanzar_job_certifica(fn_factory)
+    def al_completar(resultado):
+        if isinstance(resultado, list):
+            try:
+                _guardar_consulta(req.rfc, req.anio, resultado)
+            except OSError:
+                logger.warning("No se pudo guardar la consulta de acuses",
+                               exc_info=True)
+
+    return _lanzar_job_certifica(fn_factory, al_completar=al_completar)
 
 
 @router.get("/ce/pendientes")
