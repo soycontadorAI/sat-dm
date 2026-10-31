@@ -44,6 +44,7 @@ SEL_EJERCICIO = "#ejercicio"
 SEL_PERIODICIDAD = "#periodicidad"
 SEL_PERIODOS = "#periodos"
 SEL_TIPO_DECLARACION = "#tipodeclaracion"
+SEL_TIPO_COMPLEMENTARIA = "#tipocomplementaria"
 SEL_BTN_SIGUIENTE = "#btnSiguiente"
 SEL_MODAL_CERRAR = '.modal-footer button[data-dismiss="modal"]'
 SEL_OPERACIONES_TERCEROS = '[id="562select5"]'     # "La presenta con datos" = 1
@@ -85,6 +86,7 @@ VALOR_CON_DATOS = "1"
 VALOR_CARGA_MASIVA = "1"
 VALOR_ESTIMULOS_NO = "02"
 TIPO_NORMAL = "001"
+TIPO_COMPLEMENTARIA_MODIFICACION = "003"
 
 TOLERANCIA_PESOS = 3            # el portal redondea; el usuario documentó ±2-3
 APP_TIMEOUT_MS = 180_000        # carga de la SPA tras «Siguiente»
@@ -598,6 +600,12 @@ class PresentadorDiot:
         page.select_option(SEL_PERIODOS, periodo_clave)
         page.wait_for_selector(f"{SEL_TIPO_DECLARACION}:visible", timeout=30_000)
         page.select_option(SEL_TIPO_DECLARACION, tipo)
+        if tipo != TIPO_NORMAL:
+            # complementarias: el portal (v2, 30-sep-2026) pide el «Tipo de
+            # complementaria»; lo que se reemplaza con un TXT nuevo es la
+            # «Modificación de Declaración» (003)
+            page.wait_for_selector(f"{SEL_TIPO_COMPLEMENTARIA}:visible", timeout=30_000)
+            page.select_option(SEL_TIPO_COMPLEMENTARIA, TIPO_COMPLEMENTARIA_MODIFICACION)
         page.wait_for_selector(f"{SEL_BTN_SIGUIENTE}:visible", timeout=30_000)
         page.click(SEL_BTN_SIGUIENTE)
         # la SPA tarda en cargar y en el camino pueden aparecer diálogos
