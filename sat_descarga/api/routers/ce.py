@@ -144,12 +144,13 @@ async def ce_subir(archivos: list[UploadFile] = File(...)):
     for up in archivos:
         nombre = Path(up.filename or "").name
         if not nombre.lower().endswith(".zip"):
+            etiqueta = nombre or "sin nombre"
             raise HTTPException(status_code=400,
-                                detail=f"«{nombre or 'sin nombre'}» no es un .zip.")
+                                detail=f'"{etiqueta}" no es un .zip.')
         datos = await up.read(_MAX_ZIP_BYTES + 1)
         if len(datos) > _MAX_ZIP_BYTES:
             raise HTTPException(status_code=413,
-                                detail=f"«{nombre}» es demasiado grande para ser un envío de contabilidad.")
+                                detail=f'"{nombre}" es demasiado grande para ser un envío de contabilidad.')
         dest = destino / nombre
         dest.write_bytes(datos)
         guardados.append(dest)

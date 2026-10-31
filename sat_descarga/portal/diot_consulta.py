@@ -155,10 +155,23 @@ def nombre_archivo(sugerido: Optional[str], tipo: str, numero_operacion: str, rf
 class DiotConsultaClient:
     """Cliente para descargar DIOT presentadas (PDF, Excel) y sus acuses (portal)."""
 
-    def __init__(self, rfc: str = "", ciec: str = "", headless: bool = True):
+    def __init__(self, rfc: str = "", ciec: str = "", headless: bool = True,
+                 on_progreso=None):
         self.rfc = (rfc or "").strip().upper()
         self.ciec = ciec
         self.headless = headless
+        # contrato UI (patrón EnviadorCE/PresentadorDiot): fases con nombre
+        # ESTABLE para la checklist del renderer — login, consultando,
+        # descargando y fin
+        self._on_progreso = on_progreso
+
+    def _emitir(self, fase: str, **data) -> None:
+        if self._on_progreso is None:
+            return
+        try:
+            self._on_progreso(fase, data)
+        except Exception as e:  # noqa: BLE001 — el progreso es cosmético
+            logger.warning("[DIOT] callback de progreso falló en %s: %s", fase, e)
 
     # ------------------------------------------------------------------ público
     def descargar(self, periodos: list[tuple[int, int]], tipos=TIPOS_DEFAULT, excel: bool = True,
@@ -192,6 +205,7 @@ class DiotConsultaClient:
             )
             page = context.new_page()
             try:
+                self._emitir("login")
                 if login is None:
                     iniciar_sesion_ciec(page, self.rfc, self.ciec, url_entrada=url_entrada,
                                         exito=_es_landing_diot, pedir_captcha=pedir_captcha)
@@ -207,6 +221,7 @@ class DiotConsultaClient:
                     dest_dir = out_dir / periodo
                     usados: set = set()
                     for tipo in tipos:
+                        self._emitir("consultando", periodo=periodo, tipo=tipo)
                         filas = self._consultar(page, tipo, anio, mes)
                         logger.info("[DIOT] %s %s: %d fila(s)", periodo, tipo, len(filas))
                         if not filas:
@@ -214,6 +229,8 @@ class DiotConsultaClient:
                         dest_dir.mkdir(parents=True, exist_ok=True)
                         for fila in filas:
                             numop = fila.get("numero_operacion", "")
+                            self._emitir("descargando", periodo=periodo, tipo=tipo,
+                                         numero_operacion=numop)
                             archivo = self._descargar_pdf(page, fila, tipo, dest_dir, rfc, periodo, usados)
                             archivo_excel = None
                             if tipo == "declaracion" and excel and fila.get("_excel"):
@@ -234,6 +251,7 @@ class DiotConsultaClient:
             finally:
                 browser.close()
         actualizar_indice(out_dir / INDICE_NOMBRE, resultados)
+        self._emitir("fin", total=len(resultados))
         return resultados
 
     # ---------------------------------------------------------------- consulta
@@ -385,7 +403,7 @@ def descargar_diot_ciec(rfc: str, ciec: str, desde: str, hasta: Optional[str] = 
 
 def descargar_diot_fiel(cer_path: str, key_path: str, password: str, desde: str, hasta: Optional[str] = None,
                         tipos=TIPOS_DEFAULT, excel: bool = True, directorio_salida: str = "./diot/",
-                        headless: bool = True) -> list[dict]:
+                        headless: bool = True, on_progreso=None) -> list[dict]:
     """DIOT presentadas (PDF + Excel) y/o acuses por periodo mensual, con e.firma (sin captcha)."""
     rfc = ""
     try:
@@ -393,7 +411,7 @@ def descargar_diot_fiel(cer_path: str, key_path: str, password: str, desde: str,
         rfc = FIEL(cer_path, key_path, password).rfc
     except Exception as e:  # noqa: BLE001
         logger.warning("[FIEL] no se pudo leer el RFC del .cer: %s", e)
-    client = DiotConsultaClient(rfc=rfc, headless=headless)
+    client = DiotConsultaClient(rfc=rfc, headless=headless, on_progreso=on_progreso)
     login = lambda page: iniciar_sesion_fiel(  # noqa: E731
         page, cer_path, key_path, password, url_entrada=DIOT_CONSULTA_URL_ENTRADA_FIEL, exito=_es_landing_diot)
     return client.descargar(periodos_entre(desde, hasta), tipos=tipos, excel=excel,
