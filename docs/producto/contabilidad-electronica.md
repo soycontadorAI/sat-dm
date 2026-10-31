@@ -138,4 +138,29 @@ API (jobs + SSE, patrón certifica; FIEL del keychain): `POST /ce/enviar`
 `GET /ce/pendientes`, `POST /ce/reanudar`. Fases estables para la checklist de
 la UI en los docstrings de `EnviadorCE`/`ConsultorCE`.
 
+Apoyos de la UI (sin portal): `POST /ce/inventario` (revisión previa de ZIPs ya
+en el equipo), `POST /ce/subir` (la web no tiene rutas: sube los ZIP a
+`ce_subidos/` del agente y devuelve el mismo inventario), `GET /ce/acuses`
+(última consulta guardada en `ce/{RFC}/{año}/consulta.json`, con `tiene_ar` /
+`tiene_ap` calculados contra el disco) y `GET /ce/acuse?rfc&anio&folio&tipo=AR|AP`
+(sirve el PDF; la ruta se deriva de RFC+año+folio, nunca del cliente, y el folio
+solo admite dígitos — no usa la lista blanca del historial).
+
+## UI (`/contabilidad`)
+
+Una pantalla con dos pestañas sobre la empresa activa (requiere e.firma):
+
+- **Enviar**: wizard Archivos → Opciones → Validar → Enviar. Desktop elige los ZIP
+  con el diálogo nativo (`satDesktop.elegirZips`); la web y arrastrar-y-soltar
+  usan `/ce/subir`. El sellado es una decisión explícita (sin valor por default),
+  se valida primero sin enviar (`solo_validar`) y el envío real exige confirmar que
+  es irreversible. Un ZIP con problemas, de varios RFC o de un RFC distinto al de
+  la empresa activa bloquea el avance (`lib/contabilidad-electronica.ts`).
+- **Acuses**: ejercicio + "Actualizar desde el SAT" (job), tabla con estatus y los
+  PDF de recepción y de aceptación/rechazo. Rechazado ofrece "Corregir y reenviar".
+- Banner de la cola de pendientes con "Reintentar ahora".
+
+Ambos paneles viven con `forceMount` (Radix desmonta el panel inactivo, y con él el
+job en curso).
+
 Pendientes y roadmap: `docs/producto/pendientes-envios-sat.md`.

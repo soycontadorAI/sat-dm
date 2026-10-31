@@ -117,6 +117,96 @@ def test_reanudar_sin_pendientes_es_404(client):
     assert r.status_code == 404
 
 
+# --- /ce/inventario, /ce/subir -----------------------------------------------
+
+def test_inventario_devuelve_fichas_sin_portal(client, tmp_path):
+    r = client.post("/ce/inventario", json={"archivos": [str(tmp_path)]})
+    assert r.status_code == 400          # carpeta sin .zip
+    _zip_valido(tmp_path)
+    r = client.post("/ce/inventario", json={"archivos": [str(tmp_path)]})
+    assert r.status_code == 200
+    ficha = r.json()["archivos"][0]
+    assert ficha["tipo"] == "BN" and ficha["problemas"] == []
+
+
+def test_subir_guarda_y_revisa(client, tmp_path):
+    z = _zip_valido(tmp_path)
+    with open(z, "rb") as fh:
+        r = client.post("/ce/subir", files=[("archivos", (z.name, fh, "application/zip"))])
+    assert r.status_code == 200
+    ficha = r.json()["archivos"][0]
+    assert ficha["problemas"] == [] and ficha["rfc"] == RFC
+    # quedó en la carpeta de paso del agente, no en la ruta original
+    assert "ce_subidos" in ficha["path"]
+
+
+def test_subir_rechaza_lo_que_no_es_zip(client):
+    r = client.post("/ce/subir", files=[("archivos", ("x.txt", b"hola", "text/plain"))])
+    assert r.status_code == 400
+
+
+def test_subir_no_escapa_de_la_carpeta(client, tmp_path):
+    z = _zip_valido(tmp_path)
+    r = client.post("/ce/subir", files=[
+        ("archivos", ("../../" + z.name, z.read_bytes(), "application/zip"))])
+    assert r.status_code == 200
+    assert ".." not in r.json()["archivos"][0]["path"]
+
+
+# --- /ce/acuse y /ce/acuses (lectura) ----------------------------------------
+
+@pytest.fixture
+def empresa_ce(tmp_path, monkeypatch):
+    real = config_store.get_empresa
+    monkeypatch.setattr(
+        config_store, "get_empresa",
+        lambda rfc: {"rfc": RFC} if rfc == RFC else real(rfc))
+    monkeypatch.setattr("sat_descarga.api.routers.ce._descargas_base",
+                        lambda: tmp_path / "descargas")
+    return tmp_path / "descargas" / "ce" / RFC / "2026"
+
+
+def test_acuse_sirve_el_pdf_derivado_del_folio(client, empresa_ce):
+    empresa_ce.mkdir(parents=True)
+    (empresa_ce / "AR_000220260101.pdf").write_bytes(b"%PDF-1.4 x")
+    r = client.get("/ce/acuse", params={"rfc": RFC, "anio": 2026,
+                                        "folio": "000220260101", "tipo": "AR"})
+    assert r.status_code == 200 and r.content.startswith(b"%PDF")
+    r = client.get("/ce/acuse", params={"rfc": RFC, "anio": 2026,
+                                        "folio": "000220260101", "tipo": "AP"})
+    assert r.status_code == 404
+
+
+@pytest.mark.parametrize("folio", ["../../etc/passwd", "12", "abc123456"])
+def test_acuse_folio_invalido_es_400(client, empresa_ce, folio):
+    r = client.get("/ce/acuse", params={"rfc": RFC, "anio": 2026, "folio": folio})
+    assert r.status_code == 400
+
+
+def test_acuse_empresa_inexistente_es_404(client):
+    r = client.get("/ce/acuse", params={"rfc": "XAXX010101000", "anio": 2026,
+                                        "folio": "000220260101"})
+    assert r.status_code == 404
+
+
+def test_acuses_guardados_marca_que_pdf_existen(client, empresa_ce):
+    from sat_descarga.api.routers.ce import _guardar_consulta
+    empresa_ce.mkdir(parents=True)
+    (empresa_ce / "AR_000220260101.pdf").write_bytes(b"%PDF-")
+    _guardar_consulta(RFC, 2026, [{
+        "folio": "000220260101", "estatus": "Recibido", "periodo": "Enero",
+        "acuse_recepcion": "/ruta/del/agente.pdf"}])
+    body = client.get("/ce/acuses", params={"rfc": RFC, "anio": 2026}).json()
+    fila = body["filas"][0]
+    assert body["consultado_en"] and fila["tiene_ar"] and not fila["tiene_ap"]
+    assert "acuse_recepcion" not in fila     # rutas del agente no salen al cliente
+
+
+def test_acuses_guardados_sin_consulta_previa(client, empresa_ce):
+    body = client.get("/ce/acuses", params={"rfc": RFC, "anio": 2026}).json()
+    assert body == {"consultado_en": None, "filas": []}
+
+
 # --- /diot/presentar: vallas -------------------------------------------------
 
 def test_presentar_sin_estimulos_es_contrato(client, tmp_path):

@@ -58,10 +58,10 @@ los totales del portal ya se leyeron y preguntar al usuario en vivo —
 
 ## (d) UI (siguiente iteración)
 
-- Pantalla CE: selector de ZIPs/carpeta, resumen del inventario, decisión de
-  sellado EXPLÍCITA («irá sellado con tu e.firma» / «irá sin sellar»),
-  progreso por fases, tabla de estatus (Recibido/Aceptado/Rechazado), cola de
-  pendientes visible (`GET /ce/pendientes`).
+- ✅ **Pantalla CE hecha** (`/contabilidad`, ver `docs/producto/contabilidad-electronica.md`):
+  selector de ZIPs, resumen del inventario, decisión de sellado explícita,
+  progreso por fases, tabla de estatus (Recibido/Aceptado/Rechazado) y cola de
+  pendientes visible. Falta QA con una corrida real contra el SAT desde la UI.
 - Botón «Presentar en el SAT» en `/diot` junto a `ExportTxtButton`, con el
   two-step (validar → mostrar totales del portal → confirmar) y la pregunta
   de estímulos SIEMPRE visible.
