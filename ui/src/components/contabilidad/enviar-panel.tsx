@@ -524,9 +524,12 @@ function ResultadoEnvio({
         <Icon icon="ph:warning-light" className="size-4" />
         <AlertTitle>Falta el acuse de aceptación</AlertTitle>
         <AlertDescription>
-          El acuse de <strong>recepción</strong> no ampara el cumplimiento: el SAT todavía valida
-          el archivo. Solo el de <strong>aceptación</strong> lo ampara. Consúltalo en Acuses en unos
-          minutos.
+          {/* En un <p>: AlertDescription es un grid y cada hijo directo sería una fila. */}
+          <p>
+            El acuse de <strong>recepción</strong> no ampara el cumplimiento: el SAT todavía valida
+            el archivo. Solo el de <strong>aceptación</strong> lo ampara. Consúltalo en Acuses en
+            unos minutos.
+          </p>
         </AlertDescription>
       </Alert>
 
